@@ -376,23 +376,17 @@ Before committing, run through ALL checks. Do not commit until every check passe
 2. `git diff --stat` contains only files related to batch items (no stray changes)
 3. Full test suite passes — count matches or exceeds baseline from Stage 1
 4. No `TODO`, `FIXME`, or `HACK` introduced without a matching batch item tracking it
-5. Commit message lists only items that are VERIFIED (tests ran, tests passed)
+5. The items you will report done are VERIFIED (tests ran, tests passed): the close builds the commit message from them
 6. No secrets, credentials, or `.env` files staged
 
-If any check fails: fix the issue and re-run all checks. Only proceed to commit when all 6 pass.
+If any check fails: fix the issue and re-run all checks. Only proceed to the close when all 6 pass.
 
-### 6.2 Commit Changes
-Unless `--no-commit`, commit the modified files by path, with a message listing only verified items:
+### 6.2 Close the Cycle
+The close commits the modified files by path, with a message built from the done items, then records the cycle:
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "fix(focus-<n>): <verified items>" --files <modified files>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from focus open> --files <modified files> --done <ids> --failed "<id>=<reason>,..."
 ```
-The commit verb unstages anything matching a sensitive pattern. Check that it reports a hash.
-
-### 6.3 Close the Cycle
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from focus open> --status verified|partial|failed --commit <hash> --done <ids> --failed "<id>=<reason>,..."
-```
-`verified`: every item done and the suite passes; `partial`: some failed; `failed`: none done. Leave out `--commit` under `--no-commit`. The close runs the test command again for `tests_after`, writes the cycle's summary (items, tests before and after), records each item's result in the batch file, completes the todos it finished, and adds the cycle to state.md's Quick Tasks table. Then append error patterns if any failures occurred.
+Leave out `--files` under `--no-commit`. The close measures the tests against the baseline `focus open` kept and derives the status: `verified` only when every item is done and nothing regressed (a test already failing when the cycle opened does not count against it). `--status` can only lower that, for example to `partial` after a deep-review finding. It never commits a regression: revert the cycle's changes and close with every item failed. With no item done, leave out `--files`. If the close refuses with `commit_blocked` (a named path matched `commit.sensitive_patterns`, or the commit would delete a file), it wrote nothing and the cycle stays open: fix the cause (rename the file, or narrow the pattern in `.planning/config.json`) and close again, or commit exactly the reported paths yourself and close with `--commit <sha>` in place of `--files`. The close writes the cycle's summary (items, tests before and after, regressions), records each item's result in the batch file, completes the todos it finished, adds the cycle to state.md's Quick Tasks table and commits that record. Check that it reports a `commit` hash. Then append error patterns if any failures occurred.
 
 ### 6.3.5 Circular optimization — end trace
 ```bash

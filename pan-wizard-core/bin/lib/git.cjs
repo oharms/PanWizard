@@ -55,13 +55,21 @@ function _noRemote(remote, raw) {
 
 // ─── Subcommands ─────────────────────────────────────────────────────────────
 
-function cmdGitCommit(cwd, opts, raw) {
-  if (!isGitRepo(cwd)) { _notGitRepo(raw); return; }
-  const { type, message, all, amend, force, files } = opts || {};
-  if (type && !VALID_COMMIT_TYPES.includes(type)) {
-    error('Invalid commit type: ' + type + '. Valid: ' + VALID_COMMIT_TYPES.join(', '));
-  }
-  if (!message && !amend) { error('--message required (or use --amend)'); }
+/**
+ * Stage and commit source paths, whatever commit_docs says (that key governs planning
+ * documents). Returns what `git commit` prints; cmdGitCommit is the CLI wrapper and
+ * `focus close --files` commits a cycle's source through it.
+ * @param {string} cwd
+ * @param {{message?: string, type?: string, files?: string[], all?: boolean, amend?: boolean, force?: boolean, unstageOnBlock?: boolean}} o
+ *   unstageOnBlock: put back what this call staged when the safety checks refuse, so
+ *   a refused secret is not left in the index for the next commit to take
+ * @returns {Object}
+ */
+function commitPaths(cwd, o = {}) {
+  const { type, message, all, amend, force, files } = o;
+  if (!isGitRepo(cwd)) return { error: 'not_a_git_repo', hint: 'Run git init to initialize a repository' };
+  const staged = () => execGit(cwd, ['diff', '--cached', '--name-only']).stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+  const before = o.unstageOnBlock ? new Set(staged()) : null;
 
   if (all) execGit(cwd, ['add', '.']);
   else if (files && files.length > 0) {
@@ -71,11 +79,15 @@ function cmdGitCommit(cwd, opts, raw) {
   const config = loadConfig(cwd);
   const safety = runCommitSafetyChecks(cwd, config, force);
   if (safety.blocked) {
+    if (before) {
+      const added = staged().filter((f) => !before.has(f));
+      for (const f of added) execGit(cwd, ['reset', '--quiet', '--', f]);
+      safety.safetyChecks.unstaged_by_pan = added;
+    }
     // A blocked commit is a refusal that protected something (staged deletions, a
     // secret) — the commit did NOT happen, so the caller must be able to stop. Same
     // classification CLI-REFERENCE already documents for `dirty_working_tree`.
-    output({ committed: false, reason: safety.reason, error: 'commit_blocked', safety_checks: safety.safetyChecks, hint: safety.hint }, raw, 'blocked');
-    return;
+    return { committed: false, reason: safety.reason, error: 'commit_blocked', safety_checks: safety.safetyChecks, hint: safety.hint };
   }
 
   const finalMessage = type ? type + ': ' + message : message;
@@ -89,18 +101,28 @@ function cmdGitCommit(cwd, opts, raw) {
     if ((r.stdout + r.stderr).includes('nothing to commit') || (r.stdout + r.stderr).includes('nothing added to commit')) {
       // No error key, exit 0: nothing to commit means no change was NEEDED, not that
       // a change failed. Pinned as a success in CLI-REFERENCE ("Error Shape").
-      output({ committed: false, reason: 'nothing_to_commit' }, raw, 'nothing to commit');
-      return;
+      return { committed: false, reason: 'nothing_to_commit' };
     }
     // `|| 'unknown git error'` is load-bearing: the exit code is derived from a
     // TRUTHY error key and git does not always write to stderr, so an empty string
     // would launder this real failure back into exit 0. Same shape as the
     // sibling commit path in commands.cjs (cmdCommit).
-    output({ committed: false, reason: 'commit_failed', error: r.stderr || 'unknown git error', detail: r.stderr }, raw, 'commit failed');
-    return;
+    return { committed: false, reason: 'commit_failed', error: r.stderr || 'unknown git error', detail: r.stderr };
   }
   const hash = execGit(cwd, ['rev-parse', '--short', 'HEAD']).stdout || null;
-  output({ committed: true, hash, type: type || null, safety_checks: safety.safetyChecks }, raw, hash);
+  return { committed: true, hash, type: type || null, safety_checks: safety.safetyChecks };
+}
+
+function cmdGitCommit(cwd, opts, raw) {
+  if (!isGitRepo(cwd)) { _notGitRepo(raw); return; }
+  const { type, message, amend } = opts || {};
+  if (type && !VALID_COMMIT_TYPES.includes(type)) {
+    error('Invalid commit type: ' + type + '. Valid: ' + VALID_COMMIT_TYPES.join(', '));
+  }
+  if (!message && !amend) { error('--message required (or use --amend)'); }
+  const r = commitPaths(cwd, opts || {});
+  const label = r.committed ? r.hash : r.error === 'commit_blocked' ? 'blocked' : r.reason === 'nothing_to_commit' ? 'nothing to commit' : 'commit failed';
+  output(r, raw, label);
 }
 
 function cmdGitBranch(cwd, sub, opts, raw) {
@@ -436,6 +458,7 @@ function cmdGit(cwd, subcommand, args, raw) {
 module.exports = {
   cmdGit,
   cmdGitCommit,
+  commitPaths,
   cmdGitBranch,
   cmdGitPush,
   cmdGitStatus,

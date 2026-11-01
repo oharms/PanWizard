@@ -427,7 +427,7 @@ When root docs and sub-docs disagree:
 
 ## Closing the Edits (--create or --repair, with or without --quick)
 
-After the last write: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from focus open> --status verified|partial|failed` (`partial` when some drift was left for manual review, `failed` when nothing was written).
+After the last write, naming the documents you changed so the close commits them: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from focus open> --status verified|partial|failed --files <documents changed>` (`partial` when some drift was left for manual review, `failed` when nothing was written, and then no `--files`). If the close refuses with `commit_blocked` (a named path matched `commit.sensitive_patterns`, or the commit would delete a file), it wrote nothing and the cycle stays open: fix the cause (rename the file, or narrow the pattern in `.planning/config.json`) and close again, or commit exactly the reported paths yourself and close with `--commit <sha>` in place of `--files`.
 
 ---
 

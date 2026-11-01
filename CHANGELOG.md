@@ -15,12 +15,15 @@ Focus runs are now recorded in the same state as everything else PAN does, so `/
 
 ### Changed
 
-- **`/pan:focus-auto` and `--step exec` open and close every cycle, and commit through `pan-tools commit`** instead of staging and committing with git directly, so the sensitive-pattern check applies. The `focus-docs` modes that write (`--fix`, `--sync --all`, drift `--create`/`--repair`) bracket their edits the same way. Under `instructions.routing: exclusive` with `hooks.guard: enforce`, the guard no longer denies a focus run's own edits: an open cycle is work in flight, with no change to the guard.
-- **`focus auto --update` takes a closed cycle's counts.** The items done and failed and both test counts come from the cycle `focus close` recorded, with `tests_verified: true`, whatever the flags say; the flags remain for a cycle that never opened. `focus auto --stop` closes a cycle left open as `failed`.
+- **`/pan:focus-auto` and `--step exec` open and close every cycle, and `focus close --files` commits the cycle's source** instead of the agent staging and committing with git directly, so the safety checks apply. It commits whatever `commit_docs` says (that key governs planning documents only), then commits the cycle's record under the planning rules, todo moves included. A refused commit (`commit_blocked`) writes nothing and leaves the cycle open; `--commit <sha>` records a commit you made, checked to be reachable from HEAD. The `focus-docs` modes that write (`--fix`, `--sync --all`, drift `--create`/`--repair`) bracket their edits the same way. Under `instructions.routing: exclusive` with `hooks.guard: enforce`, the guard no longer denies a focus run's own edits: an open cycle is work in flight, with no change to the guard.
+- **The engine derives a focus cycle's status.** `focus open` keeps the test run as the cycle's baseline and `focus close` measures against it: a test already failing at open no longer caps the cycle, a new failure records it `failed` and is never committed, and the agent's `--status` can only lower the result.
+- **`focus auto --update` records the run's own cycle.** `focus open` names it in `auto-run.json` (`current_cycle`); `--update` takes the items, both test counts, the status and the regressions from that cycle's summary (`tests_verified: true`), refuses while it is open, and never picks up an older one, which `--status` lists as `unrecorded_cycles`. A failed cycle stops the run `stopped` (`cycle_failed`, `all_failed`), resumable with `--continue`, instead of ending it `completed`. `focus auto --stop` closes only the run's own cycle.
+- **`/pan:resume` sees all open work.** `init resume` returns `open_work` (unfinished phase plans, open quick tasks and focus cycles, debug sessions, checkpoints), the same answer the guard uses for work in flight, and the resume workflow reads it instead of a shell loop over phase plans.
+- **The deleted-file safety check looks at the commit.** `pan-tools commit` and `git commit` refuse a deletion the commit would make (a staged one), not an unstaged deletion elsewhere in the tree, which the commit never contained.
 
 ### Removed
 
-- **`pan-tools batch-commit`.** No shipped prompt called it; focus cycles commit through `pan-tools commit` and record themselves through `focus close`.
+- **`pan-tools batch-commit`.** No shipped prompt called it; focus cycles commit and record themselves through `focus close`.
 
 ## [3.39.0] - 2026-10-31
 

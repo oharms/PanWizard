@@ -172,18 +172,33 @@ describe('commit safety checks', () => {
     assert.deepEqual(JSON.parse(blocked.output).safety_checks.sensitive_files_blocked, ['.planning/api-token.txt']);
   });
 
-  test('an unstaged deletion on the first status line is reported by its full name', () => {
-    // execGit trims stdout, so ` D gone.txt` arrived as `D gone.txt` and a fixed
-    // three-character slice reported `one.txt`.
+  test('a deletion the commit would make is refused and reported by its full name', () => {
     fs.writeFileSync(path.join(tmpDir, 'gone.txt'), 'bye');
     execSync('git add gone.txt', { cwd: tmpDir, stdio: 'pipe' });
     execSync('git commit -m "add gone"', { cwd: tmpDir, stdio: 'pipe' });
     fs.unlinkSync(path.join(tmpDir, 'gone.txt'));
-    const result = runPanTools('commit after-delete', tmpDir);
+    const result = runPanTools('commit after-delete --files gone.txt', tmpDir);
     assert.equal(result.success, false, 'a blocked commit must not report success');
     const out = JSON.parse(result.output);
     assert.strictEqual(out.reason, 'deleted_files_detected');
     assert.deepStrictEqual(out.safety_checks.deleted_files, ['gone.txt']);
+    assert.ok(runPanTools('commit after-delete --files gone.txt --force', tmpDir).success, '--force confirms the deletion');
+  });
+
+  test('an unstaged deletion outside the commit does not block it', () => {
+    // The whole-tree scan refused this: a focus cycle's todo move left a deletion in
+    // todos/pending/ that the next commit, of other files, would never have contained.
+    fs.writeFileSync(path.join(tmpDir, 'gone.txt'), 'bye');
+    execSync('git add gone.txt', { cwd: tmpDir, stdio: 'pipe' });
+    execSync('git commit -m "add gone"', { cwd: tmpDir, stdio: 'pipe' });
+    fs.unlinkSync(path.join(tmpDir, 'gone.txt'));
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'note.md'), '# note');
+    const result = runPanTools('commit with-note --files .planning/note.md', tmpDir);
+    assert.ok(result.success, result.output);
+    const out = JSON.parse(result.output);
+    assert.strictEqual(out.committed, true);
+    assert.deepStrictEqual(out.safety_checks.deleted_files, []);
+    assert.match(execSync('git status --porcelain', { cwd: tmpDir, encoding: 'utf8' }), /^ D gone\.txt$/m, 'the deletion is left as it was');
   });
 
   test('package.json in staging → not blocked (no pattern match)', () => {

@@ -2674,7 +2674,7 @@ pan-tools commit "bugfix" --type fix --force
 - `--fail-on-error` — Report a git refusal (e.g. missing identity) as a bare `error()` on **stderr** instead of a `commit_failed` JSON body on stdout. Both exit non-zero, so autonomous loops detect the silent-failure case where the artifact never actually landed either way; the flag only changes which stream carries the reason. (`nothing_to_commit` has no `error` key and is still a success at exit `0`.)
 
 **Safety checks** (enabled by default via `config.commit.safety_checks`):
-- **Deleted files:** Blocks commit if `git status --porcelain` lists a deletion (` D` unstaged or `D` staged) anywhere in the repository, not only in what this commit stages (use `--force` to override)
+- **Deleted files:** Blocks a commit that would delete a file: a deletion staged in the index, whether this call staged it (a deleted path in `--files`) or it was staged before (use `--force` to override). An unstaged deletion elsewhere in the tree is not part of the commit and does not block it
 - **Sensitive files:** Blocks commit if a staged path matches a sensitive pattern: `.env`, `.pem` or `.key` at the end of the path, or `credentials`, `secret`, `password` or `token` anywhere in it (configurable via `config.commit.sensitive_patterns`). The match is on the path, not the content. PAN's own cost ledger, `.planning/metrics/tokens.jsonl`, is exempt
 
 **JSON output:**
@@ -3025,6 +3025,7 @@ pan-tools init resume [--raw]
 - `state_exists`, `roadmap_exists`, `project_exists`, `planning_exists` — File existence
 - `has_interrupted_agent`, `interrupted_agent_id` — Agent state recovery
 - `commit_docs` — Config
+- `open_work` — Work started and not finished: `{in_flight, phase_plans: [{phase, plan, current}], quick: [{dir, plan, source: "focus"|"quick", kind?, run_id?, opened_at?}], debug: [{file}], continue_here: [{path}]}`. `phase_plans` lists every phase's plans with no summary, `current` marking the phase state.md names. `in_flight` gives the answer the guard's `unrouted_write` rule uses: an unfinished plan in the current phase, an open quick task (a focus cycle included), or a debug session
 
 ---
 
@@ -3235,9 +3236,9 @@ pan-tools focus auto [--source scan|backlog] [--category CAT] [--mode MODE] [--b
 
 **Operations:**
 - Default: Initialize new auto-run with category defaults. Defaults: `--max-cycles` 10 (1–50), `--total-budget` 500 (5–5000), `--budget` per category (5–100)
-- `--status`: Show current run state with computed budget/cycles remaining
-- `--update`: Record cycle results (pass `--items-completed`, `--items-failed`, `--points-used`, `--tests-before`, `--tests-after`, `--batch-file`, `--command`, and — for the `prompts` category — `--prompts-remaining N`). When the run has a cycle `focus close` closed and no update has recorded yet, the item counts and both test counts come from its summary instead of the flags, with `tests_verified: true` and the cycle's directory in `cycle_dir`. **Side effect:** in a git repository, each update runs the memory auto-optimize, regenerates the HTML reports when `workflow.phase_reports.enabled`, and checkpoint-commits `.planning/` (`commit_hash` in the output). None of the three happens when `focus.auto_commit` or `commit_docs` is false, or outside a git repository
-- `--stop`: Gracefully stop an active run; a focus cycle left open is closed as `failed` (`closed_cycle` in the output)
+- `--status`: Show current run state with computed budget/cycles remaining, and `unrecorded_cycles`: closed focus cycles of this run that no `--update` recorded (a crash between the close and the update)
+- `--update`: Record cycle results (pass `--items-completed`, `--items-failed`, `--points-used`, `--tests-before`, `--tests-after`, `--batch-file`, `--command`, and — for the `prompts` category — `--prompts-remaining N`). `focus open` names its cycle in the run's `current_cycle`, and `--update` records that cycle and no other: the item counts, both test counts, its `status` and its `regressions` come from its summary instead of the flags, with `tests_verified: true` and the cycle's directory in `cycle_dir`. While that cycle is still open, `--update` exits 1. A cycle with a regression stops the run (`regression`), and a failed cycle or one whose items all failed stops it as `stopped` (`cycle_failed`, `all_failed`), resumable with `--continue`; `zero_completed` is left for a cycle that attempted nothing. **Side effect:** in a git repository, each update runs the memory auto-optimize, regenerates the HTML reports when `workflow.phase_reports.enabled`, and checkpoint-commits `.planning/` (`commit_hash` in the output). None of the three happens when `focus.auto_commit` or `commit_docs` is false, or outside a git repository
+- `--stop`: Gracefully stop an active run; the run's own cycle, if still open, is closed as `failed` (`closed_cycle` in the output). A cycle the run did not open is left alone
 - `--continue`: Resume a stopped/initialized run
 - `--dry-run`: Show what would be initialized without writing
 
@@ -3258,7 +3259,7 @@ pan-tools focus auto [--source scan|backlog] [--category CAT] [--mode MODE] [--b
 
 ### `focus open`
 
-Register a focus cycle as a quick task before its first edit. Creates `.planning/quick/<n>-focus-<kind>-<date>/<n>-plan.md`, numbered after the newest quick task (the same numbering `init quick` gives `/pan:quick`). An open quick plan counts as work in flight, so state.md, resume and the guard's `unrouted_write` rule see the cycle. For an `exec` cycle it runs the project's test command once (the one `test run` uses) and records the pass count as `tests_before`.
+Register a focus cycle as a quick task before its first edit. Creates `.planning/quick/<n>-focus-<kind>-<date>/<n>-plan.md`, numbered after the newest quick task (the same numbering `init quick` gives `/pan:quick`). An open quick plan counts as work in flight, so state.md, resume and the guard's `unrouted_write` rule see the cycle. For an `exec` cycle it runs the project's test command once (the one `test run` uses), records the pass count as `tests_before`, and keeps the whole record, failing tests included, as `<n>-test-baseline.json` for the close to compare against. Inside a live auto run it sets the run's `current_cycle`.
 
 ```bash
 pan-tools focus open [--batch <file>] [--kind exec|docs] [--run <run_id>] [--raw]
@@ -3278,23 +3279,26 @@ The plan's frontmatter carries `source: focus`, `focus_kind`, `batch_file`, `run
 
 ### `focus close`
 
-End a focus cycle after its commit.
+End a focus cycle: measure, commit, record.
 
 ```bash
-pan-tools focus close --dir <dir|name|number> --status verified|partial|failed [--commit <sha>] [--done <id,...>] [--failed "<id>=<reason>,..."] [--raw]
+pan-tools focus close --dir <dir|name|number> [--status verified|partial|failed] [--files <path> ...] [--commit <sha>] [--done <id,...>] [--failed "<id>=<reason>,..."] [--raw]
 ```
 
-- Runs the test command again (exec cycles) for `tests_after`. A `verified` claim is recorded as `partial` when either count is missing or the run did not pass (`capped` says why)
+- Runs the test command again (exec cycles) against the cycle's baseline and writes `<n>-test-run.json`. A test already failing at open is pre-existing; a new failure is a regression
+- Derives the status: `failed` when no item is done, a test regressed or fewer tests pass; at most `partial` with no measured count, a run that did not pass, or an item not done; else `verified`. `--status` can only lower it (`derived_status` and `derived_from` show the measured value and why). An exec cycle may leave `--status` out; a docs cycle, which measures nothing, needs it
+- `--files`: commits those paths (deletions included) with `fix(focus-<n>): <done ids>` (`docs(focus-<n>): …` for a docs cycle), through the source commit path, so `commit_docs` does not apply. Nothing is committed when a test regressed (`commit_skipped`). `--commit <sha>` instead records a commit you made, which must be reachable from HEAD
 - Records `results` (`{id: "done"|"failed"}`) and `result_reasons` in the batch file, keeping its modification time; each item's scan-time `status` is left alone
 - Moves each done todo item to `todos/completed/` (a bare file name only: an id that names a path completes nothing)
 - Adds a row to state.md's Quick Tasks Completed table (`focus: <category> — X of Y items`, the commit, the status, the directory) and sets Last Activity. A project with no state.md closes anyway (`state: "state_missing"`); a missing Last Activity field is listed in `state_warnings`
-- Writes `<n>-summary.md` last: status, commit, items done, failed (with reasons) and not reported, tests before and after. The summary is what closes the cycle, so a close that stops before it can be run again
+- Writes `<n>-summary.md` last: status, the claim, commit, items done, failed (with reasons) and not reported, tests before and after, regressions and pre-existing failures. The summary is what closes the cycle, so a close that stops before it can be run again
+- Commits that record under the planning rules (`record_commit`: the hash, or why not, such as `skipped_commit_docs_false`): the cycle directory, state.md, the batch file and both sides of each todo move, so no deletion is left behind
 
 `--done` and `--failed` repeat, and each takes every word up to the next `--` flag: `--done a b` and `--done a,b` are the same. In `--failed` a comma splits only before the next `id=`, so a reason may contain commas, and an unquoted reason's words stay with the `id=` before them.
 
-**JSON output:** `{ closed, dir, summary, status, reported_status, capped?, items_done, items_failed, items_not_reported, tests_before, tests_after, batch_results, todos_completed, state, state_row, state_warnings? }`
+**JSON output:** `{ closed, dir, summary, status, reported_status, derived_status, derived_from?, commit, commit_skipped?, items_done, items_failed, items_not_reported, tests_before, tests_after, regressions, preexisting_failures, batch_results, todos_completed, state, state_row, state_warnings?, record_commit }`
 
-**Refusals (exit 1), nothing written:** `invalid_status`, `not_a_focus_cycle` (no such cycle, or a plan without `source: focus`), `cycle_closed`, `unknown_items` (an id not in the cycle's plan), `conflicting_items` (an id both done and failed). `state_failed`: state.md could not be updated; the cycle stays open (the batch results and todo moves already made are safe to repeat).
+**Refusals (exit 1), nothing written:** `invalid_status`, `not_a_focus_cycle` (no such cycle, or a plan without `source: focus`), `cycle_closed`, `unknown_items` (an id not in the cycle's plan), `conflicting_items` (an id both done and failed), `commit_conflict` (`--files` with `--commit`), `nothing_done` (`--files` with no item done), `commit_unknown` (`--commit` names no commit reachable from HEAD), `commit_blocked` (the safety checks refused `--files`: a sensitive path or a deletion, with `safety_checks` and the paths it unstaged again; fix the cause, or commit the paths yourself and close with `--commit <sha>`), `commit_failed`, `not_a_git_repo`. `state_failed`: state.md could not be updated; the cycle stays open (the batch results and todo moves already made are safe to repeat).
 
 **`--raw` output:** The recorded status.
 

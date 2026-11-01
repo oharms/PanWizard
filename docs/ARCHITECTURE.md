@@ -468,6 +468,7 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | `merge.cjs` | **(program L6a)** `merge request` / `merge confirm`: the human merge gate on the CLI; confirm only in an interactive terminal. |
 | `uat.cjs` | **(program L8)** `uat record` / `uat status`: UAT results written through the engine into `{phase}-uat.md`. |
 | `debug-cases.cjs` | **(program P5)** `debug repro <slug>` / `debug similar "<symptom>"`: a debug session's reproduction as its closing check, and the resolved case base. |
+| `open-work.cjs` | `openWork()`: the work started and not finished (unfinished phase plans, open quick tasks and focus cycles, debug sessions, `.continue-here` checkpoints) for `init resume`. Its `in_flight` answer is pinned to the guard's own `workInFlight` by `tests/open-work.test.cjs`, since a hook cannot require core. |
 | `state-write.cjs` | **(program A7b)** `state init`, `state section`, `state quick-task`, `state apply`: the writers of state.md as a whole or by section. |
 | `requirements-lint.cjs` | **(program V8)** `verify requirements` (EARS criteria) and `verify traceability` (runs each requirement's mapped tests); `phase complete` ticks through it. |
 

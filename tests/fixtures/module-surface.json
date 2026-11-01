@@ -134,6 +134,7 @@
     "cmdVerifyPathExists:function",
     "cmdVersion:function",
     "cmdWebsearch:function",
+    "commitPlanning:function",
     "completeTodo:function",
     "panVersionInfo:function",
     "readErrorPatterns:function",
@@ -530,6 +531,7 @@
     "cmdFocusSync:function",
     "collectWorkItems:function",
     "computeRealityScore:function",
+    "deriveCycleStatus:function",
     "determineContinuation:function",
     "determineStopReason:function",
     "focusClose:function",
@@ -544,9 +546,10 @@
     "readAutoRun:function",
     "readBatchFile:function",
     "readLatestBatch:function",
+    "runCurrentCycle:function",
     "sortByPriority:function",
     "summarizePriorities:function",
-    "unrecordedClosedCycle:function",
+    "unrecordedCycles:function",
     "verifyTestCount:function",
     "writeAutoRun:function"
   ],
@@ -578,6 +581,7 @@
     "cmdGitStatus:function",
     "cmdGitSync:function",
     "cmdGitTag:function",
+    "commitPaths:function",
     "getBranchList:function",
     "getCurrentBranch:function",
     "getTagList:function"
@@ -790,6 +794,9 @@
     "cmdNextAction:function",
     "diskSnapshot:function",
     "routeNextAction:function"
+  ],
+  "open-work.cjs": [
+    "openWork:function"
   ],
   "optimize.cjs": [
     "APPLIED_LOG:string",

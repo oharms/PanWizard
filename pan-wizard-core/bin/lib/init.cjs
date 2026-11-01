@@ -510,6 +510,9 @@ function cmdInitResume(cwd, raw) {
 
     // Config
     commit_docs: config.commit_docs,
+
+    // Work started and not finished: phase plans, quick tasks and focus cycles, debug sessions
+    open_work: require('./open-work.cjs').openWork(cwd),
   };
 
   output(result, raw);

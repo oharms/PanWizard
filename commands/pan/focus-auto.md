@@ -328,19 +328,19 @@ A failed item never blocks subsequent items.
 1. Run full test suite — ALL tests must pass
 2. If fewer tests pass than `focus open` recorded in `tests_before`: REGRESSION — revert all changes for this cycle, mark all items FAILED
 3. Update the scan file: mark completed/failed items
-4. Commit the changed source files by path, with a message listing only verified items: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "fix(focus-<n>): <verified items>" --files <changed files>`. The commit verb unstages anything matching a sensitive pattern. Nothing to commit (every item failed and was reverted) is not an error: skip to the close
-5. With `--deep-review` on, run it now (below), before the close: the close records the cycle. Then close the cycle with what happened, item by item:
+4. With `--deep-review` on, run it now (below), on the cycle's uncommitted changes, before the close: the close commits and records the cycle
+5. Close the cycle with what happened, item by item. The close commits the files you name, with a message built from the done items, then records the cycle:
    ```bash
-   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from focus open> --status verified|partial|failed --commit <hash> --done <ids> --failed "<id>=<reason>,..."
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from focus open> --files <changed files> --done <ids> --failed "<id>=<reason>,..."
    ```
-   `verified`: every item done and the suite passes; `partial`: some items failed; `failed`: none done, or the cycle was reverted. The close runs the test command again for `tests_after` (a verified claim without a measured count is recorded as partial), writes the summary, records each item's result in the batch file, completes the todos it finished and adds the cycle to state.md's Quick Tasks table
+   The close measures the tests against the baseline `focus open` kept and derives the status: `verified` only when every item is done and nothing regressed (a test already failing when the cycle opened does not count against it). `--status` can only lower that, for example to `partial` after a deep-review finding. It never commits a regression: revert the cycle's changes and close with every item failed. With no item done, leave out `--files`. If the close refuses with `commit_blocked` (a named path matched `commit.sensitive_patterns`, or the commit would delete a file), it wrote nothing and the cycle stays open: fix the cause (rename the file, or narrow the pattern in `.planning/config.json`) and close again, or commit exactly the reported paths yourself and close with `--commit <sha>` in place of `--files`. It writes the summary, records each item's result in the batch file, completes the todos it finished, adds the cycle to state.md's Quick Tasks table, and commits that record
 6. Count `points_used`
 
-**If `--deep-review` flag is active (run after the commit in step 4, before the close in step 5):**
+**If `--deep-review` flag is active (step 4: on the cycle's uncommitted changes, before the close in step 5):**
 
-Get changed files from this cycle's commit:
+Get the cycle's changed files:
 ```bash
-CHANGED=$(git diff HEAD~1 --name-only 2>/dev/null | grep -E '\.(js|ts|jsx|tsx|py|go|rb|java|php)$')
+CHANGED=$(git diff HEAD --name-only 2>/dev/null | grep -E '\.(js|ts|jsx|tsx|py|go|rb|java|php)$')
 ```
 
 Run inline OWASP security check on changed files only:
@@ -355,7 +355,7 @@ Run inline OWASP security check on changed files only:
 
 | Severity found | Verdict | Action |
 |---------------|---------|--------|
-| Critical pattern in changed file | `block` | STOP campaign — revert last commit, close the cycle with `--status failed` and every item failed with the finding as its reason, skip Step 2.4, present finding to user |
+| Critical pattern in changed file | `block` | STOP campaign — revert the cycle's changes, close the cycle without `--files` and every item failed with the finding as its reason, skip Step 2.4, present finding to user |
 | High pattern in changed file | `review_required` | STOP campaign — record cycle as completed, flag finding, recommend manual review |
 | Medium/low only | `ok_with_minor` | Continue — append findings to `.planning/focus/security-log-<date>.md` |
 | No patterns | `ok` | Continue silently |
@@ -366,7 +366,7 @@ Write all non-ok findings to `.planning/focus/security-log-<date>.md` with file:
 
 Run: `pan-tools focus auto --update --items-completed N --items-failed N --points-used N --tests-before N --tests-after N --batch-file <path>`
 
-When the cycle was closed with `focus close`, `--update` takes the item counts and the measured test counts from its summary (`tests_verified: true`); the flags stand only for a cycle that never opened (an empty scan).
+`--update` records the cycle this run's `focus open` registered: its item counts, the measured test counts (`tests_verified: true`), its status and its regressions come from the summary, and the flags stand only for a cycle that never opened (an empty scan). It refuses while that cycle is still open, so close it first. A cycle whose items all failed stops the run as `stopped` (`cycle_failed` or `all_failed`), resumable with `--continue`.
 
 Check the response for stop conditions:
 - `regression`: Tests decreased — STOP IMMEDIATELY
@@ -448,7 +448,7 @@ Then continue immediately to the next cycle (back to Step 2.1).
 | Iteration limit | `--max-cycles N` | Hard stop on loop count |
 | Regression circuit breaker | tests_after < tests_before | Immediate stop, status=stopped |
 | Zero-completed guard | 0 items done in a cycle | Stop — further cycles won't help |
-| Security gate (`--deep-review`) | Critical/high OWASP pattern in changed files | Revert last commit (critical) or flag for manual review (high), stop campaign |
+| Security gate (`--deep-review`) | Critical/high OWASP pattern in changed files | Revert the cycle's changes (critical) or flag for manual review (high), stop campaign |
 
 ## Behavioral Rules
 
@@ -697,7 +697,7 @@ This prevents the campaign from burning budget on items that will predictably fa
 - Spend more points than --total-budget when the budget is enforced (`--enforce-budget` or config `budget.enforce: true`) — the enforced cap is the user's cost control mechanism
 - Skip recording cycle results via --update — unrecorded cycles break resume, status, and stop-condition checks
 - Change test expectations to match broken code — this hides bugs instead of fixing them
-- Stage or commit with git directly — bulk staging can accidentally commit secrets, build artifacts, or unrelated changes; the commit verb stages the paths you name and unstages sensitive ones
+- Commit outside the cycle's close — bulk staging can accidentally commit secrets, build artifacts, or unrelated changes; `focus close --files` stages only the paths you name and refuses sensitive ones. The one exception: after a `commit_blocked`, commit exactly the reported paths yourself and close with `--commit <sha>`
 - Edit source files before `focus open` or leave a cycle open — an unregistered edit is invisible to state.md and resume, and exclusive routing denies it
 
 ## ALWAYS DO
@@ -711,5 +711,5 @@ This prevents the campaign from burning budget on items that will predictably fa
 - Revert fast when stuck (5 min limit)
 - Display one-line cycle summary between cycles
 - Display campaign summary table at end
-- Commit once per cycle with accurate item list, through `pan-tools commit`
+- Commit once per cycle through `focus close --files`, whose message names only the done items
 - Open each exec cycle with `focus open` and close it with `focus close`

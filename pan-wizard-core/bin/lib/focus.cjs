@@ -881,12 +881,42 @@ function focusCyclePlan(o) {
 }
 
 /**
- * Run the project's test command once (test-gate.cjs), for a cycle's before/after count.
- * `passed` is null when there is no test command or the output gave no count.
+ * Run the project's test command once (test-gate.cjs). Open keeps the record as the
+ * cycle's baseline; close runs against it, so a test already failing at open is
+ * pre-existing and only a new failure is a regression. `passed` is null when there is
+ * no test command or the output gave no count.
+ * @param {string} cwd
+ * @param {Object|null} [baseline] - the record `focus open` wrote
+ * @returns {Object} the test-gate record
  */
-function measureTests(cwd) {
-  const r = require('./test-gate.cjs').runTests(cwd, { kind: 'run' });
-  return { passed: r.passed != null ? r.passed : null, total: r.total != null ? r.total : null, status: r.status, command: r.command || null, reason: r.reason || null };
+function measureTests(cwd, baseline) {
+  return require('./test-gate.cjs').runTests(cwd, { kind: baseline ? 'run' : 'baseline', baseline: baseline || null });
+}
+
+const STATUS_RANK = { failed: 0, partial: 1, verified: 2 };
+
+/**
+ * The status a cycle's measurements support. Pure. A docs cycle measures nothing, so
+ * it derives no status and the agent's claim stands.
+ * @param {{kind: string, items: string[], done: string[], tests_before: number|null, tests_after: number|null,
+ *   run: Object|null, regressions: number}} o - run is the close's test record; regressions
+ *   counts only failures that were passing at the cycle's baseline
+ * @returns {{status: string|null, reasons: string[]}}
+ */
+function deriveCycleStatus(o) {
+  if (o.kind !== 'exec') return { status: null, reasons: [] };
+  const items = o.items || [];
+  const done = o.done || [];
+  let status = 'verified';
+  const reasons = [];
+  const lower = (to, why) => { if (STATUS_RANK[to] < STATUS_RANK[status]) status = to; reasons.push(why); };
+  if (items.length && !done.length) lower('failed', 'no item done');
+  if (o.regressions > 0) lower('failed', `${o.regressions} regression(s): failing now, passing when the cycle opened`);
+  if (o.tests_before != null && o.tests_after != null && o.tests_after < o.tests_before) lower('failed', `fewer tests pass (${o.tests_before} before, ${o.tests_after} after)`);
+  if (o.tests_before == null || o.tests_after == null) lower('partial', 'no measured test count');
+  else if (o.run && o.run.status !== 'passed' && !(o.regressions > 0)) lower('partial', `the test run ${o.run.status}${o.run.reason ? `: ${o.run.reason}` : ''}`);
+  if (done.length && done.length < items.length) lower('partial', 'not every item done');
+  return { status, reasons };
 }
 
 /** The auto run a new cycle belongs to: the current one, while it is live. */
@@ -948,6 +978,9 @@ function focusOpen(cwd, opts = {}) {
   const planText = focusCyclePlan({ num, kind, items, batchFile, runId, category, tests, openedAt: now.toISOString() });
   const planPath = path.join(dir, `${num}-plan.md`);
   fs.writeFileSync(planPath, planText, 'utf-8');
+  if (tests && tests.command) fs.writeFileSync(path.join(dir, `${num}-test-baseline.json`), JSON.stringify(tests, null, 2), 'utf-8');
+  // The run records this cycle by name at --update, never by searching for one.
+  if (run && run.run_id === runId) writeAutoRun(cwd, { ...run, current_cycle: planningRel(QUICK_DIR, name) });
   return {
     opened: true, num, kind, dir: planningRel(QUICK_DIR, name), plan: toPosix(path.relative(cwd, planPath)),
     batch_file: batchFile, run_id: runId, items: items.map(focusItemId), files_modified: focusCycleFiles(items),
@@ -1002,24 +1035,38 @@ function readCycleSummary(cycle) {
   return {
     status: fmScalar(fm.status), commit: fmScalar(fm.commit), items_done: fmList(fm.items_done), items_failed: fmList(fm.items_failed),
     tests_before: fmNumber(fm.tests_before), tests_after: fmNumber(fm.tests_after), run_id: fmScalar(fm.run_id), batch_file: fmScalar(fm.batch_file),
+    regressions: fmNumber(fm.regressions) || 0,
   };
 }
 
+/** A commit the close may record: a real commit reachable from HEAD, by its short sha. */
+function verifyCommit(cwd, sha) {
+  if (!/^[0-9a-f]{4,40}$/i.test(String(sha))) return null;
+  if (execGit(cwd, ['cat-file', '-e', `${sha}^{commit}`]).exitCode !== 0) return null;
+  if (execGit(cwd, ['merge-base', '--is-ancestor', sha, 'HEAD']).exitCode !== 0) return null;
+  const r = execGit(cwd, ['rev-parse', '--short', sha]);
+  return r.exitCode === 0 ? r.stdout.trim() : null;
+}
+
 /**
- * `focus close`: end a focus cycle after its commit. Measures the tests again, writes
- * the summary, records each item's result in the batch file, completes the todos it
- * finished, and adds the cycle to state.md's Quick Tasks table.
+ * `focus close`: end a focus cycle. Measures the tests against the cycle's baseline and
+ * derives the status from them, commits the cycle's source (`--files`) or verifies the
+ * commit the agent made (`--commit`), records each item's result in the batch file,
+ * completes the todos it finished, adds the cycle to state.md's Quick Tasks table,
+ * writes the summary, and commits that record under the planning rules.
  * @param {string} cwd
- * @param {{dir: string, status: string, commit?: string, done?: string[], failed?: Object, measure?: Function|false, now?: Date}} opts
+ * @param {{dir: string, status?: string, commit?: string, files?: string[], done?: string[], failed?: Object,
+ *   measure?: Function|false, now?: Date}} opts
  * @returns {Object}
  */
 function focusClose(cwd, opts = {}) {
-  if (!FOCUS_CYCLE_STATUSES.includes(opts.status)) return { error: 'invalid_status', reason: `--status must be one of: ${FOCUS_CYCLE_STATUSES.join(', ')}` };
+  if (opts.status != null && !FOCUS_CYCLE_STATUSES.includes(opts.status)) return { error: 'invalid_status', reason: `--status must be one of: ${FOCUS_CYCLE_STATUSES.join(', ')}` };
   const cycle = findFocusCycle(cwd, opts.dir);
   if (!cycle) return { error: 'not_a_focus_cycle', reason: `no focus cycle matches --dir ${opts.dir || '(missing)'}: expected ${planningRel(QUICK_DIR)}/<n>-focus-<kind>-<date>` };
   if (!cycle.open) return { error: 'cycle_closed', reason: `${cycle.rel} is already closed` };
   const plan = readCyclePlan(cycle);
   if (plan.source !== 'focus') return { error: 'not_a_focus_cycle', reason: `${cycle.rel} has no \`source: focus\` plan` };
+  if (opts.status == null && plan.kind !== 'exec') return { error: 'invalid_status', reason: 'a docs cycle measures nothing: pass --status verified|partial|failed' };
 
   const done = opts.done || [];
   // Own keys only: `id in failed` matched an item named `constructor` or `toString`.
@@ -1033,16 +1080,45 @@ function focusClose(cwd, opts = {}) {
   }
   const notReported = plan.items.filter((id) => !done.includes(id) && !(id in failed));
 
-  const tests = plan.kind === 'exec' && opts.measure !== false ? (opts.measure || measureTests)(cwd) : null;
-  const testsAfter = tests ? tests.passed : null;
-  // The claim is capped by what was measured: no count at either end, or a suite that
-  // did not pass, is at most partial (as quick and phase tests treat a project without tests).
-  let status = opts.status;
-  const capReasons = [];
-  if (status === 'verified' && plan.kind === 'exec') {
-    if (plan.tests_before == null || testsAfter == null) capReasons.push('no measured test count');
-    else if (tests.status !== 'passed') capReasons.push(`the test run ${tests.status}${tests.reason ? `: ${tests.reason}` : ''}`);
-    if (capReasons.length) status = 'partial';
+  const files = (opts.files || []).filter(Boolean);
+  if (files.length && opts.commit) return { error: 'commit_conflict', reason: 'pass --files (close commits them) or --commit <sha> (a commit you made), not both' };
+  if (files.length && plan.items.length && !done.length) return { error: 'nothing_done', reason: 'no item is done, so there is nothing to commit: revert the changes and close without --files' };
+  let commit = null;
+  if (opts.commit) {
+    commit = verifyCommit(cwd, opts.commit);
+    if (!commit) return { error: 'commit_unknown', reason: `--commit ${opts.commit} is not a commit reachable from HEAD` };
+  }
+
+  // Tests against the baseline `focus open` kept. Without one (a cycle opened before the
+  // record existed), a failing test cannot be told from a regression, so it only caps.
+  const baselinePath = path.join(cycle.dir, `${cycle.num}-test-baseline.json`);
+  let baseline = null;
+  try { baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf-8')); } catch { /* none kept */ }
+  const tests = plan.kind === 'exec' && opts.measure !== false ? (opts.measure || measureTests)(cwd, baseline) : null;
+  const testsAfter = tests && tests.passed != null ? tests.passed : null;
+  const compared = !!(baseline && tests && baseline.command === tests.command && baseline.parsed !== false);
+  const regressions = compared && Array.isArray(tests.regressions) ? tests.regressions.length : 0;
+  const preexisting = compared && Array.isArray(tests.preexisting_failures) ? tests.preexisting_failures.length : 0;
+
+  // The engine derives the status; the agent's claim can only lower it.
+  const derived = deriveCycleStatus({ kind: plan.kind, items: plan.items, done, tests_before: plan.tests_before, tests_after: testsAfter, run: tests, regressions });
+  let status = derived.status || opts.status;
+  if (opts.status && STATUS_RANK[opts.status] < STATUS_RANK[status]) status = opts.status;
+
+  // The cycle's source commit, before anything is written: a refused commit leaves the
+  // cycle open with nothing recorded. A regression is never committed.
+  let commitSkipped = null;
+  if (files.length) {
+    if (regressions > 0) commitSkipped = 'regression: revert the cycle\'s changes';
+    else {
+      const message = plan.kind === 'exec'
+        ? `fix(focus-${cycle.num}): ${done.length > 4 ? `${done.slice(0, 4).join(', ')} and ${done.length - 4} more` : done.join(', ')}`
+        : `docs(focus-${cycle.num}): documentation edits`;
+      const c = require('./git.cjs').commitPaths(cwd, { message, files, unstageOnBlock: true });
+      if (c.committed) commit = c.hash;
+      else if (c.reason === 'nothing_to_commit') commitSkipped = 'nothing to commit';
+      else return { error: c.error === 'commit_blocked' ? 'commit_blocked' : (c.error === 'not_a_git_repo' ? 'not_a_git_repo' : 'commit_failed'), reason: c.reason || c.error, hint: c.hint, safety_checks: c.safety_checks, dir: cycle.rel };
+    }
   }
 
   const now = opts.now || new Date();
@@ -1052,22 +1128,24 @@ function focusClose(cwd, opts = {}) {
   const cell = (t) => String(t).replace(/\|/g, '\\|').replace(/\r?\n+/g, ' ');
   const summary = [
     '---', 'phase: quick', `plan: ${String(cycle.num).padStart(2, '0')}`, 'source: focus', `focus_kind: ${plan.kind}`,
-    `status: ${status}`, `commit: ${q(opts.commit)}`, `run_id: ${q(plan.run_id)}`, `batch_file: ${q(plan.batch_file)}`,
+    `status: ${status}`, `reported_status: ${opts.status || 'null'}`, `commit: ${q(commit)}`, `run_id: ${q(plan.run_id)}`, `batch_file: ${q(plan.batch_file)}`,
     ...fmBlockList('items_done', done), ...fmBlockList('items_failed', failedIds), ...fmBlockList('items_not_reported', notReported),
     `tests_before: ${plan.tests_before == null ? 'null' : plan.tests_before}`, `tests_after: ${testsAfter == null ? 'null' : testsAfter}`,
+    `regressions: ${regressions}`, `preexisting_failures: ${preexisting}`,
     `closed_at: ${now.toISOString()}`, '---', '',
     `# Focus cycle ${cycle.num} (${plan.kind}): ${status}`, '',
-    ...(capReasons.length ? [`Reported verified; recorded partial: ${capReasons.join('; ')}.`, ''] : []),
+    ...(derived.reasons.length ? [`Derived from the measurements: ${derived.reasons.join('; ')}.`, ''] : []),
     '| Item | Result | Reason |', '|------|--------|--------|',
     ...done.map((id) => `| ${cell(id)} | done | |`),
     ...failedIds.map((id) => `| ${cell(id)} | failed | ${cell(failed[id])} |`),
     ...notReported.map((id) => `| ${cell(id)} | not reported | |`),
     '',
     plan.kind === 'exec'
-      ? `Tests (measured by \`focus open\` and \`focus close\`): ${plan.tests_before == null ? 'none' : plan.tests_before} passing before, ${testsAfter == null ? 'none' : testsAfter} after${plan.test_command ? ` (\`${plan.test_command}\`)` : ''}.`
+      ? `Tests (measured by \`focus open\` and \`focus close\`): ${plan.tests_before == null ? 'none' : plan.tests_before} passing before, ${testsAfter == null ? 'none' : testsAfter} after${plan.test_command ? ` (\`${plan.test_command}\`)` : ''}; ${regressions} regression(s), ${preexisting} failure(s) already failing at open.`
       : 'Tests: not run for a docs cycle.',
-    `Commit: ${opts.commit || 'none'}.`, '',
+    `Commit: ${commit || (commitSkipped ? `none (${commitSkipped})` : 'none')}.`, '',
   ].join('\n');
+  if (tests) fs.writeFileSync(path.join(cycle.dir, `${cycle.num}-test-run.json`), JSON.stringify(tests, null, 2), 'utf-8');
 
   // The summary is written last: it is what marks the cycle closed, so a close that
   // fails on the way leaves the cycle open and can be run again. Every step before it
@@ -1121,7 +1199,7 @@ function focusClose(cwd, opts = {}) {
   const label = plan.category || plan.kind;
   const description = total ? `focus: ${label} — ${done.length} of ${total} items` : `focus: ${label} — docs edits`;
   const sw = require('./state-write.cjs');
-  const row = sw.stateQuickTask(cwd, { description, commit: opts.commit || '', status, date, directory: `[${cycle.name}](./${QUICK_DIR}/${cycle.name}/)` });
+  const row = sw.stateQuickTask(cwd, { description, commit: commit || '', status, date, directory: `[${cycle.name}](./${QUICK_DIR}/${cycle.name}/)` });
   if (row.error && row.error !== 'state_missing') {
     return { error: 'state_failed', reason: `state.md was not updated (${row.reason || row.error}); ${cycle.rel} stays open: run focus close again`, dir: cycle.rel };
   }
@@ -1134,29 +1212,51 @@ function focusClose(cwd, opts = {}) {
 
   fs.writeFileSync(cycle.summary, summary, 'utf-8');
 
+  // The cycle's record goes in under the planning rules (skipped under commit_docs:
+  // false or a gitignored planning tree). Both sides of each todo move go with it, so
+  // no deletion is left in the tree for the next commit to trip on.
+  const moved = todos.filter((t) => t.completed).flatMap((t) => [planningRel('todos', 'completed', t.file), planningRel('todos', 'pending', t.file)]);
+  const recordFiles = [`${cycle.rel}/`, planningRel('state.md'), ...moved];
+  if (plan.batch_file && (plan.batch_file === planningRel() || plan.batch_file.startsWith(`${planningRel()}/`))) recordFiles.push(plan.batch_file);
+  const rc = require('./commands.cjs').commitPlanning(cwd, {
+    message: `docs(focus-${cycle.num}): close focus cycle ${cycle.num} (${status})`, files: recordFiles, force: moved.length > 0,
+  });
+
   return {
-    closed: true, dir: cycle.rel, summary: toPosix(path.relative(cwd, cycle.summary)), status, reported_status: opts.status,
-    capped: capReasons.length ? capReasons : undefined, items_done: done, items_failed: failedIds, items_not_reported: notReported,
-    tests_before: plan.tests_before, tests_after: testsAfter, batch_results: batchResults, todos_completed: todos,
+    closed: true, dir: cycle.rel, summary: toPosix(path.relative(cwd, cycle.summary)), status, reported_status: opts.status || null,
+    derived_status: derived.status, derived_from: derived.reasons.length ? derived.reasons : undefined,
+    commit, commit_skipped: commitSkipped || undefined,
+    items_done: done, items_failed: failedIds, items_not_reported: notReported,
+    tests_before: plan.tests_before, tests_after: testsAfter, regressions, preexisting_failures: preexisting,
+    batch_results: batchResults, todos_completed: todos,
     state: row.error ? row.error : 'recorded', state_row: row.row || null, state_warnings: stateWarnings,
+    record_commit: rc.committed ? rc.hash : rc.reason,
   };
 }
 
 /**
- * The newest closed cycle of a run that `focus auto --update` has not recorded yet.
+ * The cycle `focus auto --update` records: the one `focus open` named in the run's
+ * `current_cycle`. Never a search: a skipped update must not hand an older cycle's
+ * counts to a later one.
  * @param {string} cwd
  * @param {Object} run - auto-run.json
- * @returns {Object|null} the summary's facts plus `rel`
+ * @returns {{open: string}|Object|null} `{open}` while it is still open, else the summary's facts plus `rel`
  */
-function unrecordedClosedCycle(cwd, run) {
-  if (!run || !run.run_id) return null;
+function runCurrentCycle(cwd, run) {
+  if (!run || !run.current_cycle) return null;
+  const c = findFocusCycle(cwd, run.current_cycle);
+  if (!c) return null;
+  if (c.open) return { open: c.rel };
+  return { ...readCycleSummary(c), rel: c.rel };
+}
+
+/** Closed cycles of this run that no update recorded (a crash between close and --update). */
+function unrecordedCycles(cwd, run) {
+  if (!run || !run.run_id) return [];
   const recorded = new Set((run.cycles || []).map((c) => c.cycle_dir).filter(Boolean));
-  const closed = listFocusCycles(cwd).filter((c) => !c.open && c.kind === 'exec' && !recorded.has(c.rel));
-  for (let i = closed.length - 1; i >= 0; i--) {
-    const s = readCycleSummary(closed[i]);
-    if (s.run_id === run.run_id) return { ...s, rel: closed[i].rel };
-  }
-  return null;
+  return listFocusCycles(cwd)
+    .filter((c) => !c.open && !recorded.has(c.rel) && c.rel !== run.current_cycle && readCycleSummary(c).run_id === run.run_id)
+    .map((c) => c.rel);
 }
 
 /**
@@ -1183,7 +1283,7 @@ function cmdFocusClose(cwd, raw, ...args) {
   const all = (flag) => flagValues(args, flag);
   const getVal = (flag) => all(flag)[0];
   const r = focusClose(cwd, {
-    dir: getVal('--dir'), status: getVal('--status'), commit: getVal('--commit'),
+    dir: getVal('--dir'), status: getVal('--status'), commit: getVal('--commit'), files: all('--files'),
     // An unquoted reason arrives as several words: each joins the `id=` before it.
     done: parseDone(all('--done')),
     failed: parseFailed(all('--failed').reduce((acc, w) => {
@@ -1289,7 +1389,7 @@ function focusAutoStatus(cwd, raw) {
   const run = readAutoRun(cwd);
   if (!run) return error('No auto-run found. Start with: focus auto --category <name>');
   const cyclesRemaining = run.max_cycles - (run.totals ? run.totals.cycles_completed : 0);
-  return output({ ...run, ...budgetIndicators(run), cycles_remaining: cyclesRemaining }, raw);
+  return output({ ...run, ...budgetIndicators(run), cycles_remaining: cyclesRemaining, unrecorded_cycles: unrecordedCycles(cwd, run) }, raw);
 }
 
 function focusAutoStop(cwd, raw) {
@@ -1303,7 +1403,8 @@ function focusAutoStop(cwd, raw) {
   writeAutoRun(cwd, run);
   // A cycle left open would keep counting as work in flight; stopping ends it as failed,
   // with no test run (the run is being abandoned, not verified).
-  const open = openFocusCycle(cwd);
+  const current = runCurrentCycle(cwd, run);
+  const open = current && current.open ? { rel: current.open } : null;
   const closed = open ? focusClose(cwd, { dir: open.rel, status: 'failed', measure: false }) : null;
   return output({
     run_id: run.run_id, status: AUTORUN_STATUSES.STOPPED, stop_reason: 'user_stop',
@@ -1380,10 +1481,14 @@ function focusAutoUpdate(cwd, raw, getVal) {
   // The cycle `focus close` recorded is the source of truth: its item results, and
   // the test counts `focus open` and `focus close` measured. The flags stand only for
   // a cycle that was not registered (an older prompt, or nothing to execute).
-  const closed = unrecordedClosedCycle(cwd, run);
+  const closed = runCurrentCycle(cwd, run);
+  if (closed && closed.open) return error(`focus cycle ${closed.open} is still open: close it with \`focus close --dir ${closed.open}\` before --update`);
   let measured = false;
   if (closed) {
+    delete run.current_cycle;
     cycle.cycle_dir = closed.rel;
+    cycle.status = closed.status;
+    cycle.regressions = closed.regressions;
     cycle.items_completed = closed.items_done.length;
     cycle.items_failed = closed.items_failed.length;
     if (!cycle.batch_file && closed.batch_file) cycle.batch_file = closed.batch_file;
@@ -1447,7 +1552,7 @@ function focusAutoUpdate(cwd, raw, getVal) {
   cycle.weekly_limit_used_pct = weekly.seven_day_used_pct;
   const stopReason = determineStopReason(cycle, run) || (weekly.stop ? 'weekly_limit' : null);
   if (stopReason) {
-    run.status = stopReason === 'regression' || stopReason === 'weekly_limit' ? AUTORUN_STATUSES.STOPPED : AUTORUN_STATUSES.COMPLETED;
+    run.status = ['regression', 'weekly_limit', 'cycle_failed', 'all_failed'].includes(stopReason) ? AUTORUN_STATUSES.STOPPED : AUTORUN_STATUSES.COMPLETED;
     run.stop_reason = stopReason;
   }
 
@@ -1517,7 +1622,11 @@ function focusAutoCheckpointCommit(cwd, cycle, run) {
 }
 
 function determineStopReason(cycle, run) {
-  if (cycle.tests_after < cycle.tests_before) return 'regression';
+  if (cycle.tests_after < cycle.tests_before || cycle.regressions > 0) return 'regression';
+  // Failed work stops the run resumable. `zero_completed` (completed) means nothing was
+  // left to attempt; a cycle whose items all failed or were reverted is not that.
+  if (cycle.status === 'failed' && (cycle.items_completed > 0 || cycle.items_failed > 0)) return 'cycle_failed';
+  if (cycle.items_completed === 0 && cycle.items_failed > 0) return 'all_failed';
   // Budget is advisory by default — it only STOPS the run when explicitly enforced.
   // Otherwise the overage is tracked/surfaced (indication) and the loop continues.
   // Hard cap (full budget) is evaluated FIRST so it remains the absolute boundary;
@@ -1783,7 +1892,9 @@ module.exports = {
   cmdFocusClose,
   parseFailed,
   parseDone,
-  unrecordedClosedCycle,
+  deriveCycleStatus,
+  runCurrentCycle,
+  unrecordedCycles,
   // Auto
   categoryFilter,
   readAutoRun,

@@ -313,16 +313,14 @@ function runCommitSafetyChecks(cwd, config, force) {
   const safetyEnabled = config.commit && config.commit.safety_checks !== false;
   if (!safetyEnabled) return { blocked: false, safetyChecks };
 
-  // Check for deleted files
-  const statusResult = execGit(cwd, ['status', '--porcelain']);
-  if (statusResult.exitCode === 0 && statusResult.stdout) {
-    for (const line of statusResult.stdout.split('\n').filter(Boolean)) {
-      if (line.startsWith(' D') || line.startsWith('D ') || line.startsWith('D')) {
-        // execGit trims stdout, so a first line of ` D gone.txt` arrives as `D gone.txt`:
-        // strip the status code by pattern, not by a fixed three-character slice
-        const fileName = line.replace(/^\s*[A-Z?!]{1,2}\s+/, '').trim();
-        if (fileName) safetyChecks.deleted_files.push(fileName);
-      }
+  // Check for deleted files — the deletions this commit would make, which are the staged
+  // ones (no PAN commit passes `-a`). The whole-tree scan this replaced refused a commit
+  // over an unstaged deletion it would never have contained, such as the todo a focus
+  // cycle moved to completed/ (spec focus_phase_integration_featureai.md, A1-C.6).
+  const deletedResult = execGit(cwd, ['diff', '--cached', '--name-only', '--diff-filter=D']);
+  if (deletedResult.exitCode === 0 && deletedResult.stdout) {
+    for (const fileName of deletedResult.stdout.split('\n').map((l) => l.trim()).filter(Boolean)) {
+      safetyChecks.deleted_files.push(fileName);
     }
   }
   if (safetyChecks.deleted_files.length > 0 && !force) {
@@ -371,29 +369,24 @@ function runCommitSafetyChecks(cwd, config, force) {
   return { blocked: false, safetyChecks };
 }
 
-function cmdCommit(cwd, message, files, raw, amend, opts) {
-  const commitType = opts && opts.type;
-  const force = opts && opts.force;
-  // P-EXP-001 follow-up (v3.7.10): when failOnError is true, commit_failed
-  // exits non-zero so callers (especially autonomous loops) detect the silent-
-  // failure case where git refused (e.g. missing identity) and the loop would
-  // otherwise keep going thinking the artifact landed.
-  const failOnError = opts && opts.failOnError;
-
+/**
+ * Commit planning documents under the planning rules: skipped when commit_docs is false
+ * or the planning tree is gitignored, refused by the safety checks with PAN's own
+ * additions unstaged again. Returns what `pan-tools commit` prints; cmdCommit is the
+ * CLI wrapper and `focus close` commits its record through it.
+ * @param {string} cwd
+ * @param {{message?: string, files?: string[], amend?: boolean, type?: string, force?: boolean}} o
+ * @returns {Object} `{committed, hash, reason, ...}`
+ */
+function commitPlanning(cwd, o = {}) {
+  const { message, files, amend, force } = o;
+  const commitType = o.type;
   if (!isGitRepo(cwd)) {
     // No error key, exit 0. Unlike `git commit` (an explicit git command, where a
     // missing repo IS the failure), commit-docs is an auto-commit convenience and
     // PAN fully supports non-git projects - the skip is the expected outcome of the
     // environment the caller chose, not a malfunction.
-    output({ committed: false, hash: null, reason: 'not_a_git_repo', hint: 'Run git init to initialize a repository' }, raw, 'not a git repo');
-    return;
-  }
-
-  if (commitType && !VALID_COMMIT_TYPES.includes(commitType)) {
-    error('Invalid commit type: ' + commitType + '. Valid: ' + VALID_COMMIT_TYPES.join(', '));
-  }
-  if (!message && !amend) {
-    error('commit message required');
+    return { committed: false, hash: null, reason: 'not_a_git_repo', hint: 'Run git init to initialize a repository' };
   }
 
   const config = loadConfig(cwd);
@@ -402,13 +395,11 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
     // No error key, exit 0: the user set commit_docs=false. Honouring configuration
     // is a success; exiting non-zero here would break every workflow of every user
     // who opted out of doc commits.
-    output({ committed: false, hash: null, reason: 'skipped_commit_docs_false' }, raw, 'skipped');
-    return;
+    return { committed: false, hash: null, reason: 'skipped_commit_docs_false' };
   }
   if (isGitIgnored(cwd, planningRootRel())) {
     // No error key, exit 0: .planning/ is gitignored - also the user's choice.
-    output({ committed: false, hash: null, reason: 'skipped_gitignored' }, raw, 'skipped');
-    return;
+    return { committed: false, hash: null, reason: 'skipped_gitignored' };
   }
 
   // Snapshot the index BEFORE staging so a blocked commit can put it back exactly
@@ -440,8 +431,7 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
     // (a staged deletion, a secret) - the docs did NOT land, which is the same harm
     // as commit_failed for an autonomous loop. The JSON body still goes to stdout,
     // so callers that parse `reason`/`safety_checks` are unaffected.
-    output({ committed: false, hash: null, reason: safety.reason, error: 'commit_blocked', safety_checks: safety.safetyChecks, hint: safety.hint }, raw, 'blocked');
-    return;
+    return { committed: false, hash: null, reason: safety.reason, error: 'commit_blocked', safety_checks: safety.safetyChecks, hint: safety.hint };
   }
 
   // Build final message with optional conventional commit type prefix
@@ -454,24 +444,46 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
     // Both of git's phrasings — see the matching guard in git.cjs cmdGitCommit.
     if ((commitResult.stdout + commitResult.stderr).includes('nothing to commit')
       || (commitResult.stdout + commitResult.stderr).includes('nothing added to commit')) {
-      output({ committed: false, hash: null, reason: 'nothing_to_commit' }, raw, 'nothing');
-      return;
-    }
-    if (failOnError) {
-      error('commit_failed: ' + (commitResult.stderr || 'unknown git error').trim());
+      return { committed: false, hash: null, reason: 'nothing_to_commit' };
     }
     // `|| 'unknown git error'`: the exit code is derived from a TRUTHY error key, and
     // git does not always write to stderr — an empty string would launder this real
     // failure back into exit 0. (experiment.cjs documents the harm: an autonomous run
     // took `committed: false, reason: commit_failed` with exit 0 and kept going,
     // leaving 24 minutes of work uncommitted.)
-    output({ committed: false, hash: null, reason: 'commit_failed', error: commitResult.stderr || 'unknown git error' }, raw, 'failed');
-    return;
+    return { committed: false, hash: null, reason: 'commit_failed', error: commitResult.stderr || 'unknown git error' };
   }
 
   const hashResult = execGit(cwd, ['rev-parse', '--short', 'HEAD']);
   const hash = hashResult.exitCode === 0 ? hashResult.stdout : null;
-  output({ committed: true, hash, reason: 'committed', type: commitType || null, safety_checks: safety.safetyChecks }, raw, hash || 'committed');
+  return { committed: true, hash, reason: 'committed', type: commitType || null, safety_checks: safety.safetyChecks };
+}
+
+const COMMIT_LABELS = {
+  not_a_git_repo: 'not a git repo', skipped_commit_docs_false: 'skipped', skipped_gitignored: 'skipped',
+  nothing_to_commit: 'nothing', commit_failed: 'failed',
+};
+
+function cmdCommit(cwd, message, files, raw, amend, opts) {
+  const commitType = opts && opts.type;
+  if (isGitRepo(cwd)) {
+    if (commitType && !VALID_COMMIT_TYPES.includes(commitType)) {
+      error('Invalid commit type: ' + commitType + '. Valid: ' + VALID_COMMIT_TYPES.join(', '));
+    }
+    if (!message && !amend) {
+      error('commit message required');
+    }
+  }
+  const r = commitPlanning(cwd, { message, files, amend, type: commitType, force: opts && opts.force });
+  // P-EXP-001 follow-up (v3.7.10): when failOnError is true, commit_failed
+  // exits non-zero so callers (especially autonomous loops) detect the silent-
+  // failure case where git refused (e.g. missing identity) and the loop would
+  // otherwise keep going thinking the artifact landed.
+  if (r.reason === 'commit_failed' && opts && opts.failOnError) {
+    error('commit_failed: ' + String(r.error).trim());
+  }
+  const label = r.committed ? (r.hash || 'committed') : r.error === 'commit_blocked' ? 'blocked' : COMMIT_LABELS[r.reason];
+  output(r, raw, label);
 }
 
 /**
@@ -1149,6 +1161,7 @@ module.exports = {
   cmdProgressRender,
   cmdTodoComplete,
   completeTodo,
+  commitPlanning,
   cmdScaffold,
   cmdRollbackSnapshot,
   shouldSkipTests,

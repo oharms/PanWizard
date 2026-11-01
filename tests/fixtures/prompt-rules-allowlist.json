@@ -176,11 +176,23 @@
     "reason": "Focus cycles as quick tasks (spec focus_phase_integration_featureai.md, Stage A): what focus open does is engine code, not model behaviour. tests/focus-integration.test.cjs checks the quick-task directory and plan, the measured tests_before, the cycle_open refusal, and that the guard treats the open cycle as work in flight on all four hook hosts."
   },
   {
-    "id": "commands/pan/focus-auto:c1648b6f",
-    "reason": "Focus cycles as quick tasks (Stage A): focus auto --update reading the closed cycle instead of the flags is engine code; tests/focus-integration.test.cjs records a cycle whose flags disagree with the measurement and asserts the measured counts, tests_verified true and the regression stop."
-  },
-  {
     "id": "pan-wizard-core/workflows/focus-exec:be42dc3f",
     "reason": "Focus cycles as quick tasks (Stage A): the same focus open behaviour as the focus-auto rule, from the --step exec workflow; tests/focus-integration.test.cjs covers it, and its prompt-contract test pins that focus-exec opens before its commit and closes after."
+  },
+  {
+    "id": "commands/pan/focus-auto:d61f0c7a",
+    "reason": "Focus Stage A.1 (A1-S, A1-C): the derived status, the regression commit refusal and the commit_blocked way out are engine code in focusClose; tests/focus-integration.test.cjs asserts a pre-existing failure verifies, a regression records failed with no commit, a claim only lowers, and a sensitive path refuses with nothing written."
+  },
+  {
+    "id": "commands/pan/focus-auto:c07cfb8f",
+    "reason": "Focus Stage A.1 (A1-U): --update recording the run's current_cycle, refusing an open one, and stopping the run resumable on a failed cycle are engine code; tests/focus-integration.test.cjs records the named cycle only, lists the older one as unrecorded, and asserts cycle_failed and --continue."
+  },
+  {
+    "id": "pan-wizard-core/workflows/focus-exec:c38891f6",
+    "reason": "Focus Stage A.1 (A1-C, A1-S): the same close contract as focus-auto's; enforced in focusClose and pinned by tests/focus-integration.test.cjs (derived status, regression refusal, commit_blocked)."
+  },
+  {
+    "id": "pan-wizard-core/workflows/resume-project:c76463f9",
+    "reason": "Focus Stage A.1 (A1-R): open_work comes from open-work.cjs through init resume; tests/open-work.test.cjs pins it to the guard's workInFlight on every fixture and asserts the prompt reads open_work."
   }
 ]

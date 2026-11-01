@@ -378,7 +378,7 @@ It registers the run as a quick task, so state.md and resume see it and exclusiv
 3. Make minimal changes — don't rewrite paragraphs
 4. If a fix is ambiguous, flag for manual review instead
 5. Report all fixes in the audit output
-6. Close the cycle after the last fix: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from 5.0> --status verified|partial|failed` (`partial` when any fix was skipped or flagged for manual review, `failed` when none applied)
+6. Close the cycle after the last fix, naming the documents you changed so the close commits them: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from 5.0> --status verified|partial|failed --files <documents changed>` (`partial` when any fix was skipped or flagged for manual review, `failed` when none applied, and then no `--files`). If the close refuses with `commit_blocked` (a named path matched `commit.sensitive_patterns`, or the commit would delete a file), it wrote nothing and the cycle stays open: fix the cause (rename the file, or narrow the pattern in `.planning/config.json`) and close again, or commit exactly the reported paths yourself and close with `--commit <sha>` in place of `--files`
 
 ---
 

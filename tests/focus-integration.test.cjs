@@ -9,6 +9,7 @@ const { describe, test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 const { runPanTools, createTempProject, cleanup } = require('./helpers.cjs');
 const focus = require('../pan-wizard-core/bin/lib/focus.cjs');
 const G = require('../hooks/pan-guard.js');
@@ -42,6 +43,30 @@ function seed(dir, { batch = BATCH, count = 5 } = {}) {
   write(dir, '.planning/todos/pending/fix-login.md', '---\ntitle: Fix login\n---\nThe login button.\n');
   if (batch) write(dir, '.planning/focus/batch-2026-10-31.json', JSON.stringify(batch, null, 2));
   if (count != null) withSuite(dir, count);
+}
+
+// A TAP suite: `pass.txt` passing tests, one failing test per line of `fail.txt`.
+function withTapSuite(dir, pass, failing = []) {
+  write(dir, 'tap.cjs', [
+    "const fs=require('fs');const p=Number(fs.readFileSync(__dirname+'/pass.txt','utf8'));",
+    "const f=fs.readFileSync(__dirname+'/fail.txt','utf8').split('\\n').filter(Boolean);let n=0;",
+    "for(let i=0;i<p;i++)console.log('ok '+(++n)+' - pass '+i);for(const x of f)console.log('not ok '+(++n)+' - '+x);",
+    "console.log('# tests '+(p+f.length)+'\\n# pass '+p+'\\n# fail '+f.length);process.exit(f.length?1:0);",
+  ].join('\n'));
+  write(dir, 'pass.txt', String(pass));
+  write(dir, 'fail.txt', failing.join('\n'));
+  write(dir, '.planning/config.json', JSON.stringify({ workflow: { test_command: 'node tap.cjs' } }));
+}
+
+const git = (dir, cmd) => execSync(`git ${cmd}`, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+function gitInit(dir) {
+  git(dir, 'init -q');
+  git(dir, 'config user.email t@example.com');
+  git(dir, 'config user.name t');
+  git(dir, 'config commit.gpgsign false');
+  write(dir, 'src/a.js', 'a\n');
+  git(dir, 'add -A');
+  git(dir, 'commit -qm init');
 }
 
 const cycleDir = (dir) => fs.readdirSync(path.join(dir, '.planning', 'quick')).find((n) => /-focus-/.test(n));
@@ -123,12 +148,20 @@ describe('focus close', () => {
   afterEach(() => cleanup(dir));
 
   test('writes the summary, the state row and Last Activity, the batch results, and completes the todo', () => {
+    gitInit(dir);
     const opened = json(runPanTools('focus open', dir));
     write(dir, 'count.txt', '7');
-    const r = runPanTools(`focus close --dir ${opened.dir} --status verified --commit abc1234 --done P1-1,todo-fix-login.md --failed "P2-2=the fix broke b, reverted"`, dir);
-    assert.ok(r.success, r.error);
+    write(dir, 'src/a.js', 'fixed\n');
+    const r = runPanTools(`focus close --dir ${opened.dir} --status verified --files src/a.js --done P1-1,todo-fix-login.md --failed "P2-2=the fix broke b, reverted"`, dir);
+    assert.ok(r.success, r.output);
     const out = json(r);
-    assert.equal(out.status, 'verified');
+    assert.equal(out.status, 'partial', 'one item failed and one was not reported: the claim cannot raise that');
+    assert.equal(out.reported_status, 'verified');
+    assert.deepEqual(out.derived_from, ['not every item done']);
+    assert.equal(out.commit, git(dir, 'log -1 --format=%h -- src/a.js'));
+    assert.match(git(dir, 'log -1 --format=%s -- src/a.js'), /^fix\(focus-\d+\): P1-1, todo-fix-login\.md$/);
+    assert.equal(out.record_commit, git(dir, 'rev-parse --short HEAD'), 'the record is committed after the source');
+    assert.doesNotMatch(git(dir, 'status --porcelain'), /\.planning\//, 'the todo move and the record are committed, nothing left behind');
     assert.deepEqual(out.items_done, ['P1-1', 'todo-fix-login.md']);
     assert.deepEqual(out.items_failed, ['P2-2']);
     assert.deepEqual(out.items_not_reported, ['phase-2']);
@@ -136,12 +169,12 @@ describe('focus close', () => {
     assert.equal(out.tests_after, 7);
 
     const summary = read(dir, out.summary);
-    assert.match(summary, /^status: verified$/m);
+    assert.match(summary, /^status: partial$/m);
     assert.match(summary, /^tests_after: 7$/m);
     assert.match(summary, /\| P2-2 \| failed \| the fix broke b, reverted \|/);
 
     const state = read(dir, '.planning/state.md');
-    assert.match(state, /\| focus: mode balanced — 2 of 4 items \| \d{4}-\d{2}-\d{2} \| abc1234 \| verified \| \[4?\d*-focus-exec-[\d-]+\]\(\.\/quick\/\d+-focus-exec-[\d-]+\/\) \|/);
+    assert.match(state, /\| focus: mode balanced — 2 of 4 items \| \d{4}-\d{2}-\d{2} \| [0-9a-f]{7,} \| partial \| \[4?\d*-focus-exec-[\d-]+\]\(\.\/quick\/\d+-focus-exec-[\d-]+\/\) \|/);
     assert.match(state, /\*\*Last Activity Description:\*\* Closed focus cycle \d+: focus: mode balanced/);
 
     const batch = JSON.parse(read(dir, '.planning/focus/batch-2026-10-31.json'));
@@ -161,7 +194,7 @@ describe('focus close', () => {
     const out = json(runPanTools(`focus close --dir ${opened.dir} --status verified --done P1-1`, dir));
     assert.equal(out.status, 'partial');
     assert.equal(out.reported_status, 'verified');
-    assert.deepEqual(out.capped, ['no measured test count']);
+    assert.deepEqual(out.derived_from, ['no measured test count', 'not every item done']);
     assert.equal(out.tests_after, null);
   });
 
@@ -262,6 +295,143 @@ describe('focus close', () => {
   });
 });
 
+describe('focus close commits the cycle (A1-C)', () => {
+  let dir;
+  beforeEach(() => { dir = createTempProject(); seed(dir); gitInit(dir); });
+  afterEach(() => cleanup(dir));
+
+  test('commit_docs false: the source is committed, the record is not', () => {
+    write(dir, '.planning/config.json', JSON.stringify({ commit_docs: false, workflow: { test_command: 'node t.cjs' } }));
+    const opened = json(runPanTools('focus open', dir));
+    write(dir, 'src/a.js', 'fixed\n');
+    const out = json(runPanTools(`focus close --dir ${opened.dir} --files src/a.js --done P1-1`, dir));
+    assert.ok(out.closed, JSON.stringify(out));
+    assert.equal(out.commit, git(dir, 'rev-parse --short HEAD'));
+    assert.equal(git(dir, 'show --name-only --format= HEAD'), 'src/a.js');
+    assert.equal(out.record_commit, 'skipped_commit_docs_false');
+    assert.match(read(dir, out.summary), new RegExp(`^commit: "${out.commit}"$`, 'm'));
+  });
+
+  test('a gitignored planning tree: the source is committed, the record is skipped', () => {
+    write(dir, '.gitignore', '.planning/\n');
+    git(dir, 'rm -r -q --cached .planning');
+    git(dir, 'add .gitignore');
+    git(dir, 'commit -qm ignore');
+    const opened = json(runPanTools('focus open', dir));
+    write(dir, 'src/a.js', 'fixed\n');
+    const out = json(runPanTools(`focus close --dir ${opened.dir} --files src/a.js --done P1-1`, dir));
+    assert.equal(out.commit, git(dir, 'rev-parse --short HEAD'));
+    assert.equal(out.record_commit, 'skipped_gitignored');
+  });
+
+  test('a sensitive path refuses the close, unstages it and writes nothing; a commit of your own then closes it', () => {
+    const opened = json(runPanTools('focus open', dir));
+    write(dir, 'src/token.js', 'module.exports = 1;\n');
+    const before = read(dir, '.planning/state.md');
+    const r = runPanTools(`focus close --dir ${opened.dir} --files src/token.js --done P1-1`, dir);
+    assert.equal(r.success, false);
+    const out = json(r);
+    assert.equal(out.error, 'commit_blocked');
+    assert.deepEqual(out.safety_checks.sensitive_files_blocked, ['src/token.js']);
+    assert.equal(git(dir, 'diff --cached --name-only'), '', 'the refused file is not left staged');
+    assert.ok(focus.openFocusCycle(dir), 'the cycle stays open');
+    assert.equal(read(dir, '.planning/state.md'), before);
+    git(dir, 'add src/token.js');
+    git(dir, 'commit -qm "fix: token"');
+    const sha = git(dir, 'rev-parse --short HEAD');
+    const closed = json(runPanTools(`focus close --dir ${opened.dir} --commit ${sha} --done P1-1`, dir));
+    assert.equal(closed.commit, sha);
+  });
+
+  test('--commit must name a commit reachable from HEAD; --files with --commit, or with nothing done, is refused', () => {
+    const opened = json(runPanTools('focus open', dir));
+    assert.equal(json(runPanTools(`focus close --dir ${opened.dir} --commit deadbeef --done P1-1`, dir)).error, 'commit_unknown');
+    write(dir, 'src/a.js', 'gone soon\n');
+    git(dir, 'commit -qam lost');
+    const lost = git(dir, 'rev-parse --short HEAD');
+    git(dir, 'reset -q --hard HEAD~1');
+    assert.equal(json(runPanTools(`focus close --dir ${opened.dir} --commit ${lost} --done P1-1`, dir)).error, 'commit_unknown');
+    assert.equal(json(runPanTools(`focus close --dir ${opened.dir} --commit ${lost} --files src/a.js --done P1-1`, dir)).error, 'commit_conflict');
+    assert.equal(json(runPanTools(`focus close --dir ${opened.dir} --files src/a.js --failed P1-1=broke`, dir)).error, 'nothing_done');
+    assert.ok(focus.openFocusCycle(dir));
+  });
+
+  test('a completed todo leaves no deletion behind, so the next cycle commits', () => {
+    const first = json(runPanTools('focus open', dir));
+    write(dir, 'src/a.js', 'one\n');
+    assert.ok(json(runPanTools(`focus close --dir ${first.dir} --files src/a.js --done todo-fix-login.md`, dir)).closed);
+    assert.doesNotMatch(git(dir, 'status --porcelain'), /todos/);
+    const second = json(runPanTools('focus open', dir));
+    write(dir, 'src/a.js', 'two\n');
+    const out = json(runPanTools(`focus close --dir ${second.dir} --files src/a.js --done P1-1`, dir));
+    assert.equal(out.commit, git(dir, 'log -1 --format=%h -- src/a.js'));
+  });
+});
+
+describe('focus close derives the status from the measurements (A1-S)', () => {
+  let dir;
+  beforeEach(() => { dir = createTempProject(); seed(dir, { count: null }); });
+  afterEach(() => cleanup(dir));
+
+  test('a failure already there when the cycle opened is pre-existing, and the cycle can be verified', () => {
+    withTapSuite(dir, 4, ['known flake']);
+    write(dir, '.planning/focus/batch-2026-10-31.json', JSON.stringify({ batch: [{ id: 'A' }] }));
+    const opened = json(runPanTools('focus open', dir));
+    assert.ok(fs.existsSync(path.join(dir, opened.dir, `${opened.num}-test-baseline.json`)));
+    write(dir, 'pass.txt', '5');
+    const out = json(runPanTools(`focus close --dir ${opened.dir} --status verified --done A`, dir));
+    assert.equal(out.status, 'verified', JSON.stringify(out.derived_from));
+    assert.equal(out.preexisting_failures, 1);
+    assert.equal(out.regressions, 0);
+    assert.ok(fs.existsSync(path.join(dir, opened.dir, `${opened.num}-test-run.json`)));
+  });
+
+  test('a new failure is a regression: failed whatever the claim, and nothing is committed', () => {
+    gitInit(dir);
+    withTapSuite(dir, 4);
+    write(dir, '.planning/focus/batch-2026-10-31.json', JSON.stringify({ batch: [{ id: 'A' }] }));
+    const opened = json(runPanTools('focus open', dir));
+    write(dir, 'fail.txt', 'broken by the fix');
+    write(dir, 'src/a.js', 'regressed\n');
+    const head = git(dir, 'rev-parse HEAD');
+    const out = json(runPanTools(`focus close --dir ${opened.dir} --status verified --files src/a.js --done A`, dir));
+    assert.equal(out.status, 'failed');
+    assert.equal(out.regressions, 1);
+    assert.equal(out.commit, null);
+    assert.match(out.commit_skipped, /^regression/);
+    assert.match(git(dir, 'log -1 --format=%s'), /^docs\(focus-/, 'only the record was committed');
+    assert.equal(git(dir, `diff --name-only ${head} HEAD -- src`), '');
+  });
+
+  test('deriveCycleStatus: the table, and a claim that only lowers', () => {
+    const base = { kind: 'exec', items: ['a', 'b'], done: ['a', 'b'], tests_before: 5, tests_after: 5, run: { status: 'passed' }, regressions: 0 };
+    assert.equal(focus.deriveCycleStatus(base).status, 'verified');
+    assert.equal(focus.deriveCycleStatus({ ...base, done: [] }).status, 'failed');
+    assert.equal(focus.deriveCycleStatus({ ...base, regressions: 1, run: { status: 'failed' } }).status, 'failed');
+    assert.equal(focus.deriveCycleStatus({ ...base, tests_after: 4 }).status, 'failed');
+    assert.equal(focus.deriveCycleStatus({ ...base, tests_after: null }).status, 'partial');
+    assert.equal(focus.deriveCycleStatus({ ...base, run: { status: 'failed', reason: '1 failing test(s)' } }).status, 'partial');
+    assert.equal(focus.deriveCycleStatus({ ...base, done: ['a'] }).status, 'partial');
+    assert.deepEqual(focus.deriveCycleStatus({ ...base, kind: 'docs' }), { status: null, reasons: [] });
+
+    withSuite(dir, 5);
+    write(dir, '.planning/focus/batch-2026-10-31.json', JSON.stringify({ batch: [{ id: 'A' }] }));
+    const opened = json(runPanTools('focus open', dir));
+    const out = json(runPanTools(`focus close --dir ${opened.dir} --status partial --done A`, dir));
+    assert.equal(out.derived_status, 'verified');
+    assert.equal(out.status, 'partial', 'the agent may lower the status, for a deep-review finding');
+  });
+
+  test('--status is optional for an exec cycle and required for a docs cycle', () => {
+    withSuite(dir, 5);
+    const exec = json(runPanTools('focus open', dir));
+    assert.equal(json(runPanTools(`focus close --dir ${exec.dir} --done P1-1 P2-2 phase-2 todo-fix-login.md`, dir)).status, 'verified');
+    const docs = json(runPanTools('focus open --kind docs', dir));
+    assert.equal(json(runPanTools(`focus close --dir ${docs.dir}`, dir)).error, 'invalid_status');
+    assert.equal(json(runPanTools(`focus close --dir ${docs.dir} --status verified`, dir)).status, 'verified');
+  });
+});
+
 describe('focus auto with registered cycles', () => {
   let dir;
   beforeEach(() => { dir = createTempProject(); seed(dir); });
@@ -303,6 +473,43 @@ describe('focus auto with registered cycles', () => {
     assert.equal(cycle.tests_verified, false);
   });
 
+  test('--update records the cycle the run opened, never an older one; an open one is refused', () => {
+    runPanTools('focus auto --category stability', dir);
+    const a = json(runPanTools('focus open', dir));
+    assert.equal(focus.readAutoRun(dir).current_cycle, a.dir);
+    runPanTools(`focus close --dir ${a.dir} --done P1-1`, dir);
+    const b = json(runPanTools('focus open', dir));
+    const refused = runPanTools('focus auto --update --items-completed 1 --points-used 1', dir);
+    assert.equal(refused.success, false, 'the run\'s cycle is still open');
+    runPanTools(`focus close --dir ${b.dir} --done P1-1 P2-2`, dir);
+    runPanTools('focus auto --update --items-completed 1 --points-used 1', dir);
+    const run = focus.readAutoRun(dir);
+    assert.deepEqual(run.cycles.map((c) => c.cycle_dir), [b.dir]);
+    assert.equal(run.current_cycle, undefined);
+    assert.deepEqual(json(runPanTools('focus auto --status', dir)).unrecorded_cycles, [a.dir]);
+  });
+
+  test('a cycle whose items all failed stops the run resumable, not completed', () => {
+    runPanTools('focus auto --category stability', dir);
+    const opened = json(runPanTools('focus open', dir));
+    runPanTools(`focus close --dir ${opened.dir} --failed P1-1=broke P2-2=broke`, dir);
+    const up = json(runPanTools('focus auto --update --items-completed 0 --points-used 2', dir));
+    assert.equal(up.stop_reason, 'cycle_failed');
+    assert.equal(up.status, 'stopped');
+    assert.ok(runPanTools('focus auto --continue', dir).success);
+
+    assert.equal(focus.determineStopReason({ items_completed: 0, items_failed: 2, tests_before: 5, tests_after: 5 }, { totals: { cycles_completed: 1, points_used: 1 }, max_cycles: 9, cycles: [] }), 'all_failed');
+    assert.equal(focus.determineStopReason({ items_completed: 1, items_failed: 0, tests_before: 5, tests_after: 5, regressions: 1 }, { totals: { cycles_completed: 1, points_used: 1 }, max_cycles: 9, cycles: [] }), 'regression');
+  });
+
+  test('--stop closes only the run\'s own cycle', () => {
+    const stray = json(runPanTools('focus open', dir));
+    runPanTools('focus auto --category stability', dir);
+    const out = json(runPanTools('focus auto --stop', dir));
+    assert.equal(out.closed_cycle, null);
+    assert.equal(focus.openFocusCycle(dir).rel, stray.dir, 'a cycle the run did not open is left alone');
+  });
+
   test('--stop closes an open cycle as failed', () => {
     runPanTools('focus auto --category stability', dir);
     const opened = json(runPanTools('focus open', dir));
@@ -340,7 +547,7 @@ describe('the guard sees an open focus cycle as work in flight, on every hook ho
   }
 });
 
-describe('the focus prompts register their writes and commit through the commit verb', () => {
+describe('the focus prompts register their writes and commit through the close', () => {
   const PROMPTS = {
     'commands/pan/focus-auto.md': read(ROOT, 'commands/pan/focus-auto.md'),
     'pan-wizard-core/workflows/focus-exec.md': read(ROOT, 'pan-wizard-core/workflows/focus-exec.md'),
@@ -359,19 +566,20 @@ describe('the focus prompts register their writes and commit through the commit 
   test('--dry-run opens no cycle, and the deep review runs before the close records the cycle', () => {
     assert.match(read(ROOT, 'pan-wizard-core/workflows/focus-exec.md'), /\*\*Open the cycle\*\* — before the first edit \(not under `--dry-run`/);
     const auto = read(ROOT, 'commands/pan/focus-auto.md');
-    const review = auto.indexOf('With `--deep-review` on, run it now (below), before the close');
+    const review = auto.indexOf('With `--deep-review` on, run it now (below), on the cycle\'s uncommitted changes, before the close');
     assert.ok(review > 0 && review < auto.indexOf('focus close --dir <dir from focus open>'));
-    assert.match(auto, /\| `block` \| STOP campaign — revert last commit, close the cycle with `--status failed`/);
+    assert.match(auto, /\| `block` \| STOP campaign — revert the cycle's changes, close the cycle without `--files`/);
   });
 
-  test('every write-producing focus prompt opens a cycle before its edits and closes it after its commit', () => {
+  test('every write-producing focus prompt opens a cycle before its edits and commits through the close', () => {
     for (const [file, text] of Object.entries(PROMPTS)) {
       const open = text.indexOf('pan-tools.cjs focus open');
-      const commit = text.indexOf('pan-tools.cjs commit');
       const close = text.indexOf('pan-tools.cjs focus close');
       assert.ok(open !== -1, `${file}: no focus open`);
       assert.ok(close > open, `${file}: focus close must follow focus open`);
-      assert.ok(commit === -1 || (commit > open && close > commit), `${file}: open, then commit, then close`);
+      assert.match(text, /pan-tools\.cjs focus close --dir [^`\n]*--files /, `${file}: the close names the files it commits`);
+      assert.doesNotMatch(text, /pan-tools\.cjs commit "(?:fix|docs)\(focus/, `${file}: source goes through the close, not the planning-docs verb`);
+      assert.match(text, /`commit_blocked`[^\n]*`--commit <sha>`/, `${file}: the commit_blocked way out`);
     }
   });
 });

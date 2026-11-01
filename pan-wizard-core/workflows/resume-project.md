@@ -23,7 +23,7 @@ Load all context in one call:
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init resume)
 ```
 
-Parse JSON for: `state_exists`, `roadmap_exists`, `project_exists`, `planning_exists`, `has_interrupted_agent`, `interrupted_agent_id`, `commit_docs`.
+Parse JSON for: `state_exists`, `roadmap_exists`, `project_exists`, `planning_exists`, `has_interrupted_agent`, `interrupted_agent_id`, `commit_docs`, `open_work`.
 
 **If `state_exists` is true:** Proceed to load_state
 **If `state_exists` is false but `roadmap_exists` or `project_exists` is true:** Offer to reconstruct state.md
@@ -59,23 +59,15 @@ cat .planning/project.md
 </step>
 
 <step name="check_incomplete_work">
-Look for incomplete work that needs attention:
+Read the incomplete work from `open_work` in the init JSON. It is the same list the guard uses to decide whether PAN work is in flight, so resume and the guard never disagree:
 
-```bash
-# Check for continue-here files (mid-plan resumption)
-ls .planning/phases/*/.continue-here*.md 2>/dev/null
+- `continue_here`: `.continue-here` checkpoints inside phase directories
+- `phase_plans`: phase plans with no summary (`current: true` for the phase state.md names)
+- `quick`: quick tasks with a plan and no summary. `source: focus` is a focus cycle (`kind`, `run_id`); `source: quick` is a `/pan:quick` task
+- `debug`: open debug sessions
+- `in_flight`: whether any of these counts as work in flight
 
-# Check for plans without summaries (incomplete execution)
-for plan in .planning/phases/*/*-plan.md; do
-  summary="${plan%-plan.md}-summary.md"
-  [ ! -f "$summary" ] && echo "Incomplete: $plan"
-done 2>/dev/null
-
-# Check for interrupted agents (use has_interrupted_agent and interrupted_agent_id from init)
-if [ "$has_interrupted_agent" = "true" ]; then
-  echo "Interrupted agent: $interrupted_agent_id"
-fi
-```
+Interrupted agents come from `has_interrupted_agent` and `interrupted_agent_id`.
 
 **If .continue-here file exists:**
 
@@ -87,6 +79,21 @@ fi
 
 - Execution was started but not completed
 - Flag: "Found incomplete plan execution"
+
+**If an open focus cycle exists (`quick` entry with `source: focus`):**
+
+- A focus run edited code and stopped before `focus close`
+- Flag: "Found open focus cycle <dir>"
+- With a `run_id`, the run continues with `/pan:focus-auto --continue`; otherwise end it with `pan-tools focus close --dir <dir> --status failed` after reverting or committing its edits
+
+**If an open quick task exists (`source: quick`):**
+
+- A `/pan:quick` task was planned and not finished
+- Flag: "Found open quick task <dir>"
+
+**If a debug session exists:**
+
+- Flag: "Found open debug session <file>" — continue it with `/pan:debug`
 
 **If interrupted agent found:**
 
@@ -113,7 +120,7 @@ Present complete project status to user:
 
 [If incomplete work found:]
 ⚠️  Incomplete work detected:
-    - [.continue-here file or incomplete plan]
+    - [.continue-here file, incomplete plan, open focus cycle, open quick task or debug session]
 
 [If interrupted agent found:]
 ⚠️  Interrupted agent detected:
@@ -161,6 +168,10 @@ Based on project state, determine the most logical next action:
 **If incomplete plan (PLAN without SUMMARY):**
 → Primary: Complete the incomplete plan
 → Option: Abandon and move on
+
+**If an open focus cycle:**
+→ Primary: Continue its run (`/pan:focus-auto --continue`) when it has a `run_id`
+→ Option: Close it as failed (`pan-tools focus close --dir <dir> --status failed`), so the next `focus open` is not refused
 
 **If phase in progress, all plans complete:**
 → Primary: Transition to next phase
