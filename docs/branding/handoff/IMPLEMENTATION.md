@@ -39,7 +39,7 @@ Copy these files from the design project's `assets/` into the repo's `assets/`:
 - `pan-orchestration.png` — orchestration illustration
 - `pan-docs-header.png` — soft docs-header background
 
-```
+```text
 Update assets/pan-logo-2000.svg and assets/pan-logo-2000-transparent.svg to the new
 PanWizard mark: a node-graph glyph — a coral (#FF5A3C) parent node at top, two indigo
 (#5B4BE6) connector lines fanning down to a butter (#FFCE4A) node on the lower-left and
@@ -53,7 +53,7 @@ files used so every <img> reference still renders.
 
 ## Step 2 — README hero + brand
 
-```
+```text
 Replace the README.md header so the hero image is assets/pan-hero.png (the new banner).
 Apply the PanWizard brand: keep the centered layout, swap the npm/license badge colors
 to brand hex (version #FF5A3C, downloads #5B4BE6, license #1E8E5A, all labelColor
@@ -69,7 +69,7 @@ any factual/usage copy, commands, or install instructions.
 
 File: `pan-wizard-core/bin/lib/hud.cjs`.
 
-```
+```text
 In pan-wizard-core/bin/lib/hud.cjs, re-theme the HUD from the current dark palette to
 the light PanWizard brand. Make ONLY visual changes — do not touch collectHudData(),
 the render*() data wiring, or any data shape/test.
@@ -101,7 +101,7 @@ the render*() data wiring, or any data shape/test.
    assets/pan-mark.svg) to the left of the project title.
 
 Keep all class names, structure, and the self-contained (no-network) output intact.
-Run `node pan-wizard-core/bin/lib/... hud --stdout` mentally / `npm test` to confirm
+Run `node pan-wizard-core/bin/pan-tools.cjs hud --stdout` / `npm test` to confirm
 renderHud still produces the same sections.
 ```
 
@@ -111,7 +111,7 @@ renderHud still produces the same sections.
 
 This is the new panel that answers *what is it building* and *where in the project*.
 
-```
+```text
 In pan-wizard-core/bin/lib/hud.cjs, add a new "Now building" panel that renders BETWEEN
 the mission panel and the command stack. It must show (a) WHERE — a horizontal phase
 stepper across all roadmap phases with the current phase highlighted — and (b) WHAT —
@@ -188,9 +188,9 @@ when a roadmap exists.
 
 ## Step 5 — Verify
 
-```
-Run npm test and npm run test:scenarios. Then generate a sample HUD with
-`node bin/install.js` env or the pan-tools dispatcher: `pan-tools hud --out /tmp/hud.html`
+```text
+Run npm test and npm run test:scenarios. Then generate a sample HUD with the
+pan-tools dispatcher (never run the installer in this repository): `pan-tools hud --out /tmp/hud.html`
 and open it to confirm the light theme + the "now building" panel render correctly with
 real project data. Fix any failing hud tests caused by the new section.
 ```

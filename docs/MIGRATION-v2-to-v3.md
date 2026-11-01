@@ -226,7 +226,7 @@ No. Phase directories, plan.md, summary.md, state.md — all unchanged.
 
 ### Will my focus-auto campaigns break?
 
-No. `/pan:focus-*` commands are identical. They may opportunistically integrate with new v3.x features via flags (e.g. `--deep-review`), but default behavior is unchanged.
+No. `/pan:focus-*` commands are identical. They may opportunistically integrate with new v3.x features via flags (e.g. `--deep-review`), but default behavior is unchanged. Later releases (after v3.39.0, ADR-0051) record each focus cycle as a quick task and hand roadmap phases and phase-mapped requirements to the phase commands instead of implementing them; a campaign still runs the same way.
 
 ### Does `/pan:cost` see historical data?
 

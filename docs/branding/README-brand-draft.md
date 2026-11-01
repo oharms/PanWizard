@@ -38,7 +38,7 @@ The complexity lives in the system, not in your workflow. Behind the scenes:
 context engineering, XML prompt formatting, subagent orchestration, state
 management. What you see — a few commands that just work.
 
-```
+```text
 planner ──▶ executor ──▶ verifier      each in a fresh 200K context window
    │            │            │
    └────────────┴────────────┘
@@ -71,7 +71,7 @@ implementing anything itself.
 | 1 | Release | `pan-release` | always-ask · human gate |
 | 2 | Workers | document_code · distiller | narrow, high-volume |
 
-Six-phase loop: **Muster → Plan → Delegate → Execute → Review → Integrate → Learn** ↺
+Seven-stage loop: **Muster → Plan → Delegate → Execute → Review → Integrate → Learn** ↺
 
 - **Concurrency:** research parallel · builds parallel but isolated in per-agent
   worktrees · integrate serial and human-gated.
