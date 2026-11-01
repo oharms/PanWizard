@@ -501,6 +501,125 @@ describe('ownership: focus executes its own items and hands phase work off (D1)'
   });
 });
 
+describe('the main system sees focus, and autodev never runs beside it (D5, D9)', () => {
+  let dir;
+  beforeEach(() => { dir = createTempProject(); seed(dir); });
+  afterEach(() => cleanup(dir));
+
+  const HOUR = 3600000;
+  const iso = (msAgo) => new Date(Date.now() - msAgo).toISOString();
+  const autoRun = (o) => write(dir, '.planning/focus/auto-run.json', JSON.stringify({ run_id: 'auto-2026-11-01-1', status: 'in_progress', category: 'stability', started_at: iso(HOUR), max_cycles: 10, cycles: [], totals: { cycles_completed: 0, items_completed: 0 }, ...o }, null, 2));
+  const phaseProject = () => {
+    write(dir, '.planning/roadmap.md', '# Roadmap\n\n- [ ] **Phase 1: API**\n\n### Phase 1: API\n\n**Goal:** an API\n');
+    write(dir, '.planning/requirements.md', '# Requirements\n');
+    fs.mkdirSync(path.join(dir, '.planning', 'phases', '01-api'), { recursive: true });
+  };
+
+  test('next-action puts an open focus cycle ahead of a phase ready to plan; without one it routes as before', () => {
+    phaseProject();
+    const before = json(runPanTools('next-action', dir));
+    assert.equal(before.action, 'plan');
+    assert.equal(before.focus, undefined, 'no focus work: the output is unchanged');
+    const opened = json(runPanTools('focus open', dir));
+    const out = json(runPanTools('next-action', dir));
+    assert.equal(out.action, 'focus');
+    assert.equal(out.reason, 'focus_cycle_open');
+    assert.equal(out.command, `pan-tools focus close --dir ${opened.dir} --status failed`);
+    assert.equal(out.focus.open_cycle.dir, opened.dir);
+  });
+
+  test('a live run working its cycle asks to wait; a stale one asks to stop', () => {
+    runPanTools('focus auto --category stability', dir);
+    json(runPanTools('focus open', dir));
+    assert.equal(json(runPanTools('next-action', dir)).reason, 'focus_cycle_in_progress');
+    const run = focus.readAutoRun(dir);
+    focus.writeAutoRun(dir, { ...run, started_at: iso(13 * HOUR) });
+    const out = json(runPanTools('next-action', dir));
+    assert.equal(out.reason, 'focus_run_stale');
+    assert.equal(out.command, 'pan-tools focus auto --stop');
+  });
+
+  test('a stale run: --status says so, next-action and hygiene name it; a fresh run raises neither', () => {
+    autoRun({ started_at: iso(HOUR) });
+    assert.equal(json(runPanTools('focus auto --status', dir)).stale, false);
+    assert.equal(json(runPanTools('hygiene scan', dir)).findings.filter((f) => f.check === 'focus-stale-run').length, 0);
+    assert.notEqual(json(runPanTools('next-action', dir)).action, 'focus');
+
+    autoRun({ started_at: iso(20 * HOUR), cycles: [{ timestamp: iso(13 * HOUR) }] });
+    const st = json(runPanTools('focus auto --status', dir));
+    assert.equal(st.stale, true);
+    assert.equal(st.stale_hours, 12);
+    assert.equal(json(runPanTools('next-action', dir)).reason, 'focus_run_stale');
+    const f = json(runPanTools('hygiene scan', dir)).findings.find((x) => x.check === 'focus-stale-run');
+    assert.ok(f, 'hygiene reports the stale run');
+    assert.equal(f.fixable, false);
+
+    write(dir, '.planning/config.json', JSON.stringify({ focus: { stale_hours: 24 } }));
+    assert.equal(json(runPanTools('focus auto --status', dir)).stale, false, 'focus.stale_hours moves the line');
+  });
+
+  test('hygiene: a quick task open for a day is reported, a newer one is not', () => {
+    write(dir, '.planning/quick/3-fix-typo/3-plan.md', '---\nphase: quick\n---\n');
+    write(dir, '.planning/quick/4-focus-exec-2026-10-30/4-plan.md', '---\nphase: quick\nsource: focus\n---\n');
+    write(dir, '.planning/quick/5-new/5-plan.md', '---\nphase: quick\n---\n');
+    const old = new Date(Date.now() - 30 * HOUR);
+    fs.utimesSync(path.join(dir, '.planning/quick/3-fix-typo/3-plan.md'), old, old);
+    fs.utimesSync(path.join(dir, '.planning/quick/4-focus-exec-2026-10-30/4-plan.md'), old, old);
+    const found = json(runPanTools('hygiene scan', dir)).findings.filter((f) => f.check === 'open-task-stale');
+    assert.deepEqual(found.map((f) => f.path).sort(), ['.planning/quick/3-fix-typo/3-plan.md', '.planning/quick/4-focus-exec-2026-10-30/4-plan.md']);
+    assert.match(found.find((f) => f.path.includes('focus')).detail, /focus close --dir \.planning\/quick\/4-focus-exec-2026-10-30/);
+  });
+
+  test('autodev refuses a fresh run beside an open focus cycle or a live run; a stale run does not block it', () => {
+    const { runAutodev } = require('../pan-wizard-core/bin/lib/autodev.cjs');
+    json(runPanTools('focus open', dir));
+    const r = runAutodev(dir, { host: 'claude', maxUsd: 1 });
+    assert.equal(r.error, 'focus_active');
+    assert.match(r.reason, /focus close --dir/);
+    fs.rmSync(path.join(dir, '.planning', 'quick'), { recursive: true });
+
+    autoRun({ started_at: iso(HOUR) });
+    assert.equal(runAutodev(dir, { host: 'claude', maxUsd: 1 }).focus_run, 'auto-2026-11-01-1');
+    autoRun({ started_at: iso(20 * HOUR) });
+    // Past the focus check, it stops on the host: nothing runs in a test.
+    assert.equal(runAutodev(dir, { host: 'no-such-host', maxUsd: 1 }).error, 'unsupported_host');
+  });
+
+  test('focus auto refuses to start or continue beside a live autodev run, not beside a stopped or stale one', () => {
+    const ledger = (rows) => {
+      write(dir, '.planning/autodev/run-20261101-000000-abcdef/run.json', JSON.stringify({ id: 'run-20261101-000000-abcdef', started: iso(HOUR) }));
+      write(dir, '.planning/autodev/run-20261101-000000-abcdef/ledger.jsonl', rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    };
+    ledger([{ ts: iso(HOUR), status: 'started', unit: { action: 'plan', phase: '1' } }]);
+    const r = runPanTools('focus auto --category stability', dir);
+    assert.equal(r.success, false);
+    assert.equal(json(r).error, 'autodev_active');
+    assert.equal(json(r).run, 'run-20261101-000000-abcdef');
+
+    ledger([{ ts: iso(HOUR), status: 'started' }, { ts: iso(HOUR), status: 'stopped', reason: 'done' }]);
+    assert.ok(runPanTools('focus auto --category stability', dir).success, 'a stopped run does not block');
+    runPanTools('focus auto --stop', dir);
+
+    ledger([{ ts: iso(HOUR), status: 'started' }]);
+    assert.equal(json(runPanTools('focus auto --continue', dir)).error, 'autodev_active', '--continue refuses too');
+    ledger([{ ts: iso(20 * HOUR), status: 'started' }]);
+    assert.ok(runPanTools('focus auto --continue', dir).success, 'a run with nothing recorded for stale_hours does not block');
+  });
+
+  test('the HUD shows a focus panel beside the roadmap', () => {
+    phaseProject();
+    const hud = require('../pan-wizard-core/bin/lib/hud.cjs');
+    assert.equal(hud.collectHudData(dir).focus, null, 'no focus work, no panel');
+    runPanTools('focus auto --category stability', dir);
+    const opened = json(runPanTools('focus open', dir));
+    const data = hud.collectHudData(dir);
+    assert.equal(data.focus.open_cycle.dir, opened.dir);
+    const html = hud.renderHud(data);
+    assert.match(html, /<div class="ph">focus<\/div>/);
+    assert.ok(html.includes(`open cycle ${opened.dir}`));
+  });
+});
+
 describe('focus auto with registered cycles', () => {
   let dir;
   beforeEach(() => { dir = createTempProject(); seed(dir); });

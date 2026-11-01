@@ -202,5 +202,13 @@
   {
     "id": "pan-wizard-core/workflows/focus-exec:a9e0bd93",
     "reason": "Focus Stage B (D1 ownership): the split is engine code, not the prompt's judgement. focus route stamps owners and records hand-offs, and focus open registers only focus-owned items whether or not the prompt routed (all_routed when none); tests/focus-integration.test.cjs (ownership describe) pins classifyOwner, the routed batch and the open."
+  },
+  {
+    "id": "pan-wizard-core/workflows/progress:86998b6c",
+    "reason": "Focus Stage C (D5): the focus action is engine code. next-action puts an open focus cycle or a stale focus run ahead of phase routing (next-action.cjs nextStep, focus.cjs focusNextStep); tests/focus-integration.test.cjs (visibility describe) pins each reason and command and that a project without focus work routes as before."
+  },
+  {
+    "id": "pan-wizard-core/workflows/resume-project:86998b6c",
+    "reason": "Focus Stage C (D5): the focus action is engine code. next-action puts an open focus cycle or a stale focus run ahead of phase routing (next-action.cjs nextStep, focus.cjs focusNextStep); tests/focus-integration.test.cjs (visibility describe) pins each reason and command and that a project without focus work routes as before."
   }
 ]

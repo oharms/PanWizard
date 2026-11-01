@@ -104,9 +104,23 @@ function routeNextAction(cwd) {
   return result(d.action, d.args && d.args.phase, d.reason);
 }
 
+/**
+ * The next step the user should take: an open focus cycle or a stale focus run first
+ * (spec D5), then the phase router. Autodev calls routeNextAction directly: it refuses
+ * to start beside focus work, so it never needs this layer.
+ * @returns {{action, phase, reason, command, done, focus?}}
+ */
+function nextStep(cwd) {
+  const focus = require('./focus.cjs');
+  const fa = focus.focusActivity(cwd);
+  const step = focus.focusNextStep(fa);
+  if (step) return { action: step.action, phase: null, reason: step.reason, command: step.command, done: false, detail: step.detail, focus: fa };
+  return routeNextAction(cwd);
+}
+
 function cmdNextAction(cwd, raw) {
-  const r = routeNextAction(cwd);
+  const r = nextStep(cwd);
   output(r, raw, r.command || r.action);
 }
 
-module.exports = { diskSnapshot, routeNextAction, cmdNextAction };
+module.exports = { diskSnapshot, routeNextAction, nextStep, cmdNextAction };

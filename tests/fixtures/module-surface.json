@@ -29,6 +29,7 @@
   "autodev.cjs": [
     "LEAN_WORKFLOW:string",
     "STOP_REASONS:object",
+    "autodevActivity:function",
     "blockedReport:function",
     "budgetStopReport:function",
     "cmdAutodev:function",
@@ -536,11 +537,14 @@
     "deriveCycleStatus:function",
     "determineContinuation:function",
     "determineStopReason:function",
+    "focusActivity:function",
     "focusClose:function",
     "focusCycleFiles:function",
     "focusCyclePlan:function",
+    "focusNextStep:function",
     "focusOpen:function",
     "focusRoute:function",
+    "isRunStale:function",
     "listBatchFiles:function",
     "listFocusCycles:function",
     "openFocusCycle:function",
@@ -798,6 +802,7 @@
   "next-action.cjs": [
     "cmdNextAction:function",
     "diskSnapshot:function",
+    "nextStep:function",
     "routeNextAction:function"
   ],
   "open-work.cjs": [

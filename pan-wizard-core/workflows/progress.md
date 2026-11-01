@@ -134,7 +134,9 @@ CONTEXT: [✓ if has_context | - if not]
 NEXT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs next-action)
 ```
 
-It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.
+It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `focus`, `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.
+
+When `action` is `focus`, focus work comes first: a focus cycle is open or a focus run went stale. `reason` says which (`focus_cycle_in_progress`, `focus_cycle_open`, `focus_run_stale`), `detail` says what to do, `focus` names the run and the cycle, and `command` carries it out. Show it above the phase position, and offer its `command` before any phase route.
 
 Its `action` picks the route below: `execute` → **Route A**, `plan` → **Route B**, `plan_gaps` → **Route E**, `verify` → offer `/pan:verify-phase {phase}`, `complete_phase` → run `command`, then **Route C**, `audit_milestone` → **Route D** (audit before `/pan:milestone-done`), `new_milestone` → **Route F**. The counts below are what the router read; use them to explain the route, not to pick a different one.
 

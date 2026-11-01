@@ -2647,10 +2647,10 @@
    "baseline": true
   },
   {
-   "id": "pan-wizard-core/workflows/progress:b5e6303c",
+   "id": "pan-wizard-core/workflows/progress:86998b6c",
    "file": "pan-wizard-core/workflows/progress.md",
-   "text": "It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.",
-   "baseline": true
+   "text": "It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `focus`, `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/workflows/quick:4387c189",
@@ -2707,10 +2707,10 @@
    "baseline": false
   },
   {
-   "id": "pan-wizard-core/workflows/resume-project:b5e6303c",
+   "id": "pan-wizard-core/workflows/resume-project:86998b6c",
    "file": "pan-wizard-core/workflows/resume-project.md",
-   "text": "It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.",
-   "baseline": true
+   "text": "It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `focus`, `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/workflows/resume-project:f4e08c1a",

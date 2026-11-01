@@ -1202,7 +1202,7 @@ function readCyclePlan(cycle) {
   return {
     source: fmScalar(fm.source), kind: fmScalar(fm.focus_kind) || cycle.kind, batch_file: fmScalar(fm.batch_file),
     run_id: fmScalar(fm.run_id), category: fmScalar(fm.category), items: fmList(fm.items),
-    tests_before: fmNumber(fm.tests_before), test_command: fmScalar(fm.test_command),
+    tests_before: fmNumber(fm.tests_before), test_command: fmScalar(fm.test_command), opened_at: fmScalar(fm.opened_at),
   };
 }
 
@@ -1562,11 +1562,95 @@ function budgetIndicators(run) {
   };
 }
 
+// ─── Where focus stands, for the rest of PAN (spec D5, D9) ──────────────────
+
+/** Hours without a recorded cycle after which a live run is stale: `focus.stale_hours`, default 12. */
+const FOCUS_STALE_HOURS = 12;
+
+function staleHours(cwd) {
+  const h = Number((((loadConfig(cwd) || {}).focus) || {}).stale_hours);
+  return Number.isFinite(h) && h > 0 ? h : FOCUS_STALE_HOURS;
+}
+
+/** The newest thing a run recorded: its last cycle, else its start. */
+function runLastAt(run) {
+  const cycles = (run && run.cycles) || [];
+  return (cycles.length && cycles[cycles.length - 1].timestamp) || (run && run.started_at) || null;
+}
+
+/**
+ * A run that says it is live but has recorded nothing for `hours`: its session ended
+ * without --stop. Pure.
+ */
+function isRunStale(run, hours, now = Date.now()) {
+  if (!run || (run.status !== AUTORUN_STATUSES.IN_PROGRESS && run.status !== AUTORUN_STATUSES.INITIALIZED)) return false;
+  const t = Date.parse(runLastAt(run) || '');
+  return Number.isFinite(t) && now - t > hours * 3600000;
+}
+
+/**
+ * Where focus stands: the auto run, the open cycle, and whether either is active work
+ * that autodev must not run beside. Read by next-action, the HUD, hygiene and autodev.
+ * @param {string} cwd
+ * @param {number} [now]
+ * @returns {{run: Object|null, open_cycle: Object|null, stale_hours: number, active: boolean}}
+ */
+function focusActivity(cwd, now = Date.now()) {
+  const hours = staleHours(cwd);
+  const run = readAutoRun(cwd);
+  const live = !!run && (run.status === AUTORUN_STATUSES.IN_PROGRESS || run.status === AUTORUN_STATUSES.INITIALIZED);
+  const stale = isRunStale(run, hours, now);
+  const cycle = openFocusCycle(cwd);
+  let openCycle = null;
+  if (cycle) {
+    const p = readCyclePlan(cycle);
+    openCycle = { dir: cycle.rel, kind: p.kind, run_id: p.run_id, opened_at: p.opened_at };
+  }
+  return {
+    run: run && run.run_id ? {
+      id: run.run_id, status: run.status, category: run.category || run.source || null, stale, last_at: runLastAt(run),
+      cycles_completed: run.totals ? run.totals.cycles_completed : 0, items_completed: run.totals ? run.totals.items_completed : 0,
+      current_cycle: run.current_cycle || null,
+    } : null,
+    open_cycle: openCycle,
+    stale_hours: hours,
+    active: !!openCycle || (live && !stale),
+  };
+}
+
+/**
+ * The step focus asks for before any phase work, or null. Pure over focusActivity.
+ * An open cycle comes first: the run that owns it is still working (wait), is stale
+ * (stop it, which closes the cycle), or is gone (close the cycle). A stale run with no
+ * cycle open comes next.
+ */
+function focusNextStep(fa) {
+  if (!fa) return null;
+  const run = fa.run;
+  const owned = fa.open_cycle && run && fa.open_cycle.run_id === run.id;
+  const liveRun = run && (run.status === AUTORUN_STATUSES.IN_PROGRESS || run.status === AUTORUN_STATUSES.INITIALIZED);
+  if (fa.open_cycle) {
+    if (owned && liveRun && !run.stale) return { action: 'focus', reason: 'focus_cycle_in_progress', command: 'pan-tools focus auto --status', detail: `focus run ${run.id} is working cycle ${fa.open_cycle.dir}` };
+    if (owned && liveRun && run.stale) return { action: 'focus', reason: 'focus_run_stale', command: 'pan-tools focus auto --stop', detail: `focus run ${run.id} recorded nothing for ${fa.stale_hours}h with cycle ${fa.open_cycle.dir} open: stop it (which closes the cycle), then /pan:focus-auto --continue` };
+    return { action: 'focus', reason: 'focus_cycle_open', command: `pan-tools focus close --dir ${fa.open_cycle.dir} --status failed`, detail: `focus cycle ${fa.open_cycle.dir} was left open: revert or commit its edits, then close it` };
+  }
+  if (run && run.stale) return { action: 'focus', reason: 'focus_run_stale', command: 'pan-tools focus auto --stop', detail: `focus run ${run.id} recorded nothing for ${fa.stale_hours}h: stop it, then /pan:focus-auto --continue` };
+  return null;
+}
+
+/** Autodev and a focus run never run side by side: a refusal naming the other run, or null. */
+function autodevRefusal(cwd) {
+  const a = require('./autodev.cjs').autodevActivity(cwd, staleHours(cwd));
+  if (!a || !a.active) return null;
+  return { error: 'autodev_active', reason: `autodev run ${a.run} is active (last recorded ${a.last_at || 'unknown'}): let it stop, or check it with \`pan-tools autodev status\`; a run with nothing recorded for ${staleHours(cwd)}h no longer blocks`, run: a.run };
+}
+
 function focusAutoStatus(cwd, raw) {
   const run = readAutoRun(cwd);
   if (!run) return error('No auto-run found. Start with: focus auto --category <name>');
   const cyclesRemaining = run.max_cycles - (run.totals ? run.totals.cycles_completed : 0);
-  return output({ ...run, ...budgetIndicators(run), cycles_remaining: cyclesRemaining, unrecorded_cycles: unrecordedCycles(cwd, run) }, raw);
+  const hours = staleHours(cwd);
+  return output({ ...run, ...budgetIndicators(run), cycles_remaining: cyclesRemaining, unrecorded_cycles: unrecordedCycles(cwd, run), stale: isRunStale(run, hours), stale_hours: hours }, raw);
 }
 
 function focusAutoStop(cwd, raw) {
@@ -1846,6 +1930,8 @@ function focusAutoContinue(cwd, raw) {
   if (run.status !== AUTORUN_STATUSES.STOPPED && run.status !== AUTORUN_STATUSES.INITIALIZED) {
     return error(`Cannot continue: auto-run is ${run.status}.`);
   }
+  const busy = autodevRefusal(cwd);
+  if (busy) return output(busy, raw, busy.reason, 1);
   run.status = run.totals && run.totals.cycles_completed > 0 ? AUTORUN_STATUSES.IN_PROGRESS : AUTORUN_STATUSES.INITIALIZED;
   run.stop_reason = null;
   writeAutoRun(cwd, run);
@@ -1871,6 +1957,8 @@ function focusAutoInit(cwd, raw, getVal, hasFlag) {
   if (existing && (existing.status === AUTORUN_STATUSES.IN_PROGRESS || existing.status === AUTORUN_STATUSES.INITIALIZED)) {
     return error('Auto-run already in progress. Use --stop to end it, or --continue to resume.');
   }
+  const busy = autodevRefusal(cwd);
+  if (busy) return output(busy, raw, busy.reason, 1);
 
   const defaults = category ? CATEGORY_DEFAULTS[category] : { mode: 'balanced', budget: 50 };
   const mode = getVal('--mode', defaults.mode);
@@ -2068,6 +2156,9 @@ module.exports = {
   cmdFocusOpen,
   cmdFocusClose,
   cmdFocusRoute,
+  focusActivity,
+  focusNextStep,
+  isRunStale,
   focusRoute,
   classifyOwner,
   parseTraceability,

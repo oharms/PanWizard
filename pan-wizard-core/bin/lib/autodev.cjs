@@ -462,12 +462,38 @@ function latestRun(cwd) {
 }
 
 /**
+ * Whether the newest autodev run is still going: its ledger has not ended on a
+ * `stopped` row, and it recorded something within `staleHours` (a run whose process
+ * died leaves a `started` row for good). Read by focus auto, which will not run beside it.
+ * @returns {{run: string, active: boolean, last_at: string|null}|null}
+ */
+function autodevActivity(cwd, staleHours = 12, now = Date.now()) {
+  const id = latestRun(cwd);
+  if (!id) return null;
+  const rows = readRows(path.join(autodevDir(cwd), id, 'ledger.jsonl'));
+  const last = rows[rows.length - 1];
+  const lastAt = (last && last.ts) || readJson(path.join(autodevDir(cwd), id, 'run.json'), {}).started || null;
+  const t = Date.parse(lastAt || '');
+  const fresh = Number.isFinite(t) && now - t <= staleHours * 3600000;
+  return { run: id, active: !(last && last.status === 'stopped') && fresh, last_at: lastAt };
+}
+
+/**
  * The loop. opts: { host, maxUsd, maxTurns, runId (resume), resume }
  * @returns {{run, ledger, stop, units}}
  */
 function runAutodev(cwd, opts = {}) {
   let runId = opts.runId || (opts.resume ? latestRun(cwd) : null);
   if (opts.resume && !runId) return { error: 'no_run', reason: 'no autodev run to resume' };
+  // A fresh run never starts beside a focus run or an open focus cycle: both would
+  // edit the tree, and each would read the other's edits as its own (spec D5).
+  if (!runId) {
+    const fa = require('./focus.cjs').focusActivity(cwd);
+    if (fa.active) {
+      const step = require('./focus.cjs').focusNextStep(fa);
+      return { error: 'focus_active', reason: `focus is working this project (${fa.open_cycle ? `cycle ${fa.open_cycle.dir}` : `run ${fa.run.id}`}): ${step ? step.command : 'pan-tools focus auto --stop'} first`, focus_run: fa.run ? fa.run.id : null, open_cycle: fa.open_cycle ? fa.open_cycle.dir : null };
+    }
+  }
   const runDir = path.join(autodevDir(cwd), runId || (runId = newRunId()));
   const runFile = path.join(runDir, 'run.json');
   const ledger = path.join(runDir, 'ledger.jsonl');
@@ -639,4 +665,4 @@ function cmdAutodev(cwd, sub, flags, raw) {
   output(r, raw, r.stop ? r.stop.reason : r.error);
 }
 
-module.exports = { LEAN_WORKFLOW, budgetStopReport, blockedReport, standinMissing, STOP_REASONS, selectUnit, decideStop, pendingUnit, snapshotHash, unitPrompt, sessionArgv, executeUnit, runAutodev, runStatus, cmdAutodev, verificationStatus, daySpend, unitForecast };
+module.exports = { autodevActivity, LEAN_WORKFLOW, budgetStopReport, blockedReport, standinMissing, STOP_REASONS, selectUnit, decideStop, pendingUnit, snapshotHash, unitPrompt, sessionArgv, executeUnit, runAutodev, runStatus, cmdAutodev, verificationStatus, daySpend, unitForecast };

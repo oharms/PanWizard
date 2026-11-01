@@ -356,8 +356,17 @@ function collectHudData(cwd, opts = {}) {
     requirements: scanRequirements(cwd),
     quality: scanVerification(cwd),
     planning_activity: scanPlanningActivity(cwd, now),
+    focus: hudFocus(cwd, now),
     activity: recentCommits(cwd, 8),
   };
+}
+
+/** The focus run and open cycle, or null when focus has neither (spec D5). */
+function hudFocus(cwd, now) {
+  try {
+    const fa = require('./focus.cjs').focusActivity(cwd, now.getTime());
+    return fa.run || fa.open_cycle ? fa : null;
+  } catch { return null; }
 }
 
 // ─── rendering ────────────────────────────────────────────────────────────────
@@ -699,6 +708,27 @@ function renderRoadmap(d) {
   </section>`;
 }
 
+// Focus shows beside the roadmap, not only on a project without one: its cycles are
+// quick tasks in the same state, and a stale run or an open cycle needs a person.
+function renderFocus(d) {
+  const f = d.focus;
+  if (!f) return '';
+  const rows = [];
+  if (f.run) {
+    const state = f.run.stale ? `${f.run.status}, stale (${f.stale_hours}h)` : f.run.status;
+    rows.push(`<div class="row"><span class="amono">run ${esc(f.run.id)}${f.run.category ? ` · ${esc(f.run.category)}` : ''}</span><span class="amono dim">${esc(state)}</span></div>`);
+    rows.push(`<div class="row"><span class="amono">cycles · items done</span><span class="amono dim">${esc(f.run.cycles_completed)} · ${esc(f.run.items_completed)}</span></div>`);
+  }
+  if (f.open_cycle) {
+    rows.push(`<div class="row"><span class="amono"><span class="dot" style="background:var(--coral)"></span>open cycle ${esc(f.open_cycle.dir)}</span><span class="amono dim">${esc(f.open_cycle.kind || '')}</span></div>`);
+  }
+  return `
+  <section class="panel">
+    <div class="ph">focus</div>
+    ${rows.join('')}
+  </section>`;
+}
+
 // Graceful degradation: projects without a phase/state/roadmap layout still
 // have real signal under .planning/ (focus-auto designs, ADRs, findings). Show
 // it — but only when there's no roadmap, so standard projects are unchanged.
@@ -967,6 +997,7 @@ function renderHud(d) {
     renderMission(d),
     renderNowBuilding(d),
     renderPlanningActivity(d),
+    renderFocus(d),
     renderCommandStack(d),
     grid,
     renderWorktrees(d),
@@ -1050,6 +1081,7 @@ function cmdHud(cwd, opts = {}, raw) {
     'mission',
     data.roadmap.length && 'now-building',
     (!data.roadmap.length && data.planning_activity) && 'planning-activity',
+    data.focus && 'focus',
     data.army_active && 'command-stack',
     data.campaign && 'campaign',
     data.army_active && 'safety-harness',

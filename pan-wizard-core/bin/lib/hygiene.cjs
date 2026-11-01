@@ -394,6 +394,43 @@ function checkHostMemoryRouting(cwd, opts = {}) {
   return { findings };
 }
 
+/** A quick task (a focus cycle included) whose plan has no summary after this long. */
+const OPEN_TASK_STALE_MS = 24 * 3600000;
+
+/**
+ * H-14: focus work left behind (spec D9). A focus run that says it is live but has
+ * recorded nothing for `focus.stale_hours`, and a quick task open for a day. Report-only:
+ * stopping a run or closing a task is a decision about the work in it.
+ */
+function checkFocusStale(cwd, now = Date.now()) {
+  const findings = [];
+  const focus = require('./focus.cjs');
+  const fa = focus.focusActivity(cwd, now);
+  if (fa.run && fa.run.stale) {
+    findings.push(mkFinding('focus-stale-run', 'info', planningRel('focus', 'auto-run.json'),
+      `focus run ${fa.run.id} is ${fa.run.status} but recorded nothing since ${fa.run.last_at} (focus.stale_hours: ${fa.stale_hours})`
+      + '; run `pan-tools focus auto --stop`, then `/pan:focus-auto --continue`', null));
+  }
+  const quickDir = planningPath(cwd, 'quick');
+  let tasks = [];
+  try { tasks = fs.readdirSync(quickDir); } catch { /* no quick tasks */ }
+  for (const task of tasks) {
+    let names;
+    try { names = fs.readdirSync(path.join(quickDir, task)); } catch { continue; }
+    const done = new Set(names.filter((n) => n.endsWith('-summary.md')).map((n) => n.slice(0, -'-summary.md'.length)));
+    for (const plan of names.filter((n) => n.endsWith('-plan.md') && !done.has(n.slice(0, -'-plan.md'.length)))) {
+      let st;
+      try { st = fs.statSync(path.join(quickDir, task, plan)); } catch { continue; }
+      if (now - st.mtimeMs < OPEN_TASK_STALE_MS) continue;
+      const isFocus = /^source:\s*focus\s*$/m.test(safeReadFile(path.join(quickDir, task, plan)) || '');
+      findings.push(mkFinding('open-task-stale', 'info', planningRel('quick', task, plan),
+        `${isFocus ? 'focus cycle' : 'quick task'} open for ${Math.round((now - st.mtimeMs) / 3600000)}h with no summary`
+        + (isFocus ? `; finish it, or close it: \`pan-tools focus close --dir ${planningRel('quick', task)} --status failed\`` : '; finish it with /pan:quick or write its summary'), null));
+    }
+  }
+  return { findings };
+}
+
 /**
  * Thousands separator that does not depend on the host locale. `toLocaleString()`
  * emits a narrow no-break space in some locales and a comma in others, which
@@ -744,6 +781,7 @@ function scanOneRoot(cwd, root, opts) {
       ...checkStaleTraces(cwd, opts).findings,
       ...checkStaleReports(cwd, opts).findings,
       ...checkCachedContext(cwd).findings,
+      ...checkFocusStale(cwd).findings,
     ];
     for (const f of findings) f.track = root.name;
     return { findings, planning_exists: fragment.planning_exists !== false };
