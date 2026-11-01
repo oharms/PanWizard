@@ -196,7 +196,7 @@ This catches emergent interactions: 5 "add try-catch" fixes might reveal the mod
 1. **Check Project Status** — git status, recent commits
 2. **Test Baseline** — run test suite; it must pass before anything is edited
 3. **Create rollback snapshot** — git tag for safety
-4. **Open the cycle** — before the first edit:
+4. **Open the cycle** — before the first edit (not under `--dry-run`: it edits nothing, and a cycle it opened would stay open and block the next run):
    ```bash
    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus open
    ```

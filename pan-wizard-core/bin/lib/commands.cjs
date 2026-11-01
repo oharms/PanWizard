@@ -859,6 +859,8 @@ function renderHealthReport(cwd, { phasesDir, phases, totalPlans, totalSummaries
  */
 function completeTodo(cwd, filename) {
   if (!filename) return { error: 'filename required for todo complete' };
+  // A name only: `../x` would move and delete a file outside todos/pending/.
+  if (filename === '.' || filename === '..' || /[\\/]/.test(filename)) return { error: `Not a todo file name: ${filename}` };
 
   const pendingDir = planningPath(cwd, 'todos', 'pending');
   const completedDir = planningPath(cwd, 'todos', 'completed');

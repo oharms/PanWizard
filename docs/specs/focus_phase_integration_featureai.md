@@ -391,6 +391,237 @@ The 17 cases in §3.12, the guard cases added to `tests/project-memory-routing.t
 
 ---
 
+## Stage A.1: closing the review findings (design `2026-11-01`)
+
+The `/code-review max` pass on the Stage A commit (`aa5865f`) confirmed fifteen findings. Eight were local and are fixed in the working tree: the todo-id path traversal, the cycle regex that caught `/pan:quick` slugs, the batch mtime rewrite, the close flag parser, `--dry-run` opening a cycle, the deep review running after the close, frontmatter lists that broke on commas and quotes, and the summary being written before the state writes. The other seven sit on seams between subsystems, so they are designed here before any code changes. They fall into three areas.
+
+### 0. Problem framing
+
+**Problem.** Stage A made a focus cycle a quick-task record, but three things around that record are still wrong:
+
+- **The commit.** The cycle's commit is left to the agent, and the agent is pointed at a verb that does not commit source.
+- **Resume.** `/pan:resume` cannot see the record.
+- **The status.** The recorded status is whatever the agent claims, against a test gate that has no baseline.
+
+A user who sets `commit_docs: false` gets cycles that report "verified" with nothing committed. A user whose project has one known failing test can never get a verified cycle. A run whose cycle reverted everything ends "completed" and cannot be resumed.
+
+| In scope | Out of scope |
+|---|---|
+| The source commit of a focus cycle, and the commit-safety deleted-file rule every commit verb shares | Rewriting `exec-lean.md`'s own use of `pan-tools commit` for source (the same pattern, recorded here as a follow-up) |
+| A single definition of "open work" for resume, `init resume` and the guard | `/pan:progress`, next-action and the HUD (Stage C already owns them) |
+| Status derived by the engine from measured tests against a per-cycle baseline | Ownership routing (D1, Stage B) |
+| `focus auto --update` recording the cycle by identity, and stop reasons for a failed cycle | Compacting the Quick Tasks table |
+
+**Success criteria**
+
+- SC-A1. Under `commit_docs: false` and under a gitignored `.planning/`, a closed exec cycle with done items has a source commit, and its summary names that commit.
+- SC-A2. An unstaged deletion anywhere in the tree no longer blocks a commit that does not include it. A staged deletion still blocks unless `--force` is given.
+- SC-A3. A project whose suite has a failure before the cycle opens can close the cycle `verified`. A new failure caps the cycle at `failed`.
+- SC-A4. A cycle whose items all failed stops the auto run `stopped` (resumable), never `completed`.
+- SC-A5. `--update` records the cycle the run opened, or nothing. It never records an older one.
+- SC-A6. `/pan:resume` and `init resume` list an open focus cycle and an open `/pan:quick` task. The guard's `workInFlight` agrees with `openWork()` on every fixture.
+- SC-A7. All five runtimes behave the same. This is engine-side; the prompts change only in portable markdown. The suite is green.
+
+**User stories**
+
+- As a user with `commit_docs: false`, I want focus fixes committed, so that a "verified" cycle means the code is in history, instead of finding uncommitted changes after a run.
+- As a user resuming a session, I want `/pan:resume` to tell me a focus cycle is still open and how to close it, instead of discovering it when `focus open` refuses.
+
+### 1. Reconnaissance (code read `2026-11-01`)
+
+**Commit verbs**
+
+- `cmdCommit` (`commands.cjs`) is the planning-docs verb. It returns `skipped` with exit 0 when `commit_docs` is false or `.planning/` is gitignored. The focus prompts (`focus-auto.md` step 4, `focus-exec.md` stage 6) use it for source.
+- `cmdGitCommit` (`git.cjs`) stages the named files and commits regardless of `commit_docs`. It writes through `output()`, so no engine function can call it and read a result.
+
+**`runCommitSafetyChecks`** is shared by both verbs.
+
+- It scans `git status --porcelain` for deletions in the whole tree, staged or not, and refuses unless `--force` is given.
+- A sensitive path pattern refuses the whole commit.
+- `tests/commit-safety.test.cjs` pins the whole-tree behaviour ("an unstaged deletion on the first status line…").
+- An unstaged deletion is never part of a commit made without `-a`. Since `git commit` here never passes `-a`, the whole-tree scan protects nothing the commit would contain.
+
+**`focus close`** moves done todos from `todos/pending/` to `todos/completed/` after the agent's commit. In a project that tracks `.planning/`, that leaves an unstaged deletion, which (by the rule above) blocks the next cycle's commit.
+
+**Test gate**
+
+- `runTests(cwd, {baseline})` already classifies failures against a baseline record (`classifyRun`: regressions vs pre-existing).
+- `test run --phase N --baseline` writes such a record for phases.
+- `focus open` stores only the pass count.
+
+**`focus auto --update`**
+
+- `unrecordedClosedCycle` takes the newest closed exec cycle of the run that no earlier update recorded.
+- `determineStopReason` returns `zero_completed` (status `completed`) whenever no item was done, including when every item failed.
+
+**Resume and the guard**
+
+- `resume-project.md` `check_incomplete_work` loops over `phases/*/*-plan.md` in bash. Quick tasks and debug sessions are absent.
+- `init resume` returns no work list.
+- The guard's `workInFlight` (`hooks/pan-guard.js`) checks phase plans named by state.md, quick plans without summaries, and debug sessions.
+- No hook requires `pan-wizard-core`: hooks are copied alone into each runtime's hook directory. The guard therefore cannot call a core function; it needs its own copy, pinned by a parity test.
+
+### 3. Design
+
+#### A1-C. The cycle's commit belongs to `focus close`
+
+1. **One engine commit function.** Extract `commitPaths(cwd, {message, files, force})` from `cmdGitCommit` into `git.cjs`. It returns `{committed, hash}` or `{committed: false, reason, error?, safety_checks}`. `cmdGitCommit` becomes a thin `output()` wrapper around it, so its CLI shape and exit codes are unchanged.
+
+2. **`focus close --files <paths…>`.** The close commits the cycle's source itself, before anything else is written:
+   - It stages the named paths, with deletions included (`git add -A -- <paths>`), and commits through `commitPaths`.
+   - The message is derived: `fix(focus-<n>): <done ids>`. With no done ids, nothing is committed.
+   - `commit_docs` does not apply. It governs planning documents, not source.
+   - `--files` without done items is refused (`nothing_done`). An empty commit is `nothing_to_commit`: not an error, `commit: null`.
+
+3. **`--commit <sha>` stays for agents that committed themselves**, for example after a `commit_blocked`. It is verified, not trusted: the sha must resolve to a commit (`git cat-file -e <sha>^{commit}`) that is an ancestor of HEAD (`git merge-base --is-ancestor`). Otherwise the close refuses with `commit_unknown`. `--files` and `--commit` together are refused.
+
+4. **A blocked commit refuses the close.**
+   - When the commit fails (`commit_blocked` for a sensitive path or a staged deletion, or `commit_failed`), the close writes nothing and returns the reason, the matched paths and the hint. The cycle stays open.
+   - The prompts give two ways out: fix the cause (rename, narrow `commit.sensitive_patterns`, or pass `--force` for an intended deletion), or commit the paths with git and close with `--commit <sha>`.
+   - This replaces the prompts' current wrong sentence ("the commit verb unstages anything matching a sensitive pattern"). The `NEVER` line in `focus-auto.md` that forbids raw git becomes "never commit outside the cycle's paths". Raw `git commit` of exactly the reported paths after a `commit_blocked` is allowed.
+
+5. **The planning record is committed with the planning rules.** After the summary is written, the close commits its own record through the docs path (`cmdCommit` logic, extracted the same way as `commitPlanning(cwd, {message, files})`). That record is:
+   - the summary;
+   - the batch file;
+   - state.md;
+   - both sides of each todo move: the new file under `completed/` and the deletion under `pending/`, staged with `git add -A`.
+
+   Under `commit_docs: false` this step is skipped as today. Because the todo deletion is staged and committed with the record, no deletion is left behind. In an auto run, `focusAutoCheckpointCommit` still commits `auto-run.json` after `--update`.
+
+6. **The deleted-file rule checks what is being committed.** `runCommitSafetyChecks` reads staged deletions (`git diff --cached --name-only --diff-filter=D`), not the whole tree.
+   - This is the right altitude. The rule exists so a commit does not delete files by accident, and an unstaged deletion is not in the commit.
+   - Every caller stages explicitly (`--files`, `--all`, or `.planning/`), so a deletion it would commit is still caught.
+   - `commit-safety.test.cjs`'s unstaged-deletion test becomes "a staged deletion is reported by its full name". A new test pins that an unstaged deletion outside the commit does not block it.
+   - This is a behaviour change to a shared rule, so it gets a CHANGELOG entry.
+
+#### A1-S. The engine derives the status
+
+1. **A per-cycle baseline record.** `focus open` (exec) runs `runTests(cwd, {kind: 'baseline'})` and writes the whole record, failing ids included, to `<dir>/<n>-test-baseline.json`. This is the record format `test run --baseline` writes for phases (`RECORD_VERSION`). The plan keeps `tests_before` for readers that only want the count.
+
+2. **The close measures against it.** `runTests(cwd, {kind: 'run', baseline})` classifies each failure:
+   - A test failing at open and still failing is pre-existing. It no longer caps the cycle.
+   - A new failure is a regression.
+
+   The close writes `<n>-test-run.json` beside the baseline. The summary gains `regressions: <count>` and `preexisting_failures: <count>`.
+
+3. **Status is computed, and the claim can only lower it.** `deriveCycleStatus({kind, items, done, failed, run, baseline})` is pure:
+
+   | Condition (exec) | Derived |
+   |---|---|
+   | No item done | `failed` |
+   | Any regression, or `tests_after < tests_before` | `failed` |
+   | No baseline or no run count (no test command, unparsed output) | at most `partial` |
+   | Every item done, run `passed`, `tests_after >= tests_before` | `verified` |
+   | Otherwise | `partial` |
+
+   - A docs cycle has no measurement, so the claim stands.
+   - `--status` becomes optional. The recorded status is the lower of the claim and the derived value (order: `failed < partial < verified`), so an agent can still downgrade, for example after a deep-review finding.
+   - The output keeps `reported_status` and replaces `capped` with `derived_from: [reasons]`.
+   - A missing `--status` takes the derived value.
+
+#### A1-U. `--update` records the cycle the run opened
+
+1. **Identity, not search.**
+   - `focus open` with a live run writes `current_cycle: <dir>` into `auto-run.json`.
+   - `--update` reads `run.current_cycle`. When it is closed, the update records that cycle and clears the field. When it is still open, the update refuses with `cycle_open` (close it first). When it is unset, the flags stand as today (`tests_verified` false).
+   - `unrecordedClosedCycle` is deleted.
+   - Older closed cycles that no update recorded (from a crash) are listed by `focus auto --status` as `unrecorded_cycles`, never folded into a later cycle.
+
+2. **`--stop` closes only `run.current_cycle`.** This fixes the unreported sibling finding that `--stop` closed whatever cycle was open, or none when no run existed.
+
+3. **Stop reasons for failed work.** `determineStopReason` gains three checks, ahead of `zero_completed`:
+   - `cycle.regressions > 0` → `regression`.
+   - `cycle.status === 'failed'` with items attempted → `cycle_failed`.
+   - `items_completed === 0 && items_failed > 0` → `all_failed`.
+
+   All three stop the run as `stopped`, which is resumable with `--continue`. `zero_completed` keeps its meaning: nothing was attempted, because the backlog is empty.
+
+#### A1-R. One definition of open work
+
+1. **`openWork(cwd)` in a new core module `open-work.cjs`.** It returns:
+
+   ```
+   { phase_plans: [{phase, plan, path}],
+     quick: [{num, dir, source: 'focus'|'quick', kind?, opened_at?, run_id?}],
+     debug: [{file}], continue_here: [{path}], any: boolean }
+   ```
+
+   - A quick task is open when it has a plan with no summary, matching the guard's rule.
+   - A focus cycle is a quick task whose plan says `source: focus`, read with `listFocusCycles`'s check.
+   - Phase plans are the plans with no summary under the phases state.md names. Using the guard's `declaredFiles` scope keeps the two answers equal.
+
+2. **`init resume` returns `open_work`.** `resume-project.md` `check_incomplete_work` reads it instead of its bash loop, which also removes a shell-specific loop from a portable prompt. It presents each item with its next step:
+   - an open focus cycle: `focus close --dir <dir> --status failed`, or continue the run with `/pan:focus-auto --continue`;
+   - an open quick task: finish it with `/pan:quick` or write its summary;
+   - a debug session: `/pan:debug`.
+
+3. **The guard keeps its own copy, pinned.** Hooks are copied alone and cannot require core, so `workInFlight` stays in `pan-guard.js`. A new test runs `openWork(dir).any` and `G.workInFlight(dir, '.planning')` over a fixture matrix and asserts they agree. The fixtures are: no work; an open phase plan; a closed phase plan; an open focus cycle; a closed one; an open `/pan:quick`; a quick directory with no plan; a debug file; a directory where `.planning/quick` is a file.
+
+### 4. Specification
+
+**Files to modify**
+
+- **Engine:**
+  - `pan-wizard-core/bin/lib/git.cjs` (`commitPaths`)
+  - `commands.cjs` (`commitPlanning`, staged-deletion rule)
+  - `focus.cjs` (close: `--files`, sha verification, planning-record commit, baseline record, `deriveCycleStatus`; `current_cycle`; `--update`, `--stop`, `--status`; `determineStopReason`)
+  - `init.cjs` (`open_work`)
+  - new `open-work.cjs`
+  - `pan-tools.cjs` usage lines
+- **Prompts:**
+  - `commands/pan/focus-auto.md`: steps 4–5 become one close with `--files`; the commit_blocked recovery; the `NEVER` line.
+  - `pan-wizard-core/workflows/focus-exec.md`: likewise.
+  - `focus-doc-audit.md`, `focus-sync.md`, `focus-drift-walking.md`: docs cycles close with `--files <docs>`.
+  - `resume-project.md`
+- **Fixtures:** `surface.json`, `module-surface.json`, `prompt-rules.json` (regenerate with `--write`), and the allowlists for each new normative line.
+- **Docs:** `CLI-REFERENCE.md` (`focus close` flags, outputs and refusals; `focus auto --status` `unrecorded_cycles`; `init resume` `open_work`; the commit verbs' deleted-file rule), `ARCHITECTURE.md` (the module table row for `open-work.cjs`), `CHANGELOG.md`. Then refresh the counts in `CLAUDE.md`.
+
+**Implementation steps.** Each step lands green:
+
+1. Move the deleted-file rule to staged deletions, and update the commit-safety tests.
+2. Extract `commitPaths` and `commitPlanning`. The CLI outputs stay byte-identical, pinned by the existing `git-commit` and `commit` tests.
+3. `focus close --files`, `--commit` verification, the planning-record commit, and the prompt changes for the commit.
+4. The baseline record, `deriveCycleStatus`, and the optional `--status`.
+5. `current_cycle`, `--update` by identity, `--stop`, the stop reasons, and `--status` `unrecorded_cycles`.
+6. `open-work.cjs`, `init resume`, `resume-project.md`, and the guard parity test.
+
+**Tests required** (in `tests/focus-integration.test.cjs` unless named)
+
+1. Under `commit_docs: false`, `focus close --files src/a.js --done P1-1` commits `src/a.js`, and the summary's commit is HEAD's short sha.
+2. Under a gitignored `.planning/`, the same: source committed, no planning commit attempted.
+3. A sensitive path in `--files` refuses the close with `commit_blocked`. Nothing is written and the cycle stays open. A git commit plus `--commit <sha>` then closes it.
+4. `--commit deadbeef` (no such commit) and `--commit` with a sha not reachable from HEAD are refused with `commit_unknown`.
+5. In a project tracking `.planning/`, a closed cycle that completed a todo leaves `git status --porcelain` clean, and the next cycle's commit succeeds.
+6. In `commit-safety.test.cjs`, an unstaged deletion outside the commit does not block it; a staged deletion blocks it unless `--force` is given.
+7. A suite with one failure at open and the same failure at close closes `verified`, with `preexisting_failures: 1`.
+8. A new failure at close records `failed` with `regressions: 1`, whatever the claim.
+9. `deriveCycleStatus` table cases, including that the claim only lowers the derived status, and that the docs claim stands.
+10. `--update` records `current_cycle` only. An older closed unrecorded cycle is not recorded and appears in `--status` `unrecorded_cycles`. With the cycle still open, `--update` refuses with `cycle_open`.
+11. A cycle with every item failed stops the run `stopped` with `all_failed`, and `--continue` resumes it.
+12. `--stop` with no run closes nothing. With a run, it closes only `current_cycle`.
+13. `init resume` `open_work` lists an open focus cycle and an open `/pan:quick` task, and not a closed one.
+14. Guard parity: `openWork(dir).any === G.workInFlight(dir, '.planning')` on every fixture in A1-R.3.
+15. Prompt tests: no focus prompt tells the agent to commit source with `pan-tools commit`; the `commit_blocked` recovery is present; `resume-project.md` reads `open_work` and has no `phases/*/*-plan.md` loop.
+
+**Runtime matrix**
+
+| Runtime | Supported | Notes |
+|---|---|---|
+| Claude | ✅ | Engine-side; the guard parity test covers its hook |
+| Codex | ✅ | Prompts reach it as skills; the guard copy is the same file |
+| Gemini | ✅ | TOML commands carry the prompt text unchanged in meaning |
+| OpenCode | ✅ | No pre-tool guard, so parity is vacuous there; `init resume` and the close behave the same |
+| GitHub Copilot | ✅ | Same guard file under `.github`; engine behaviour identical |
+
+**Risks**
+
+- **Narrowing the deleted-file rule changes a shared check.** Every PAN commit stages explicitly, so what a commit contains is still checked. The CHANGELOG states the change.
+- **A close that commits can now fail where it used to succeed.** It fails closed, writes nothing, and names the way out. The `--commit` path stays.
+- **Derived status will report `failed` or `partial` where agents used to claim `verified`.** That is the intent. Pre-existing failures no longer count against a cycle, which removes the commonest false cap.
+- **`auto-run.json` gains a field.** A run started before the change has no `current_cycle`, so its updates take the flag path, as for an unregistered cycle today.
+
+---
+
 ## Sources (read `2026-10-31`)
 
 - The code and prompts cited inline (repository at `0881cc9`).

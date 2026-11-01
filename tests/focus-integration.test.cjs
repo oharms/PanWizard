@@ -65,8 +65,8 @@ describe('focus open', () => {
     const plan = read(dir, out.plan);
     assert.match(plan, /^source: focus$/m);
     assert.match(plan, /^focus_kind: exec$/m);
-    assert.match(plan, /^items: \["P1-1", "P2-2", "phase-2", "todo-fix-login\.md"\]$/m);
-    assert.match(plan, /^files_modified: \[src\/a\.js, src\/b\.js, lib\/c\.js\]$/m);
+    assert.match(plan, /^items:\n  - "P1-1"\n  - "P2-2"\n  - "phase-2"\n  - "todo-fix-login\.md"$/m);
+    assert.match(plan, /^files_modified:\n  - "src\/a\.js"\n  - "src\/b\.js"\n  - "lib\/c\.js"$/m);
     assert.match(plan, /^tests_before: 5$/m);
     assert.equal(focus.openFocusCycle(dir).num, 4);
   });
@@ -187,8 +187,78 @@ describe('focus close', () => {
   });
 
   test('--failed splits on a comma only before the next id=', () => {
-    assert.deepEqual(focus.parseFailed(['a=x, y and z,b=w', 'c']), { a: 'x, y and z', b: 'w', c: 'no reason given' });
-    assert.deepEqual(focus.parseDone(['a,b', 'b, c']), ['a', 'b', 'c']);
+    assert.deepEqual({ ...focus.parseFailed(['a=x, y and z,b=w', 'c']) }, { a: 'x, y and z', b: 'w', c: 'no reason given' });
+    assert.deepEqual(focus.parseDone(['a,b', 'b, c', 'd e']), ['a', 'b', 'c', 'd', 'e']);
+  });
+
+  test('a flag with no value takes none; spaced ids and an unquoted reason are kept', () => {
+    const opened = json(runPanTools('focus open', dir));
+    const out = json(runPanTools(`focus close --dir ${opened.dir} --status partial --commit --done P1-1 phase-2 --failed P2-2=broke the build`, dir));
+    assert.deepEqual(out.items_done, ['P1-1', 'phase-2']);
+    assert.deepEqual(out.items_failed, ['P2-2']);
+    assert.match(read(dir, out.summary), /^commit: null$/m, '--commit did not swallow --done');
+    assert.match(read(dir, out.summary), /\| P2-2 \| failed \| broke the build \|/);
+  });
+
+  test('a todo id that climbs out of todos/ deletes nothing', () => {
+    write(dir, 'victim.md', 'keep me\n');
+    write(dir, '.planning/focus/batch-2026-10-31.json', JSON.stringify({ batch: [{ id: 'todo-../../victim.md', title: 'x' }] }));
+    const opened = json(runPanTools('focus open', dir));
+    const out = json(runPanTools(`focus close --dir ${opened.dir} --status partial --done todo-../../victim.md`, dir));
+    assert.equal(read(dir, 'victim.md'), 'keep me\n');
+    assert.equal(out.todos_completed[0].error, 'not a todo file name');
+    assert.equal(runPanTools('todo complete ../../victim.md', dir).success, false);
+    assert.equal(read(dir, 'victim.md'), 'keep me\n');
+  });
+
+  test('ids holding a comma, a quote or a prototype name round-trip through the plan and summary', () => {
+    write(dir, '.planning/focus/batch-2026-10-31.json', JSON.stringify({ batch: [{ id: 'a,b' }, { id: 'say "hi"' }, { id: 'constructor' }, { id: 'toString' }] }));
+    const opened = focus.focusOpen(dir, { measure: () => ({ passed: 5, status: 'passed', command: 'node t.cjs' }) });
+    assert.ok(opened.opened, opened.reason);
+    const out = focus.focusClose(dir, { dir: opened.dir, status: 'partial', measure: false, done: ['a,b', 'constructor'], failed: { 'say "hi"': 'no' } });
+    assert.ok(out.closed, out.reason);
+    assert.deepEqual(out.items_not_reported, ['toString'], 'toString is not mistaken for a failed id');
+    const fm = require('../pan-wizard-core/bin/lib/frontmatter.cjs').extractFrontmatter(read(dir, out.summary));
+    assert.deepEqual([fm.items_done.length, fm.items_failed.length, fm.items_not_reported.length], [2, 1, 1]);
+  });
+
+  test('closing keeps the batch file\'s mtime, so a finished batch does not become the newest', () => {
+    const abs = path.join(dir, '.planning', 'focus', 'batch-2026-10-31.json');
+    const old = new Date('2026-10-31T08:00:00Z');
+    fs.utimesSync(abs, old, old);
+    const opened = json(runPanTools('focus open', dir));
+    assert.ok(runPanTools(`focus close --dir ${opened.dir} --status failed`, dir).success);
+    assert.equal(fs.statSync(abs).mtimeMs, old.getTime());
+    assert.ok(JSON.parse(read(dir, '.planning/focus/batch-2026-10-31.json')).results);
+  });
+
+  test('a /pan:quick task whose slug looks like a focus cycle neither blocks focus open nor is closed by it', () => {
+    write(dir, '.planning/quick/3-focus-exec-2026-10-30/3-plan.md', '---\nphase: quick\n---\nA quick task.\n');
+    const r = runPanTools('focus open', dir);
+    assert.ok(r.success, r.output);
+    assert.equal(json(r).num, 4);
+    assert.equal(json(runPanTools('focus close --dir 3 --status failed', dir)).error, 'not_a_focus_cycle');
+  });
+
+  test('the summary is written last: a state.md without the fields is reported, a project without one still closes', () => {
+    const opened = json(runPanTools('focus open', dir));
+    write(dir, '.planning/state.md', '# Project State\n\n### Blockers/Concerns\n\nNone\n');
+    const out = json(runPanTools(`focus close --dir ${opened.dir} --status failed`, dir));
+    assert.equal(out.state, 'recorded');
+    assert.deepEqual(out.state_warnings, ['state.md has no "Last Activity" field', 'state.md has no "Last Activity Description" field']);
+
+    const second = json(runPanTools('focus open', dir));
+    fs.rmSync(path.join(dir, '.planning', 'state.md'));
+    const out2 = json(runPanTools(`focus close --dir ${second.dir} --status failed`, dir));
+    assert.equal(out2.closed, true);
+    assert.equal(out2.state, 'state_missing');
+  });
+
+  test('a close run again after the todo moved still reports it completed', () => {
+    const opened = json(runPanTools('focus open', dir));
+    assert.equal(require('../pan-wizard-core/bin/lib/commands.cjs').completeTodo(dir, 'fix-login.md').completed, true);
+    const out = json(runPanTools(`focus close --dir ${opened.dir} --status partial --done todo-fix-login.md`, dir));
+    assert.deepEqual(out.todos_completed, [{ file: 'fix-login.md', completed: true }]);
   });
 });
 
@@ -284,6 +354,14 @@ describe('the focus prompts register their writes and commit through the commit 
       const hit = text.match(/.*\bgit (?:add|commit)\b.*/);
       assert.equal(hit, null, `${file} runs git add or git commit: ${hit && hit[0]}`);
     }
+  });
+
+  test('--dry-run opens no cycle, and the deep review runs before the close records the cycle', () => {
+    assert.match(read(ROOT, 'pan-wizard-core/workflows/focus-exec.md'), /\*\*Open the cycle\*\* — before the first edit \(not under `--dry-run`/);
+    const auto = read(ROOT, 'commands/pan/focus-auto.md');
+    const review = auto.indexOf('With `--deep-review` on, run it now (below), before the close');
+    assert.ok(review > 0 && review < auto.indexOf('focus close --dir <dir from focus open>'));
+    assert.match(auto, /\| `block` \| STOP campaign — revert last commit, close the cycle with `--status failed`/);
   });
 
   test('every write-producing focus prompt opens a cycle before its edits and closes it after its commit', () => {

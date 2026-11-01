@@ -728,7 +728,16 @@ function cmdFocusExec(cwd, raw, ...args) {
 
 const FOCUS_CYCLE_KINDS = ['exec', 'docs'];
 const FOCUS_CYCLE_STATUSES = ['verified', 'partial', 'failed'];
-const FOCUS_CYCLE_RE = /^(\d+)-focus-(exec|docs)-/;
+const FOCUS_CYCLE_RE = /^(\d+)-focus-(exec|docs)-\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A YAML block list of JSON strings. The frontmatter parser splits an inline `[a, b]`
+ * on every comma and keeps a quoted item's escapes, so an id holding a comma or a
+ * quote came back as two ids, or as a different one. fmList reads it back.
+ */
+function fmBlockList(key, values) {
+  return values.length ? [`${key}:`, ...values.map((v) => `  - ${JSON.stringify(String(v))}`)] : [`${key}: []`];
+}
 
 /** Strip one pair of quotes and read "null" as null: frontmatter scalars come back as strings. */
 function fmScalar(v) {
@@ -744,7 +753,9 @@ function fmNumber(v) {
   return s != null && /^-?\d+$/.test(s) ? Number(s) : null;
 }
 function fmList(v) {
-  if (Array.isArray(v)) return v.map(fmScalar).filter((x) => x != null);
+  // The parser has stripped fmBlockList's outer quotes; undo the JSON escapes inside.
+  const item = (x) => { const s = String(x); try { return JSON.parse(`"${s}"`); } catch { return s; } };
+  if (Array.isArray(v)) return v.map(item).filter((x) => x !== '');
   const s = fmScalar(v);
   return s ? [s] : [];
 }
@@ -768,6 +779,8 @@ function listFocusCycles(cwd) {
     const plan = `${m[1]}-plan.md`;
     const summary = `${m[1]}-summary.md`;
     if (!files.includes(plan)) continue;
+    // A /pan:quick slug can take this shape too; only `focus open` writes `source: focus`.
+    if (fmScalar(extractFrontmatter(safeReadFile(path.join(dir, plan)) || '').source) !== 'focus') continue;
     cycles.push({
       name, num: Number(m[1]), kind: m[2], dir, rel: planningRel(QUICK_DIR, name),
       plan: path.join(dir, plan), summary: path.join(dir, summary), open: !files.includes(summary),
@@ -838,9 +851,9 @@ function focusCyclePlan(o) {
     : `Focus cycle ${o.num} (${label}): the edits of one focus-docs run.`;
   const lines = [
     '---', 'phase: quick', `plan: ${String(o.num).padStart(2, '0')}`, 'type: execute', 'wave: 1', 'depends_on: []',
-    `files_modified: [${files.join(', ')}]`, 'autonomous: true', 'tier: micro',
+    ...fmBlockList('files_modified', files), 'autonomous: true', 'tier: micro',
     'source: focus', `focus_kind: ${o.kind}`, `batch_file: ${q(o.batchFile)}`, `run_id: ${q(o.runId)}`,
-    `category: ${q(o.category)}`, `items: [${ids.map((id) => JSON.stringify(id)).join(', ')}]`,
+    `category: ${q(o.category)}`, ...fmBlockList('items', ids),
     `tests_before: ${tests && tests.passed != null ? tests.passed : 'null'}`, `test_command: ${q(tests && tests.command)}`,
     `opened_at: ${o.openedAt || new Date().toISOString()}`,
     'must_haves:', '  truths:', '    - "Every item reported done passes its tests; every other item is reverted and reported failed with a reason"',
@@ -950,9 +963,14 @@ function findFocusCycle(cwd, ref) {
   return listFocusCycles(cwd).find((c) => c.rel === want || c.name === base || String(c.num) === base) || null;
 }
 
+/** A bare file name: an item id becomes one, and `todo-../x` must not reach outside todos/. */
+function isTodoName(f) {
+  return typeof f === 'string' && f !== '' && f !== '.' && f !== '..' && !/[\\/]/.test(f);
+}
+
 /** `--failed "a=why,b=why"` (repeatable) into {id: reason}; a comma splits only before another `id=`. */
 function parseFailed(values) {
-  const out = {};
+  const out = Object.create(null);
   for (const v of [].concat(values || [])) {
     for (const part of String(v).split(/,(?=\s*[^,=\s]+=)/)) {
       const at = part.indexOf('=');
@@ -963,9 +981,9 @@ function parseFailed(values) {
   return out;
 }
 
-/** `--done a,b` (repeatable) into ids. */
+/** `--done a,b` or `--done "a, b"` (repeatable) into ids. */
 function parseDone(values) {
-  return [...new Set([].concat(values || []).flatMap((v) => String(v).split(',')).map((s) => s.trim()).filter(Boolean))];
+  return [...new Set([].concat(values || []).flatMap((v) => String(v).split(/[,\s]+/)).filter(Boolean))];
 }
 
 /** Read a cycle's plan frontmatter into the keys close and --update use. */
@@ -1004,7 +1022,8 @@ function focusClose(cwd, opts = {}) {
   if (plan.source !== 'focus') return { error: 'not_a_focus_cycle', reason: `${cycle.rel} has no \`source: focus\` plan` };
 
   const done = opts.done || [];
-  const failed = opts.failed || {};
+  // Own keys only: `id in failed` matched an item named `constructor` or `toString`.
+  const failed = Object.assign(Object.create(null), opts.failed || {});
   const both = done.filter((id) => id in failed);
   if (both.length) return { error: 'conflicting_items', reason: `reported both done and failed: ${both.join(', ')}` };
   if (plan.items.length) {
@@ -1030,12 +1049,11 @@ function focusClose(cwd, opts = {}) {
   const date = now.toISOString().slice(0, 10);
   const failedIds = Object.keys(failed);
   const q = (v) => (v == null ? 'null' : JSON.stringify(String(v)));
-  const list = (a) => `[${a.map((x) => JSON.stringify(x)).join(', ')}]`;
   const cell = (t) => String(t).replace(/\|/g, '\\|').replace(/\r?\n+/g, ' ');
   const summary = [
     '---', 'phase: quick', `plan: ${String(cycle.num).padStart(2, '0')}`, 'source: focus', `focus_kind: ${plan.kind}`,
     `status: ${status}`, `commit: ${q(opts.commit)}`, `run_id: ${q(plan.run_id)}`, `batch_file: ${q(plan.batch_file)}`,
-    `items_done: ${list(done)}`, `items_failed: ${list(failedIds)}`, `items_not_reported: ${list(notReported)}`,
+    ...fmBlockList('items_done', done), ...fmBlockList('items_failed', failedIds), ...fmBlockList('items_not_reported', notReported),
     `tests_before: ${plan.tests_before == null ? 'null' : plan.tests_before}`, `tests_after: ${testsAfter == null ? 'null' : testsAfter}`,
     `closed_at: ${now.toISOString()}`, '---', '',
     `# Focus cycle ${cycle.num} (${plan.kind}): ${status}`, '',
@@ -1050,7 +1068,10 @@ function focusClose(cwd, opts = {}) {
       : 'Tests: not run for a docs cycle.',
     `Commit: ${opts.commit || 'none'}.`, '',
   ].join('\n');
-  fs.writeFileSync(cycle.summary, summary, 'utf-8');
+
+  // The summary is written last: it is what marks the cycle closed, so a close that
+  // fails on the way leaves the cycle open and can be run again. Every step before it
+  // is safe to repeat.
 
   // The batch keeps its scan-time `status` per item; results go under their own key.
   let batchResults = null;
@@ -1063,7 +1084,11 @@ function focusClose(cwd, opts = {}) {
         for (const id of done) data.results[id] = 'done';
         for (const id of failedIds) data.results[id] = 'failed';
         if (failedIds.length) data.result_reasons = { ...(data.result_reasons || {}), ...failed };
+        // Keep the mtime: listBatchFiles orders same-day batches by it, and a rewrite
+        // made this finished batch the newest, so the next run picked it again.
+        const st = fs.statSync(abs);
         fs.writeFileSync(abs, JSON.stringify(data, null, 2), 'utf-8');
+        fs.utimesSync(abs, st.atime, st.mtime);
         batchResults = 'written';
       }
     } catch (e) {
@@ -1082,24 +1107,38 @@ function focusClose(cwd, opts = {}) {
       const isTodo = (it && it.source === 'todo') || /^todo-/.test(id);
       if (!isTodo) continue;
       const file = it && typeof it.file === 'string' && /todos\/pending\//.test(toPosix(it.file)) ? path.basename(it.file) : id.replace(/^todo-/, '');
+      if (!isTodoName(file)) { todos.push({ file, error: 'not a todo file name' }); continue; }
       const r = completeTodo(cwd, file);
-      todos.push(r.error ? { file, error: r.error } : { file, completed: true });
+      // A close run again after a failed one finds the todo already moved.
+      const moved = r.error && isTodoName(file) && fs.existsSync(planningPath(cwd, 'todos', 'completed', file));
+      todos.push(r.error && !moved ? { file, error: r.error } : { file, completed: true });
     }
   }
 
-  // state.md: one Quick Tasks row per cycle, and Last Activity.
+  // state.md: one Quick Tasks row per cycle, and Last Activity. A project with no
+  // state.md closes anyway; any other failure leaves the cycle open to retry.
   const total = plan.items.length;
   const label = plan.category || plan.kind;
   const description = total ? `focus: ${label} — ${done.length} of ${total} items` : `focus: ${label} — docs edits`;
   const sw = require('./state-write.cjs');
   const row = sw.stateQuickTask(cwd, { description, commit: opts.commit || '', status, date, directory: `[${cycle.name}](./${QUICK_DIR}/${cycle.name}/)` });
-  if (!row.error) sw.stateApply(cwd, { fields: { 'Last Activity': date, 'Last Activity Description': `Closed focus cycle ${cycle.num}: ${description}` } });
+  if (row.error && row.error !== 'state_missing') {
+    return { error: 'state_failed', reason: `state.md was not updated (${row.reason || row.error}); ${cycle.rel} stays open: run focus close again`, dir: cycle.rel };
+  }
+  let stateWarnings;
+  if (!row.error) {
+    const a = sw.stateApply(cwd, { fields: { 'Last Activity': date, 'Last Activity Description': `Closed focus cycle ${cycle.num}: ${description}` } });
+    if (a.error) stateWarnings = [a.reason || a.error];
+    else if (a.failed && a.failed.length) stateWarnings = a.failed.map((f) => `state.md has no "${f}" field`);
+  }
+
+  fs.writeFileSync(cycle.summary, summary, 'utf-8');
 
   return {
     closed: true, dir: cycle.rel, summary: toPosix(path.relative(cwd, cycle.summary)), status, reported_status: opts.status,
     capped: capReasons.length ? capReasons : undefined, items_done: done, items_failed: failedIds, items_not_reported: notReported,
     tests_before: plan.tests_before, tests_after: testsAfter, batch_results: batchResults, todos_completed: todos,
-    state: row.error ? row.error : 'recorded', state_row: row.row || null,
+    state: row.error ? row.error : 'recorded', state_row: row.row || null, state_warnings: stateWarnings,
   };
 }
 
@@ -1120,19 +1159,37 @@ function unrecordedClosedCycle(cwd, run) {
   return null;
 }
 
+/**
+ * Every value after each `flag`, up to the next `--` token: `--done a b` is two ids,
+ * and `--commit --done a` gives `--commit` no value rather than the value `--done`.
+ */
+function flagValues(args, flag) {
+  const out = [];
+  args.forEach((a, i) => {
+    if (a !== flag) return;
+    for (let j = i + 1; j < args.length && !String(args[j]).startsWith('--'); j++) out.push(args[j]);
+  });
+  return out;
+}
+
 function cmdFocusOpen(cwd, raw, ...args) {
-  const getVal = (flag) => { const i = args.indexOf(flag); return i !== -1 && i + 1 < args.length ? args[i + 1] : undefined; };
+  const getVal = (flag) => flagValues(args, flag)[0];
   const r = focusOpen(cwd, { batch: getVal('--batch'), kind: getVal('--kind'), run: getVal('--run') });
   if (r.error) return output(r, raw, r.reason, 1);
   return output(r, raw, r.dir);
 }
 
 function cmdFocusClose(cwd, raw, ...args) {
-  const all = (flag) => args.flatMap((a, i) => (a === flag && i + 1 < args.length ? [args[i + 1]] : []));
+  const all = (flag) => flagValues(args, flag);
   const getVal = (flag) => all(flag)[0];
   const r = focusClose(cwd, {
     dir: getVal('--dir'), status: getVal('--status'), commit: getVal('--commit'),
-    done: parseDone(all('--done')), failed: parseFailed(all('--failed')),
+    // An unquoted reason arrives as several words: each joins the `id=` before it.
+    done: parseDone(all('--done')),
+    failed: parseFailed(all('--failed').reduce((acc, w) => {
+      if (/^[^\s=]+=/.test(w) || !acc.length) acc.push(w); else acc[acc.length - 1] += ` ${w}`;
+      return acc;
+    }, [])),
   });
   if (r.error) return output(r, raw, r.reason, 1);
   return output(r, raw, r.status);

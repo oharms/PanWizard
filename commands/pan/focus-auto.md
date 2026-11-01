@@ -329,14 +329,14 @@ A failed item never blocks subsequent items.
 2. If fewer tests pass than `focus open` recorded in `tests_before`: REGRESSION — revert all changes for this cycle, mark all items FAILED
 3. Update the scan file: mark completed/failed items
 4. Commit the changed source files by path, with a message listing only verified items: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "fix(focus-<n>): <verified items>" --files <changed files>`. The commit verb unstages anything matching a sensitive pattern. Nothing to commit (every item failed and was reverted) is not an error: skip to the close
-5. Close the cycle with what happened, item by item:
+5. With `--deep-review` on, run it now (below), before the close: the close records the cycle. Then close the cycle with what happened, item by item:
    ```bash
    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from focus open> --status verified|partial|failed --commit <hash> --done <ids> --failed "<id>=<reason>,..."
    ```
    `verified`: every item done and the suite passes; `partial`: some items failed; `failed`: none done, or the cycle was reverted. The close runs the test command again for `tests_after` (a verified claim without a measured count is recorded as partial), writes the summary, records each item's result in the batch file, completes the todos it finished and adds the cycle to state.md's Quick Tasks table
 6. Count `points_used`
 
-**If `--deep-review` flag is active (run after commit, before recording cycle):**
+**If `--deep-review` flag is active (run after the commit in step 4, before the close in step 5):**
 
 Get changed files from this cycle's commit:
 ```bash
@@ -355,7 +355,7 @@ Run inline OWASP security check on changed files only:
 
 | Severity found | Verdict | Action |
 |---------------|---------|--------|
-| Critical pattern in changed file | `block` | STOP campaign — do NOT record cycle, revert last commit, present finding to user |
+| Critical pattern in changed file | `block` | STOP campaign — revert last commit, close the cycle with `--status failed` and every item failed with the finding as its reason, skip Step 2.4, present finding to user |
 | High pattern in changed file | `review_required` | STOP campaign — record cycle as completed, flag finding, recommend manual review |
 | Medium/low only | `ok_with_minor` | Continue — append findings to `.planning/focus/security-log-<date>.md` |
 | No patterns | `ok` | Continue silently |

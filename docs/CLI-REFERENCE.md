@@ -3285,16 +3285,16 @@ pan-tools focus close --dir <dir|name|number> --status verified|partial|failed [
 ```
 
 - Runs the test command again (exec cycles) for `tests_after`. A `verified` claim is recorded as `partial` when either count is missing or the run did not pass (`capped` says why)
-- Writes `<n>-summary.md`: status, commit, items done, failed (with reasons) and not reported, tests before and after
-- Records `results` (`{id: "done"|"failed"}`) and `result_reasons` in the batch file; each item's scan-time `status` is left alone
-- Moves each done todo item to `todos/completed/`
-- Adds a row to state.md's Quick Tasks Completed table (`focus: <category> — X of Y items`, the commit, the status, the directory) and sets Last Activity
+- Records `results` (`{id: "done"|"failed"}`) and `result_reasons` in the batch file, keeping its modification time; each item's scan-time `status` is left alone
+- Moves each done todo item to `todos/completed/` (a bare file name only: an id that names a path completes nothing)
+- Adds a row to state.md's Quick Tasks Completed table (`focus: <category> — X of Y items`, the commit, the status, the directory) and sets Last Activity. A project with no state.md closes anyway (`state: "state_missing"`); a missing Last Activity field is listed in `state_warnings`
+- Writes `<n>-summary.md` last: status, commit, items done, failed (with reasons) and not reported, tests before and after. The summary is what closes the cycle, so a close that stops before it can be run again
 
-`--done` and `--failed` repeat; in `--failed` a comma splits only before the next `id=`, so a reason may contain commas.
+`--done` and `--failed` repeat, and each takes every word up to the next `--` flag: `--done a b` and `--done a,b` are the same. In `--failed` a comma splits only before the next `id=`, so a reason may contain commas, and an unquoted reason's words stay with the `id=` before them.
 
-**JSON output:** `{ closed, dir, summary, status, reported_status, capped?, items_done, items_failed, items_not_reported, tests_before, tests_after, batch_results, todos_completed, state, state_row }`
+**JSON output:** `{ closed, dir, summary, status, reported_status, capped?, items_done, items_failed, items_not_reported, tests_before, tests_after, batch_results, todos_completed, state, state_row, state_warnings? }`
 
-**Refusals (exit 1), nothing written:** `invalid_status`, `not_a_focus_cycle` (no such cycle, or a plan without `source: focus`), `cycle_closed`, `unknown_items` (an id not in the cycle's plan), `conflicting_items` (an id both done and failed).
+**Refusals (exit 1), nothing written:** `invalid_status`, `not_a_focus_cycle` (no such cycle, or a plan without `source: focus`), `cycle_closed`, `unknown_items` (an id not in the cycle's plan), `conflicting_items` (an id both done and failed). `state_failed`: state.md could not be updated; the cycle stays open (the batch results and todo moves already made are safe to repeat).
 
 **`--raw` output:** The recorded status.
 
