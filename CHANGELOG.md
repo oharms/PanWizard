@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.40.0] - 2026-11-01
+
 Focus runs are now recorded in the same state as everything else PAN does, so `/pan:resume`, state.md and the guard see them.
 
 ### Added
