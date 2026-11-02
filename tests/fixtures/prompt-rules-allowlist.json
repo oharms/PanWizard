@@ -212,14 +212,6 @@
     "reason": "Focus Stage C (D5): the focus action is engine code. next-action puts an open focus cycle or a stale focus run ahead of phase routing (next-action.cjs nextStep, focus.cjs focusNextStep); tests/focus-integration.test.cjs (visibility describe) pins each reason and command and that a project without focus work routes as before."
   },
   {
-    "id": "agents/pan-executor:67f1a528",
-    "reason": "Durable orchestration Stage C: a journal refusal is non-fatal by design, and the engine half is enforced in code (journal step refuses commit_unknown and illegal_transition, tests/journal.test.cjs) and proven on a packed install by the tier-0 scenario resume-from-journal. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
-  },
-  {
-    "id": "pan-wizard-core/workflows/execute-plan:d77dd5aa",
-    "reason": "Durable orchestration Stage C: a journal refusal is non-fatal by design, and the engine half is enforced in code (journal step refuses commit_unknown and illegal_transition, tests/journal.test.cjs) and proven on a packed install by the tier-0 scenario resume-from-journal. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
-  },
-  {
     "id": "pan-wizard-core/workflows/exec-phase:56bf2be2",
     "reason": "Durable orchestration Stage D: the answer is checked in code (pause answer refuses pause_answer_invalid and a second answer, tests/pause.test.cjs) and next-action asks an open pause first, proven on a packed install by the tier-0 scenario pause-survives-session. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
   },
@@ -234,5 +226,13 @@
   {
     "id": "pan-wizard-core/workflows/transition:2a94d650",
     "reason": "Durable orchestration Stage D: the answer is checked in code (pause answer refuses pause_answer_invalid and a second answer, tests/pause.test.cjs) and next-action asks an open pause first, proven on a packed install by the tier-0 scenario pause-survives-session. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
+  },
+  {
+    "id": "agents/pan-executor:1731f039",
+    "reason": "Self-recording journal: a no-commit task is journaled with --file, and a refusal is non-fatal by design. The engine half is enforced in code (journal step refuses file_missing and illegal_transition, tests/journal.test.cjs); the tier-0 scenarios drive the engine, not this prompt line, so claiming the rule with one would let a --prompt-mutant run report it as decorative; a model-tier scenario is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/workflows/execute-plan:0955c0d1",
+    "reason": "Self-recording journal: a no-commit task is journaled with --file, and a refusal is non-fatal by design. The engine half is enforced in code (journal step refuses file_missing and illegal_transition, tests/journal.test.cjs); the tier-0 scenarios drive the engine, not this prompt line, so claiming the rule with one would let a --prompt-mutant run report it as decorative; a model-tier scenario is what can claim it."
   }
 ]

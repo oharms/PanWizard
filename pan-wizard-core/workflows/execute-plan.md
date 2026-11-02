@@ -267,7 +267,7 @@ git add src/types/user.ts
 | `style` | Formatting | style(08-02): format auth module |
 | `chore` | Config/deps | chore(08-02): add bcrypt dependency |
 
-**4. Format:** `{type}({phase}-{plan}): {description}` with bullet points for key changes.
+**4. Format:** `{type}({phase}-{plan}): {description}` with bullet points for key changes, and the message ends with `PAN-Step: ${PHASE}-${PLAN}/task-${TASK_NUM}` on its own line. The commit is the task's record: a crashed run resumes after it. Only the commit that finishes a task carries the line (a TDD RED commit does not); a coalesced commit carries one line per task.
 
 **5. Record hash:**
 ```bash
@@ -275,9 +275,9 @@ TASK_COMMIT=$(git rev-parse --short HEAD)
 TASK_COMMITS+=("Task ${TASK_NUM}: ${TASK_COMMIT}")
 ```
 
-**6. Journal the task** (a crashed run then resumes after it; a refusal is noted in the SUMMARY, never fatal):
+**6. A task that ends with nothing to commit** has no `PAN-Step` line: journal it with the file that proves it (a refusal is noted in the SUMMARY, never fatal):
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs journal step --plan "${PHASE}-${PLAN}" --step "task-${TASK_NUM}" --event completed --commit "$TASK_COMMIT"
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs journal step --plan "${PHASE}-${PLAN}" --step "task-${TASK_NUM}" --event completed --file "<path>"
 ```
 
 </task_commit>

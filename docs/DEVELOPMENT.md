@@ -25,7 +25,7 @@ pan-wizard/
         lock.cjs              # Advisory file locking + atomic writes for .planning/ concurrency (ADR-0030)
         store.cjs             # The write path for orchestration files: locked read-modify-write, _rev, appendLine, reserveDir
         transitions.cjs       # The state tables of focus runs, autodev runs, merge requests and phases (a new status goes in its table)
-        journal.cjs           # The step journal beside each plan; resume-point proves each step by its commit or file
+        journal.cjs           # The step journal beside each plan and PAN-Step commit trailers; resume-point proves each step by its commit or file
         pause.cjs             # Typed pauses for a person's answer (pause-schema.cjs: what an answer must be)
         config.cjs            # Config CRUD (dot-notation get/set), standards catalog
         state.cjs             # state.md operations + frontmatter sync

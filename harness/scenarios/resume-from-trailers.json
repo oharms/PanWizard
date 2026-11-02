@@ -1,0 +1,85 @@
+{
+  "id": "resume-from-trailers",
+  "tier": 0,
+  "description": "On a packed install, two of a plan's three tasks are committed the way the executor's commit protocol now does it: each message ends with `PAN-Step: <plan>/task-N`, and no journal call is made. `init resume` and `journal resume-point` must resume the plan at task 3 from the commits alone, and once the crash takes the second commit with it, at task 2.",
+  "why": "Self-recording step journal: the journal only helped when the executor remembered a second call after each commit. The commit is now the record. Unit tests prove the trailer reader against the source; this proves it against the installed engine with no journal file at all, and the control proves the resume point comes from the trailers.",
+  "seed": "journal-plan",
+  "install": [
+    "--claude"
+  ],
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 4,
+    "maxStepMinutes": 2
+  },
+  "steps": [
+    {
+      "kind": "sh",
+      "script": "trailer-tasks.cjs",
+      "args": [
+        "<ws>",
+        "01-01",
+        "2"
+      ],
+      "expect": [
+        "exit:0",
+        "json:committed=2"
+      ],
+      "why": "Tasks 1 and 2 are committed with their PAN-Step trailers; nothing is journaled."
+    },
+    {
+      "kind": "pan",
+      "argv": [
+        "init",
+        "resume"
+      ],
+      "expect": [
+        "exit:0",
+        "json:open_work.phase_plans.0.resume_at=task-3",
+        "json:open_work.phase_plans.0.completed_steps.1.step=task-2",
+        "json:open_work.phase_plans.0.completed_steps.1.source=trailer"
+      ],
+      "why": "What /pan:resume reads: a plan with no journal file resumes at task 3, its first two tasks proven by their commits."
+    },
+    {
+      "kind": "sh",
+      "script": "lose-last-commit.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:reset=true"
+      ],
+      "why": "The crash takes task 2's commit, and its trailer, with it."
+    },
+    {
+      "kind": "pan",
+      "argv": [
+        "journal",
+        "resume-point",
+        "--plan",
+        "01-01"
+      ],
+      "expect": [
+        "exit:0",
+        "json:resume_at=task-2",
+        "json:completed.0.step=task-1",
+        "json:completed.0.source=trailer"
+      ],
+      "why": "Evidence lives and dies with its commit: task 2 is redone, not skipped."
+    }
+  ],
+  "controls": [
+    {
+      "id": "trailer-reader-off",
+      "after": 0,
+      "replace": {
+        "path": ".claude/pan-wizard-core/bin/lib/journal.cjs",
+        "find": "PAN-Step:\\s*",
+        "with": "PAN-Step-disabled:\\s*"
+      },
+      "why": "With the installed engine's trailer reader disabled, the plan has no evidence and resumes at its first task, so the resume step must fail: the resume point comes from the commit trailers."
+    }
+  ]
+}

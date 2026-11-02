@@ -14,19 +14,78 @@
  * the plan restarts at its first task.
  *
  * Event changes follow the plan.step table in transitions.cjs.
+ *
+ * A task commit is evidence on its own: a `PAN-Step: <plan>/task-N` line in
+ * its message counts while the commit is reachable from HEAD and not reverted,
+ * so a plan resumes correctly even when the executor never journaled the task
+ * (or the journal file is gone). One bounded `git log` per process and HEAD
+ * finds them all (`trailerIndex`).
  */
 
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
-const { findPhaseInternal, verifyCommit, commitReachable, toPosix } = require('./core.cjs');
+const { findPhaseInternal, verifyCommit, commitReachable, execGit, toPosix } = require('./core.cjs');
 const { countPlanTasks } = require('./utils.cjs');
 const store = require('./store.cjs');
 const transitions = require('./transitions.cjs');
 
 const EVENTS = ['started', 'completed', 'failed', 'paused', 'resumed', 'forced'];
 const JOURNAL_SUFFIX = '-journal.jsonl';
+// How far back HEAD's history is read for task trailers: far beyond any open
+// plan, and bounded so a large repository costs one fast call.
+const TRAILER_WINDOW = 1000;
+// Any line of the message, any case, leading whitespace allowed (a squash
+// merge indents the bodies it folds in). One line per task a commit finishes.
+const TRAILER_RE = /^\s*PAN-Step:\s*(\S+?)\/(task-\d+)\s*$/i;
+const REVERT_RE = /This reverts commit ([0-9a-f]{7,40})/i;
+
+/**
+ * The task trailers in HEAD's newest `window` commits, newest commit per step.
+ * Commits a later reachable commit reverted (net of reverts of reverts) do not
+ * count. Memoised per directory and HEAD: one git call however many plans ask.
+ * @returns {{head: string|null, steps: Map<string, {sha, time}>, plans: Set<string>, shas: string[], reverted: string[]}}
+ */
+const trailerMemo = new Map();
+function trailerIndex(cwd, opts = {}) {
+  const window = opts.window || TRAILER_WINDOW;
+  const empty = { head: null, steps: new Map(), plans: new Set(), shas: [], reverted: [] };
+  const head = execGit(cwd, ['rev-parse', 'HEAD']);
+  if (head.exitCode !== 0 || !head.stdout) return empty;
+  const key = `${path.resolve(cwd)}\0${head.stdout}\0${window}`;
+  if (trailerMemo.has(key)) return trailerMemo.get(key);
+  const log = execGit(cwd, ['log', '-n', String(window), '--format=%H%x1f%ct%x1f%B%x1e', 'HEAD']);
+  if (log.exitCode !== 0) return empty;
+  const commits = [];
+  for (const rec of log.stdout.split('\x1e')) {
+    const [sha, ct, body = ''] = rec.replace(/^\s+/, '').split('\x1f');
+    if (/^[0-9a-f]{40}$/i.test(sha || '')) commits.push({ sha: sha.toLowerCase(), time: Number(ct) || 0, body });
+  }
+  // Newest first: a commit that is itself reverted undoes nothing.
+  const reverted = [];
+  const isReverted = (sha) => reverted.some((r) => sha.startsWith(r));
+  for (const c of commits) {
+    if (isReverted(c.sha)) continue;
+    const m = c.body.match(REVERT_RE);
+    if (m) reverted.push(m[1].toLowerCase());
+  }
+  const steps = new Map();
+  const plans = new Set();
+  for (const c of commits) {
+    if (isReverted(c.sha)) continue;
+    for (const line of c.body.split('\n')) {
+      const m = line.match(TRAILER_RE);
+      if (!m) continue;
+      const k = `${m[1]}/${m[2]}`;
+      plans.add(m[1]);
+      if (!steps.has(k)) steps.set(k, { sha: c.sha.slice(0, 7), time: c.time });
+    }
+  }
+  const idx = { head: head.stdout, steps, plans, shas: commits.map((c) => c.sha), reverted };
+  trailerMemo.set(key, idx);
+  return idx;
+}
 
 /**
  * Resolve a plan given as a path (…/03-02-plan.md) or as an id (03-02).
@@ -75,9 +134,13 @@ function latestByStep(rows) {
 }
 
 /** Does a completed step's artifact still hold? */
-function artifactHolds(cwd, artifact) {
+function artifactHolds(cwd, artifact, idx) {
   if (!artifact || typeof artifact !== 'object') return { ok: false, why: 'no artifact recorded' };
   if (artifact.commit) {
+    const sha = String(artifact.commit).toLowerCase();
+    if (idx && idx.reverted.some((r) => r.startsWith(sha) || sha.startsWith(r))) return { ok: false, why: `commit ${artifact.commit} was reverted` };
+    // In the scanned window means reachable from HEAD: no git call needed.
+    if (idx && /^[0-9a-f]{4,40}$/.test(sha) && idx.shas.some((s) => s.startsWith(sha))) return { ok: true };
     return commitReachable(cwd, artifact.commit) ? { ok: true } : { ok: false, why: `commit ${artifact.commit} is not reachable from HEAD` };
   }
   if (artifact.file) {
@@ -140,24 +203,41 @@ function journalStep(cwd, o) {
  * Where a plan resumes: the first task not proven done.
  * @returns {{plan, journal: string|null, tasks: number, completed: Array, unverified: Array, resume_at: string|null, all_done: boolean}}
  */
-function resumePoint(cwd, planArg) {
+function resumePoint(cwd, planArg, opts = {}) {
   const p = resolvePlan(cwd, planArg);
   if (p.error) return p;
   const rows = readJournal(p.journal);
   const tasks = planTasks(path.resolve(cwd, p.plan));
   const latest = latestByStep(rows);
+  const idx = trailerIndex(cwd, opts);
+  const trailerOf = (step) => idx.steps.get(`${p.id}/${step}`) || null;
   const completed = [];
   const unverified = [];
-  for (const [step, row] of latest) {
-    if (row.event !== 'completed') continue;
-    const held = artifactHolds(cwd, row.artifact);
-    if (held.ok) completed.push({ step, ...(row.artifact.commit ? { commit: row.artifact.commit } : { file: row.artifact.file }) });
-    else unverified.push({ step, why: held.why });
+  const steps = [...latest.keys()];
+  for (const t of tasks) if (!latest.has(t) && trailerOf(t)) steps.push(t);
+  if (!tasks.length) for (const k of idx.steps.keys()) if (k.startsWith(`${p.id}/`) && !steps.includes(k.slice(p.id.length + 1))) steps.push(k.slice(p.id.length + 1));
+  for (const step of steps) {
+    const row = latest.get(step);
+    const held = row && row.event === 'completed' ? artifactHolds(cwd, row.artifact, idx) : null;
+    if (held && held.ok) {
+      completed.push({ step, source: 'journal', ...(row.artifact.commit ? { commit: row.artifact.commit } : { file: row.artifact.file }) });
+      continue;
+    }
+    // A trailer counts unless the journal moved the step on after its commit
+    // (re-started, failed, paused, or a recorded override).
+    const tr = trailerOf(step);
+    const journalNewer = row && row.event !== 'completed' && (row.event === 'forced' || Date.parse(row.ts) >= (tr ? tr.time + 1 : 0) * 1000);
+    if (tr && !journalNewer) {
+      completed.push({ step, source: 'trailer', commit: tr.sha });
+      continue;
+    }
+    if (held) unverified.push({ step, why: held.why });
   }
   const done = new Set(completed.map((c) => c.step));
+  const evidence = rows.length > 0 || completed.some((c) => c.source === 'trailer');
   // The plan's own task list orders the steps; a journal step not in it (a
   // plan edited since) still blocks if it is unfinished.
-  const order = tasks.length ? tasks : [...latest.keys()];
+  const order = tasks.length ? tasks : steps;
   const firstOpen = order.find((s) => !done.has(s))
     || [...latest.keys()].find((s) => !done.has(s) && latest.get(s).event !== 'completed')
     || null;
@@ -167,26 +247,28 @@ function resumePoint(cwd, planArg) {
     tasks: tasks.length,
     completed,
     unverified,
-    resume_at: rows.length ? firstOpen : null,
-    all_done: rows.length > 0 && tasks.length > 0 && tasks.every((s) => done.has(s)),
+    resume_at: evidence ? firstOpen : null,
+    all_done: evidence && tasks.length > 0 && tasks.every((s) => done.has(s)),
   };
 }
 
 /**
  * The resume point of every unfinished plan under a phase directory that has a
- * journal. A plan with a summary is finished: its journal is history and is not
- * checked again (each step costs a git call).
+ * journal or task trailers in HEAD's history. A plan with a summary is
+ * finished: its evidence is history and is not checked again.
  */
 function journalsIn(cwd, phaseDir) {
   const out = {};
   let names = [];
   try { names = fs.readdirSync(phaseDir); } catch { return out; }
-  for (const n of names.filter((x) => x.endsWith(JOURNAL_SUFFIX))) {
-    const id = n.slice(0, -JOURNAL_SUFFIX.length);
-    const plan = path.join(phaseDir, `${id}-plan.md`);
-    if (!names.includes(`${id}-plan.md`) || names.includes(`${id}-summary.md`)) continue;
+  const idx = trailerIndex(cwd);
+  for (const n of names.filter((x) => /-plan\.md$/i.test(x))) {
+    const id = n.replace(/-plan\.md$/i, '');
+    const plan = path.join(phaseDir, n);
+    if (names.includes(`${id}-summary.md`)) continue;
+    if (!names.includes(`${id}${JOURNAL_SUFFIX}`) && !idx.plans.has(id)) continue;
     const rp = resumePoint(cwd, toPosix(path.relative(cwd, plan)));
-    if (!rp.error) out[`${id}-plan.md`] = rp;
+    if (!rp.error) out[n] = rp;
   }
   return out;
 }
@@ -219,6 +301,8 @@ module.exports = {
   journalStep,
   resumePoint,
   journalsIn,
+  trailerIndex,
+  TRAILER_WINDOW,
   planTasks,
   cmdJournal,
 };

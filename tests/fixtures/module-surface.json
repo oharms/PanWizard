@@ -676,13 +676,15 @@
   "journal.cjs": [
     "EVENTS:object",
     "JOURNAL_SUFFIX:string",
+    "TRAILER_WINDOW:number",
     "cmdJournal:function",
     "journalStep:function",
     "journalsIn:function",
     "planTasks:function",
     "readJournal:function",
     "resolvePlan:function",
-    "resumePoint:function"
+    "resumePoint:function",
+    "trailerIndex:function"
   ],
   "knowledge.cjs": [
     "CITATION_ROOTS:object",

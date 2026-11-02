@@ -453,18 +453,29 @@ function checkDurableState(cwd, now = Date.now()) {
   const J = require('./journal.cjs');
   let phases = [];
   try { phases = fs.readdirSync(planningPath(cwd, 'phases')); } catch { /* no phases */ }
+  let idx = null;
   for (const ph of phases) {
     let names;
     try { names = fs.readdirSync(planningPath(cwd, 'phases', ph)); } catch { continue; }
-    for (const j of names.filter((n) => n.endsWith(J.JOURNAL_SUFFIX))) {
-      const id = j.slice(0, -J.JOURNAL_SUFFIX.length);
-      if (names.includes(`${id}-summary.md`) || !names.includes(`${id}-plan.md`)) continue;
-      const rows = J.readJournal(planningPath(cwd, 'phases', ph, j));
+    for (const planName of names.filter((n) => n.endsWith('-plan.md'))) {
+      const id = planName.slice(0, -'-plan.md'.length);
+      if (names.includes(`${id}-summary.md`)) continue;
+      const j = `${id}${J.JOURNAL_SUFFIX}`;
+      const rows = names.includes(j) ? J.readJournal(planningPath(cwd, 'phases', ph, j)) : [];
+      // A task commit's PAN-Step trailer is evidence too: the plan's latest
+      // evidence is the newer of its last journal row and its newest trailer.
+      if (!idx) idx = J.trailerIndex(cwd);
+      let latest = null;
       const last = rows[rows.length - 1];
-      const age = last ? now - Date.parse(last.ts) : NaN;
+      if (last) latest = { at: Date.parse(last.ts), what: `recorded ${last.event} ${last.step}` };
+      for (const [k, t] of idx.steps) {
+        if (!k.startsWith(`${id}/`) || (latest && latest.at >= t.time * 1000)) continue;
+        latest = { at: t.time * 1000, what: `committed ${k.slice(id.length + 1)}` };
+      }
+      const age = latest ? now - latest.at : NaN;
       if (!(age >= JOURNAL_STALE_MS)) continue;
-      findings.push(mkFinding('journal-abandoned', 'info', planningRel('phases', ph, j),
-        `plan ${id} last recorded ${last.event} ${last.step} ${Math.round(age / 3600000)}h ago and has no summary`
+      findings.push(mkFinding('journal-abandoned', 'info', planningRel('phases', ph, rows.length ? j : planName),
+        `plan ${id} last ${latest.what} ${Math.round(age / 3600000)}h ago and has no summary`
         + `; resume it (\`pan-tools journal resume-point --plan ${id}\` names the task) or finish it`, null));
     }
   }

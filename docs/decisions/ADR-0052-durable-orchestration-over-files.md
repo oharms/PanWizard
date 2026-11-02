@@ -29,6 +29,7 @@ Adapt the ideas; do not adopt an engine. Five parts, each over files, each reach
    - Autodev claims its run (`run_busy`).
 2. **Declared state tables (`transitions.cjs`, Stage B).** Focus runs, autodev runs, merge requests, plan steps, pauses and phases each declare their states and the changes allowed. A writer checks a change inside the record's lock (`illegal_transition`, `unknown_state`, with `allowed`), and next-action stops on a phase status no table knows instead of planning again.
 3. **A step journal (`journal.cjs`, Stage C).** `<plan>-journal.jsonl` beside each plan records each task's commit. Resume starts at the first task the journal cannot prove done. A line is evidence, not an instruction: a commit no longer reachable from HEAD, or a changed file, makes PAN redo the step, never skip it.
+   - *Amended `2026-11-02` (spec `self_recording_journal_featureai.md`):* the task commit is the record. Its message ends with `PAN-Step: <plan>/task-N`, and resume reads those trailers from HEAD's history (one bounded `git log`) as evidence alongside the journal, so a skipped journal call, a deleted journal file or a rebase no longer sends a plan back to its first task. A reverted commit proves nothing. The executor journals only the tasks that end with nothing to commit.
 4. **Typed pauses (`pause.cjs`, Stage D).** A question to a person is a file that says what answer it takes, and the answer is checked in code. Next-action asks an open pause before any other work, and autodev does not run while its `human_needed` pause is open. Merge requests expire (`orchestration.approval_ttl_hours`, default 72) and record when they were approved.
 5. **Checks (Stage E).** Hygiene reports a pause open for a week and a journaled plan abandoned for a day. Tier-0 harness scenarios prove resume and pauses against a packed install, each with a control that must turn it red.
 
@@ -46,7 +47,7 @@ Fork from a checkpoint (the spec's D6) is deferred until journals have run in re
 
 **Negative / risks.**
 - Strict locks turn contention into refusals a user had not seen before. They are bounded to JSON orchestration records and to markdown under `concurrency.strict`.
-- The journal only helps when the executor records it. A model that skips the step gets today's behaviour, not a wrong one.
+- The journal only helps when the executor records it. A model that skips the step gets today's behaviour, not a wrong one. *Amended:* the record now rides on the commit message the executor writes anyway; a commit without its `PAN-Step` line, and no journal line, still restarts the plan at its first task.
 - Contracts the suite pins kept three of the spec's refusals out:
   - `phase complete` on a complete phase stays idempotent;
   - a merged branch may be staged again;

@@ -186,16 +186,29 @@ describe('focus cycles journal themselves', () => {
 describe('prompt contracts', () => {
   const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf-8');
 
-  test('the executor journals each task commit and resumes from the journal', () => {
+  test('the executor records each task in its commit, journals no-commit tasks, and resumes from the journal', () => {
     const ex = read('agents/pan-executor.md');
-    assert.match(ex, /pan-tools\.cjs journal step --plan \{phase\}-\{plan\} --step task-N --event completed --commit \$TASK_COMMIT/);
+    assert.match(ex, /\n\nPAN-Step: \{phase\}-\{plan\}\/task-N\n"\n```/, 'the commit template ends with the PAN-Step line');
+    assert.match(ex, /a TDD RED commit does not/);
+    assert.match(ex, /pan-tools\.cjs journal step --plan \{phase\}-\{plan\} --step task-N --event completed --file <path>/);
+    assert.doesNotMatch(ex, /--commit \$TASK_COMMIT/, 'a committed task is not journaled a second time');
     assert.match(ex, /journal resume-point --plan \{phase\}-\{plan\}/);
   });
 
-  test('execute-plan journals tasks and starts a journaled plan at resume_at', () => {
+  test('execute-plan records tasks in their commits and starts a plan at resume_at', () => {
     const ep = read('pan-wizard-core/workflows/execute-plan.md');
-    assert.match(ep, /journal step --plan "\$\{PHASE\}-\$\{PLAN\}" --step "task-\$\{TASK_NUM\}" --event completed/);
+    assert.match(ep, /`PAN-Step: \$\{PHASE\}-\$\{PLAN\}\/task-\$\{TASK_NUM\}`/);
+    assert.match(ep, /journal step --plan "\$\{PHASE\}-\$\{PLAN\}" --step "task-\$\{TASK_NUM\}" --event completed --file/);
+    assert.doesNotMatch(ep, /--commit "\$TASK_COMMIT"/);
     assert.match(ep, /journal resume-point --plan <phase>-<plan>/);
+  });
+
+  test('the trailer the prompts write is the trailer the engine reads', () => {
+    const line = read('agents/pan-executor.md').match(/^PAN-Step: .*$/m)[0].replace('{phase}-{plan}', '03-02').replace('task-N', 'task-1');
+    write('src/a.js', '1\n');
+    git('add', 'src/a.js');
+    git('commit', '-qm', `feat(03-02): a\n\n- b\n\n${line}\n`);
+    assert.equal(J.resumePoint(dir, '03-02').resume_at, 'task-2');
   });
 
   test('resume reads resume_at from open_work', () => {

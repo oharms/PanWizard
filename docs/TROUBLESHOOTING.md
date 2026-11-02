@@ -803,9 +803,17 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 
 **Symptom:** `/pan:resume` or `pan-tools journal resume-point` lists a task under `unverified` and resumes at it, though the task was finished.
 
-**Root cause:** The journal recorded the task done with a commit (or a file), but that commit is no longer reachable from HEAD (a reset, a rebase, a different branch checked out) or the file has changed since. PAN trusts the evidence, not the line, so it redoes the step.
+**Root cause:** The journal recorded the task done with a commit (or a file), but that commit is no longer reachable from HEAD (a reset, a different branch checked out), a later commit reverted it, or the file has changed since. PAN trusts the evidence, not the line, so it redoes the step. A rebase alone does not cause this when the task commit's message carries its `PAN-Step: <plan>/task-N` line: the rebased commit still proves the task.
 
-**Fix:** Check out the branch the work was done on and resume again. If the work was moved by a rebase, record the new commit (`pan-tools journal step --plan <id> --step task-N --event forced --note "rebased"`, then `--event completed --commit <new sha>`).
+**Fix:** Check out the branch the work was done on and resume again. If the work was moved and its commit has no `PAN-Step` line, record the new commit (`pan-tools journal step --plan <id> --step task-N --event forced --note "rebased"`, then `--event completed --commit <new sha>`).
+
+### Resume restarts a plan at its first task
+
+**Symptom:** `/pan:resume` resumes an unfinished plan at task 1, or `journal resume-point` returns `resume_at: null`, though some of its tasks were committed.
+
+**Root cause:** Nothing proves those tasks: their commits' messages lack the `PAN-Step: <plan id>/task-N` line and the journal has no line for them (commits made by hand, or by an executor from before this record). Commits deeper than HEAD's newest 1000 are not read either.
+
+**Fix:** Record each finished task with its commit: `pan-tools journal step --plan <id> --step task-N --event completed --commit <sha>`, then resume.
 
 ### Autodev refuses with `pause_open`
 

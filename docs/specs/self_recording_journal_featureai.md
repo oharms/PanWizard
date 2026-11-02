@@ -261,3 +261,17 @@ Sizing: about S–M (one engine module, one hygiene check, two prompt edits, one
 | Squash-merge services that drop bodies (hosted squash) | Low | Only matters for an unfinished plan squashed mid-way; the journal still applies |
 | Removing the per-task journal call loses `ts` for H-15 | Low | H-15 uses the trailer commit time (D4) |
 | Existing installs mid-plan when they upgrade | None | Journal lines keep working; trailers add evidence; no migration |
+
+---
+
+## As built (`2026-11-02`)
+
+Built as designed, with these choices recorded:
+
+- **Reverts apply to journal commits too.** `artifactHolds` reports a journaled commit that a later reachable commit reverted as `unverified` ("was reverted"), so both evidence sources follow one rule (SC-2).
+- **Journal commits in the window skip `merge-base`.** A journaled sha found among the scanned commits is reachable by construction; only older ones still cost a git call.
+- **`resumePoint(cwd, plan, {window})`** takes the window for tests; production always uses `TRAILER_WINDOW`.
+- **`journalsIn` walks plan files**, not journal files, visiting a plan without a summary that has a journal or any trailer in the index; output keys are the plan file names as on disk.
+- **H-15** reports a trailer-only plan on its plan file with the detail `last committed task-N`; a journaled plan keeps its journal path and `last recorded …` text.
+- **Prompts:** the executor and execute-plan commit templates end with the `PAN-Step` line; step 6 journals only no-commit tasks (`--file`). The two new normative lines are allowlisted with reasons (the tier-0 scenarios drive the engine, not the prompt).
+- **Harness:** `resume-from-trailers` passed; its `trailer-reader-off` control (a `replace` in the installed `journal.cjs`) turned it red, as did `resume-from-journal`'s `journal-deleted` control, unchanged.

@@ -463,9 +463,9 @@
    "baseline": true
   },
   {
-   "id": "agents/pan-executor:67f1a528",
+   "id": "agents/pan-executor:1731f039",
    "file": "agents/pan-executor.md",
-   "text": "A refusal here (`commit_unknown`, `illegal_transition`) is reported in the SUMMARY's issues; it never stops the plan.",
+   "text": "A refusal here (`file_missing`, `illegal_transition`) is reported in the SUMMARY's issues; it never stops the plan.",
    "baseline": false
   },
   {
@@ -2089,9 +2089,9 @@
    "baseline": true
   },
   {
-   "id": "pan-wizard-core/workflows/execute-plan:d77dd5aa",
+   "id": "pan-wizard-core/workflows/execute-plan:0955c0d1",
    "file": "pan-wizard-core/workflows/execute-plan.md",
-   "text": "**6. Journal the task** (a crashed run then resumes after it; a refusal is noted in the SUMMARY, never fatal):",
+   "text": "**6. A task that ends with nothing to commit** has no `PAN-Step` line: journal it with the file that proves it (a refusal is noted in the SUMMARY, never fatal):",
    "baseline": false
   },
   {

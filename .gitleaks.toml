@@ -47,3 +47,20 @@ regexes = [
   # NN-name.md or NN-NAME.md — the test phase-path pattern.
   '''['"][0-9]{2,3}-[A-Za-z0-9_-]+\.md['"]''',
 ]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Allowlist 3 — Harness cassette request keys.
+# harness/cassettes/*.json key each recorded model request by a 16-char hex
+# hash of the request (`"key": "a9572c6a48a0bb1e"`). A re-recorded cassette
+# gets a new hash, and some hashes cross `generic-api-key`'s entropy
+# threshold. The value is a digest of the prompt, not a credential.
+# Scoped to cassette files and to the `"key"` field's 16-hex shape only.
+# ─────────────────────────────────────────────────────────────────────────────
+[[allowlists]]
+description = "Harness cassette request-hash keys"
+paths = [
+  '''^harness/cassettes/[^/]+\.json$''',
+]
+regexes = [
+  '''"key":\s*"[0-9a-f]{16}"''',
+]

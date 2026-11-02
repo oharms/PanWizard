@@ -345,22 +345,25 @@ git add src/types/user.ts
 | `refactor` | Code cleanup, no behavior change                |
 | `chore`    | Config, tooling, dependencies                   |
 
-**4. Commit:**
+**4. Commit**, ending the message with the task's `PAN-Step` line: the commit is the task's record, so a crashed run resumes after it (`{phase}-{plan}` is the plan's id, `N` the task's position in the plan):
 ```bash
 git commit -m "{type}({phase}-{plan}): {concise task description}
 
 - {key change 1}
 - {key change 2}
+
+PAN-Step: {phase}-{plan}/task-N
 "
 ```
+Only the commit that finishes a task carries its `PAN-Step` line: a TDD RED commit does not. A coalesced commit carries one line per task it holds.
 
 **5. Record hash:** `TASK_COMMIT=$(git rev-parse --short HEAD)` — track for SUMMARY.
 
-**6. Journal the task**, so a crashed run resumes after it (`{phase}-{plan}` is the plan's id, `N` the task's position in the plan; a coalesced commit records each task it holds):
+**6. A task that ends with nothing to commit** has no `PAN-Step` line, so journal it with the file that proves it:
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs journal step --plan {phase}-{plan} --step task-N --event completed --commit $TASK_COMMIT
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs journal step --plan {phase}-{plan} --step task-N --event completed --file <path>
 ```
-A refusal here (`commit_unknown`, `illegal_transition`) is reported in the SUMMARY's issues; it never stops the plan.
+A refusal here (`file_missing`, `illegal_transition`) is reported in the SUMMARY's issues; it never stops the plan.
 
 **P-1605 (v3.7.5) — coalesce micro-task commits.** Per-task commits are the default. **Coalesce consecutive trivial tasks** into a single commit when ALL of:
 
@@ -369,7 +372,7 @@ A refusal here (`commit_unknown`, `illegal_transition`) is reported in the SUMMA
 3. Tasks share the same commit `{type}` (e.g., all `chore` config tweaks, all `docs` typo fixes).
 4. The combined commit message can describe the group in one short subject line + bullet list.
 
-If a coalesced batch would exceed 5 tasks, split it. Coalescing is **not** allowed for `feat`/`fix` (substantive behavior changes — keep per-task for blame and revert granularity) or for any task with explicit verification criteria. Record the constituent task IDs in the commit body so SUMMARY hashes still resolve to logical work units.
+If a coalesced batch would exceed 5 tasks, split it. Coalescing is **not** allowed for `feat`/`fix` (substantive behavior changes — keep per-task for blame and revert granularity) or for any task with explicit verification criteria. The constituent tasks' `PAN-Step` lines in the commit body keep SUMMARY hashes resolving to logical work units.
 
 This reduces commit-thrash on auto-mode runs (observed in panloop trace: 25 commits / 29 min on Phase 1 scaffolding, mostly micro-tweaks). Reverts and bisect granularity stay intact for substantive changes.
 </task_commit_protocol>
