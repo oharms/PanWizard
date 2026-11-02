@@ -156,35 +156,47 @@ function readChannel(cwd, channel, opts) {
  * @param {Object} [opts] - {mode: 'peek'|'consume'|'archive', limit, offset}
  * @returns {Object} Drain result
  */
+/**
+ * Consume ONLY the drained window (offset .. offset+limit). Truncating the whole
+ * file to empty silently destroyed every message outside that window (H2, ADR
+ * audit 2026-08). The entries handed back and the lines spliced out come from one
+ * read taken inside the channel's lock, which publish shares, so two consumers
+ * never receive the same message and a message nobody received is never deleted.
+ */
+function drainConsume(cwd, channel, opts) {
+  const probe = readChannel(cwd, channel, { ...opts, limit: 1 }); // validates the channel name
+  if (probe.error) return probe;
+  const file = channelFile(cwd, channel);
+  let read = null;
+  try {
+    const r = withFileLock(file, () => {
+      read = readChannel(cwd, channel, opts);
+      if (read.error || read.total === 0) return;
+      let allLines = [];
+      try { allLines = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean); } catch { allLines = []; }
+      const offset = Math.max(0, Number(opts?.offset) || 0);
+      const consumed = read.entries.length; // raw lines actually returned by readChannel
+      const remaining = allLines.slice(0, offset).concat(allLines.slice(offset + consumed));
+      writeFileAtomic(file, remaining.length ? remaining.join('\n') + '\n' : '');
+    }, { strict: true });
+    if (r.timedOut) return { channel, entries: [], total: 0, mode: 'consume', drain_error: 'lock_timeout' };
+  } catch (e) {
+    return { ...(read || { channel, entries: [], total: 0 }), mode: 'consume', drain_error: e.message };
+  }
+  if (read.error) return read;
+  return { ...read, mode: 'consume' };
+}
+
 function drain(cwd, channel, opts) {
   const mode = opts?.mode || 'peek';
+  if (mode === 'consume') return drainConsume(cwd, channel, opts);
   const read = readChannel(cwd, channel, opts);
   if (read.error) return read;
 
   if (mode === 'peek' || read.total === 0) return { ...read, mode };
 
   const file = channelFile(cwd, channel);
-  if (mode === 'consume') {
-    try {
-      // Consume ONLY the drained window (offset .. offset+limit). Truncating the
-      // whole file to empty silently destroyed every message outside that window
-      // — anything before the offset, or beyond the read limit / the 1000-message
-      // default on large channels (H2, ADR audit 2026-08). Splice out the consumed
-      // lines and write the remainder back.
-      // The read and the rewrite share the channel's lock with publish.
-      const r = withFileLock(file, () => {
-        let allLines = [];
-        try { allLines = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean); } catch { allLines = []; }
-        const offset = Math.max(0, Number(opts?.offset) || 0);
-        const consumed = read.entries.length; // raw lines actually returned by readChannel
-        const remaining = allLines.slice(0, offset).concat(allLines.slice(offset + consumed));
-        writeFileAtomic(file, remaining.length ? remaining.join('\n') + '\n' : '');
-      }, { strict: true });
-      if (r.timedOut) return { ...read, mode, drain_error: 'lock_timeout' };
-    } catch (e) {
-      return { ...read, mode, drain_error: e.message };
-    }
-  } else if (mode === 'archive') {
+  if (mode === 'archive') {
     const stamp = nowIso().replace(/[:.]/g, '-');
     const archivePath = path.join(busDir(cwd), `${channel}-${stamp}.archive.jsonl`);
     try {

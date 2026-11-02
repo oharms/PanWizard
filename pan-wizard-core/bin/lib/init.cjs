@@ -428,8 +428,15 @@ function cmdInitQuick(cwd, description, raw) {
   const now = new Date();
   const slug = description ? generateSlugInternal(description)?.substring(0, MAX_SLUG_LENGTH) : null;
 
-  // Shared with focus cycles (`focus open`), which register as quick tasks too
-  const nextNum = nextQuickNum(cwd);
+  // Shared with focus cycles (`focus open`), which register as quick tasks too.
+  // With a description, the task's directory is claimed here, under the quick
+  // directory's lock, so a focus cycle or another /pan:quick opened meanwhile
+  // never takes the same number (the workflow's `mkdir -p` then finds it made).
+  let nextNum = nextQuickNum(cwd);
+  if (slug && fs.existsSync(planningPath(cwd))) {
+    const reserved = require('./store.cjs').reserveDir(planningPath(cwd, QUICK_DIR), (n) => `${n}-${slug}`, () => nextQuickNum(cwd));
+    if (reserved.ok) nextNum = reserved.n;
+  }
 
   const quickRelDir = planningRelPath(QUICK_DIR);
 

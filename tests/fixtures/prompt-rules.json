@@ -2791,10 +2791,16 @@
    "baseline": true
   },
   {
-   "id": "pan-wizard-core/workflows/transition:b5e6303c",
+   "id": "pan-wizard-core/workflows/transition:5459e08d",
    "file": "pan-wizard-core/workflows/transition.md",
-   "text": "It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.",
-   "baseline": true
+   "text": "It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `answer_pause`, `focus`, `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/transition:2a94d650",
+   "file": "pan-wizard-core/workflows/transition.md",
+   "text": "If it returns `answer_pause`, a question asked earlier is still open (`pause` holds its `question` and the answers its `expects` allows). Stop the transition there and show the user that question; do not answer it yourself. If it returns `focus`, focus work comes first: show its `detail` and `command`. Ask the router again once either is dealt with.",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/workflows/transition:3e2d330b",

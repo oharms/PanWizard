@@ -20,7 +20,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { findPhaseInternal, verifyCommit, toPosix } = require('./core.cjs');
+const { findPhaseInternal, verifyCommit, commitReachable, toPosix } = require('./core.cjs');
+const { countPlanTasks } = require('./utils.cjs');
 const store = require('./store.cjs');
 const transitions = require('./transitions.cjs');
 
@@ -38,7 +39,9 @@ function resolvePlan(cwd, planArg) {
   if (/-plan\.md$/i.test(arg)) {
     abs = path.resolve(cwd, arg);
   } else {
-    const m = arg.match(/^(\d+(?:\.\d+)?)-(\d+)$/);
+    // The plan number is the last "-NN"; findPhaseInternal judges the phase part
+    // (multi-level decimal phases such as 02.1.1, letter phases such as 03A).
+    const m = arg.match(/^(.+)-(\d+)$/);
     if (m) {
       const info = findPhaseInternal(cwd, m[1]);
       if (info && info.found) {
@@ -75,7 +78,7 @@ function latestByStep(rows) {
 function artifactHolds(cwd, artifact) {
   if (!artifact || typeof artifact !== 'object') return { ok: false, why: 'no artifact recorded' };
   if (artifact.commit) {
-    return verifyCommit(cwd, artifact.commit) ? { ok: true } : { ok: false, why: `commit ${artifact.commit} is not reachable from HEAD` };
+    return commitReachable(cwd, artifact.commit) ? { ok: true } : { ok: false, why: `commit ${artifact.commit} is not reachable from HEAD` };
   }
   if (artifact.file) {
     let raw;
@@ -86,12 +89,11 @@ function artifactHolds(cwd, artifact) {
   return { ok: false, why: 'no commit or file recorded' };
 }
 
-/** The plan's tasks, in order: task-1 … task-N (from its <task> elements). */
+/** The plan's tasks, in order: task-1 … task-N (the count phase-plan-index gives). */
 function planTasks(planFile) {
   let text = '';
   try { text = fs.readFileSync(planFile, 'utf-8'); } catch { return []; }
-  const n = (text.match(/<task[\s>]/g) || []).length;
-  return Array.from({ length: n }, (_, i) => `task-${i + 1}`);
+  return Array.from({ length: countPlanTasks(text) }, (_, i) => `task-${i + 1}`);
 }
 
 /**
@@ -170,7 +172,11 @@ function resumePoint(cwd, planArg) {
   };
 }
 
-/** The resume point of every plan under a phase directory that has a journal. */
+/**
+ * The resume point of every unfinished plan under a phase directory that has a
+ * journal. A plan with a summary is finished: its journal is history and is not
+ * checked again (each step costs a git call).
+ */
 function journalsIn(cwd, phaseDir) {
   const out = {};
   let names = [];
@@ -178,7 +184,7 @@ function journalsIn(cwd, phaseDir) {
   for (const n of names.filter((x) => x.endsWith(JOURNAL_SUFFIX))) {
     const id = n.slice(0, -JOURNAL_SUFFIX.length);
     const plan = path.join(phaseDir, `${id}-plan.md`);
-    if (!fs.existsSync(plan)) continue;
+    if (!names.includes(`${id}-plan.md`) || names.includes(`${id}-summary.md`)) continue;
     const rp = resumePoint(cwd, toPosix(path.relative(cwd, plan)));
     if (!rp.error) out[`${id}-plan.md`] = rp;
   }

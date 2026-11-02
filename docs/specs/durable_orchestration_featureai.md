@@ -465,6 +465,54 @@ The 25 cases in 3.9 plus the two tier-0 harness scenarios. Every stage keeps the
 
 ---
 
+## Review fixes (design `2026-11-02`)
+
+A `/code-review max` of Stages A–E (fifteen verified findings, eighteen more confirmed past the cap) found that three of the stages' own mechanisms were wrong at the root, not at single call sites. The fixes below change those mechanisms; the call-site fixes follow from them.
+
+### R1. A lock is stale only when its holder is gone
+
+Stage A held locks for a whole command but kept ADR-0030's rule that any lock older than 10 s is stale. A live command longer than 10 s (`focus auto --update` running the suite, `merge confirm` running git) lost its lock to a waiter, and both wrote: a stop was undone, a merge could run twice. The re-entrant hold never noticed, because it trusted the in-process map.
+
+- **Staleness is the holder's death, not the lock's age.** The lock file holds `<pid>@<hostname>`. A waiter steals a lock older than 10 s only when that pid is not alive on this host (`process.kill(pid, 0)`; EPERM counts as alive). A lock from another host is judged by age alone, as before. A live holder is never stolen from, however long it runs; a strict waiter refuses `lock_timeout` naming the holder's pid.
+- **Re-entry checks ownership.** The re-entrant fast path re-reads the lock file; if it no longer names this process, the hold is re-acquired, never assumed.
+- **A whole-record write states what it read.** `writeAutoRun` passes the `_rev` it read as `expectRev`, so a write built from a stale read fails `stale_write` instead of overwriting, whatever the lock did.
+- **The steal branch obeys the deadline.** A failed steal waits and counts against the deadline; a strict acquire can no longer spin.
+
+### R2. Where lock files live
+
+Locks stay outside the project (Stage A's reason holds: nothing commits or lists them, nothing is written into a tree PAN does not own), but:
+
+- **Per user:** `<os temp>/pan-locks-<user>/`, created mode 0700. One user's directory never blocks another's. On POSIX an EACCES is not contention: it returns unacquirable at once, as ADR-0030 had it; Windows keeps retrying EPERM/EBUSY/EACCES (the pending-delete case).
+- **One name per file:** the lock name hashes the file's directory resolved through `fs.realpathSync.native` (when it exists) plus its basename, so a symlink, a junction, an 8.3 short name or macOS's `/var`→`/private/var` all meet at one lock. Processes with different temp directories still do not share locks; that limit is stated in the docs.
+
+### R3. Every planning-markdown read-modify-write locks itself
+
+The per-command `COMMAND_LOCKS` table could not cover writers reached through other verbs (focus close, hygiene clean, the memory auto-optimiser) and held writer locks over read-only subcommands. The read now moves inside the write's own lock, where the write happens: `withState` (every state-write verb, so focus close too), `compactState`, `compactRoadmap` (which also moves to an atomic write) and `maybeAutoOptimizeMemory` hold the file's lock from read to write. `COMMAND_LOCKS` keeps only the commands whose read and write are in separate functions, and only their writing subcommands (`state` reads, `memory` reads, `roadmap slice` without `--write` and `validate health` without `--repair` lock nothing).
+
+### R4. Pauses and checkpoints close their journal step
+
+- Answering a pause on a plan step with an answer that ends the step (`approved`, `done`, a decision's option) journals the step `completed`, with the answered pause file as its artifact; `issues` journals `resumed`, and the step stays open until a later pause is approved or the task is committed. `plan.step` gains `paused → completed` and `failed → completed`, so a cancelled or expired pause never strands its step.
+- A pause id must match `p-[a-z0-9][a-z0-9.-]*`; anything else is refused `invalid_id` before a path is built.
+- Every autodev `human_needed` stop opens its pause, from the one place every stop passes through (`finish`), and `/pan:autodev` routes `pause_open` and `run_busy`.
+
+### R5. Records PAN cannot parse
+
+A whole-record writer (a new focus run, a new focus batch, a new autodev run, a merge request) may replace an unparseable record: `updateRecord`'s `replaceUnreadable` moves it aside to `<file>.unreadable-<timestamp>` and writes the new one. A read-modify-write still refuses `unreadable`. Callers of `requestMerge` check for a refusal (the CLI exits 1 without a `next` hint; the MCP tool sets `isError`).
+
+### R6. Smaller fixes
+
+- next-action's phase table accepts the statuses PAN's own snapshot sources emit (`no_directory` → `empty`; pan://progress's `Pending`, `Planned`, `In Progress`, `Complete`).
+- `resolvePlan` lets `findPhaseInternal` judge the phase part (multi-level decimal and letter phases), and the task count is shared with `phase-plan-index` (`<task>` elements, else `## Task N`).
+- `open_work` checks the journal only of unfinished plans, and a step's commit with one `git merge-base --is-ancestor`.
+- `bus drain` reads the entries it consumes inside the lock that rewrites the channel.
+- `store` no longer creates a record's directory before taking its lock (locks no longer live beside records), so a refused call leaves nothing behind.
+- `appendLine` starts its row on a new line when the file does not end in one.
+- The cost-logger hook mirrors R1 and R2 (lock name, errno handling) and reads the transcript slice outside the lock, taking it only to re-check the cursor and write it.
+- `orchestration.*_ttl_hours` that do not parse fall back to the default (72 for approvals, none for pauses) instead of disabling expiry, and an out-of-range value is capped.
+- Tests: the strict wait is configurable (`PAN_LOCK_WAIT_MS`), planted test locks are removed after each test, and the macOS path case is covered by the identity fix.
+
+---
+
 ## Sources (read `2026-11-01`, via the deep-research run)
 
 - LangGraph persistence, interrupts, time travel: <https://docs.langchain.com/oss/javascript/langgraph/persistence>, <https://docs.langchain.com/oss/javascript/langgraph/interrupts>, <https://docs.langchain.com/oss/javascript/langgraph/use-time-travel/index.html>

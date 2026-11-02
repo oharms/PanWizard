@@ -170,6 +170,12 @@ function stateInit(cwd, o = {}) {
 }
 
 function withState(cwd, fn) {
+  // The read happens inside state.md's lock, so a concurrent writer's change is
+  // read before this one is made, whichever verb got here (focus close too).
+  return require('./store.cjs').locked(statePathOf(cwd), () => withStateLocked(cwd, fn), { cwd });
+}
+
+function withStateLocked(cwd, fn) {
   const text = readBody(cwd);
   if (text === null) return { error: 'state_missing', reason: 'state.md not found; run `pan-tools state init` first' };
   const r = fn(stripFrontmatter(text));

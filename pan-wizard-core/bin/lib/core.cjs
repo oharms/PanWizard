@@ -607,6 +607,12 @@ function verifyCommit(cwd, sha) {
   return r.exitCode === 0 ? r.stdout.trim() : null;
 }
 
+/** Is a recorded commit (a sha) still reachable from HEAD? One git call. */
+function commitReachable(cwd, sha) {
+  if (!/^[0-9a-f]{4,40}$/i.test(String(sha))) return false;
+  return execGit(cwd, ['merge-base', '--is-ancestor', String(sha), 'HEAD']).exitCode === 0;
+}
+
 // ─── Phase utilities ──────────────────────────────────────────────────────────
 
 function escapeRegex(value) {
@@ -1532,6 +1538,7 @@ module.exports = {
   isGitIgnored,
   isGitRepo,
   verifyCommit,
+  commitReachable,
   execGit,
   escapeRegex,
   escapeTableCell,

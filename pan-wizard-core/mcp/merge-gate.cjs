@@ -46,17 +46,18 @@ function validateBranch(branch) {
   return branch;
 }
 
-/** orchestration.approval_ttl_hours: hours a merge request stays approvable (default 72; 0 = never expires). */
+/**
+ * orchestration.approval_ttl_hours: hours a merge request stays approvable
+ * (default 72; 0 = never expires). A value that does not parse ("72h") falls back
+ * to 72 rather than turning expiry off, and a huge one is capped.
+ */
 function approvalTtlHours(cwd) {
-  const o = store.rawConfig(cwd).orchestration || {};
-  if (o.approval_ttl_hours === undefined) return 72;
-  const v = Number(o.approval_ttl_hours);
-  return Number.isFinite(v) && v > 0 ? v : null;
+  return require('../bin/lib/pause.cjs').ttlHours((store.rawConfig(cwd).orchestration || {}).approval_ttl_hours, 72);
 }
 
 function recordPath(cwd, branch) { return path.join(approvalsDir(cwd), `${slugify(branch)}.json`); }
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } }
-function writeJson(p, obj, opts = {}) { return store.updateRecord(p, () => obj, { transition: 'merge.request', force: opts.force }); }
+function writeJson(p, obj, opts = {}) { return store.updateRecord(p, () => obj, { transition: 'merge.request', force: opts.force, replaceUnreadable: opts.replaceUnreadable }); }
 
 /**
  * Stage a merge request. Mints a fresh per-request approval token (nonce), records the
@@ -92,7 +93,7 @@ function requestMerge(cwd, opts = {}) {
   const ttl = approvalTtlHours(cwd);
   if (ttl) record.expires_at = new Date(Date.parse(record.requested_at) + ttl * 3600000).toISOString();
   // Checked against merge.request: a pending or merged request may be staged again.
-  const w = writeJson(recordPath(cwd, branch), record, { force: opts.force });
+  const w = writeJson(recordPath(cwd, branch), record, { force: opts.force, replaceUnreadable: true });
   if (w.error) return w;
   return record;
 }
@@ -131,7 +132,6 @@ function confirmMerge(cwd, opts = {}, env = process.env, gitImpl = null) {
   // then reads `merged` and is refused already_consumed instead of merging twice.
   let p;
   try { p = recordPath(cwd, validateBranch(opts.branch)); } catch { return confirmMergeLocked(cwd, opts, env, gitImpl); }
-  fs.mkdirSync(path.dirname(p), { recursive: true });
   const held = withFileLock(p, () => confirmMergeLocked(cwd, opts, env, gitImpl), { strict: true });
   if (held.timedOut) return { merged: false, reasons: ['lock_timeout'], branch: opts.branch, id: slugify(opts.branch) };
   return held.result;

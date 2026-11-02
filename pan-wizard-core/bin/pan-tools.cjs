@@ -425,7 +425,7 @@ async function main() {
   // Durable orchestration Stage A: a command that reads planning markdown and
   // writes it back holds those files' locks for its whole run, so its read and
   // its write fall inside one hold (store.cjs COMMAND_LOCKS).
-  const lockRefusal = require('./lib/store.cjs').lockCommand(cwd, command, args[1]);
+  const lockRefusal = require('./lib/store.cjs').lockCommand(cwd, command, args[1], args);
   if (lockRefusal) output(lockRefusal, raw);
 
   switch (command) {

@@ -12,14 +12,20 @@ const os = require('os');
 const { spawn, spawnSync } = require('child_process');
 const store = require('../pan-wizard-core/bin/lib/store.cjs');
 const lock = require('../pan-wizard-core/bin/lib/lock.cjs');
-const lk = (f) => { const p = require('../pan-wizard-core/bin/lib/lock.cjs').lockPathFor(f); fs.mkdirSync(path.dirname(p), { recursive: true }); return p; };
+// A lock file planted for a test: it lives in the shared per-user lock directory,
+// not in the test's temp dir, so afterEach removes every one planted.
+const planted = [];
+const lk = (f) => { const p = require('../pan-wizard-core/bin/lib/lock.cjs').lockPathFor(f); fs.mkdirSync(path.dirname(p), { recursive: true }); planted.push(p); return p; };
 
 const LIB = path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'lib');
 const TOOLS = path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs');
 
 let tmp;
 beforeEach(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-store-')); });
-afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const p of planted.splice(0)) { try { fs.unlinkSync(p); } catch { /* released */ } }
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
 
 /** Run `node -e code` in n child processes at once; resolves with their exit codes. */
 function parallel(n, code, cwd) {
@@ -102,7 +108,9 @@ describe('updateRecord', () => {
     assert.equal(Math.round(fs.statSync(f).mtimeMs / 1000), Math.round(old.getTime() / 1000));
   });
 
-  test('a lock held by a live foreign holder refuses lock_timeout (strict) and writes nothing', () => {
+  test('a lock held by a live foreign holder refuses lock_timeout (strict) and writes nothing', (t) => {
+    process.env.PAN_LOCK_WAIT_MS = '600';
+    t.after(() => { delete process.env.PAN_LOCK_WAIT_MS; });
     const f = path.join(tmp, 'run.json');
     store.updateRecord(f, () => ({ v: 1 }));
     fs.writeFileSync(lk(f), '99999'); // fresh foreign lock
@@ -110,7 +118,7 @@ describe('updateRecord', () => {
     const r = store.updateRecord(f, (cur) => ({ ...cur, v: 2 }));
     assert.equal(r.error, 'lock_timeout');
     assert.equal(r.lock, lk(f));
-    assert.ok(Date.now() - t0 >= 4000, 'a strict caller waits about 5 s before refusing');
+    assert.ok(Date.now() - t0 >= 500, 'a strict caller waits out PAN_LOCK_WAIT_MS before refusing');
     assert.equal(store.readRecord(f).data.v, 1);
   });
 
@@ -222,8 +230,15 @@ describe('commandLockFiles', () => {
   test('names the planning files a command reads and writes, in a fixed order', () => {
     assert.deepEqual(store.commandLockFiles('phase', 'complete'), ['roadmap.md', 'requirements.md', 'state.md']);
     assert.deepEqual(store.commandLockFiles('state', 'update'), ['state.md']);
-    assert.deepEqual(store.commandLockFiles('validate', 'health'), ['config.json', 'roadmap.md', 'requirements.md', 'state.md']);
-    assert.deepEqual(store.commandLockFiles('focus', 'close'), []);
+    assert.deepEqual(store.commandLockFiles('validate', 'health', ['validate', 'health', '--repair']), ['config.json', 'roadmap.md', 'requirements.md', 'state.md']);
+    assert.deepEqual(store.commandLockFiles('focus', 'close'), [], 'focus close locks state.md itself, from read to write');
+  });
+
+  test('read-only subcommands take no lock', () => {
+    for (const sub of ['load', 'json', 'get', 'snapshot']) assert.deepEqual(store.commandLockFiles('state', sub), [], `state ${sub}`);
+    assert.deepEqual(store.commandLockFiles('validate', 'health', ['validate', 'health']), []);
+    assert.deepEqual(store.commandLockFiles('roadmap', 'slice', ['roadmap', 'slice', '3']), []);
+    assert.deepEqual(store.commandLockFiles('roadmap', 'slice', ['roadmap', 'slice', '3', '--write']), ['roadmap.md']);
   });
 
   test('under concurrency.strict a held lock refuses the command before it reads anything', () => {
@@ -232,7 +247,7 @@ describe('commandLockFiles', () => {
     fs.writeFileSync(path.join(planning, 'config.json'), JSON.stringify({ concurrency: { strict: true } }));
     fs.writeFileSync(path.join(planning, 'state.md'), '# State\n\n**Status:** Ready\n');
     fs.writeFileSync(lk(path.join(planning, 'state.md')), '99999');
-    const r = spawnSync(process.execPath, [TOOLS, 'state', 'update', 'Status', 'Done'], { cwd: tmp, encoding: 'utf-8' });
+    const r = spawnSync(process.execPath, [TOOLS, 'state', 'update', 'Status', 'Done'], { cwd: tmp, encoding: 'utf-8', env: { ...process.env, PAN_LOCK_WAIT_MS: '600' } });
     assert.equal(r.status, 1);
     assert.equal(JSON.parse(r.stdout).error, 'lock_timeout');
     assert.match(fs.readFileSync(path.join(planning, 'state.md'), 'utf-8'), /Ready/);

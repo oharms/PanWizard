@@ -37,12 +37,24 @@ const KIND_EXPECTS = Object.freeze({
 const KINDS = Object.keys(KIND_EXPECTS);
 
 const pausePath = (cwd, id) => planningPath(cwd, PAUSES_DIR, `${id}.json`);
+// The ids openPause makes. Anything else is refused before a path is built, so an
+// id can never name a file outside .planning/pauses/.
+const PAUSE_ID_RE = /^p-[a-z0-9][a-z0-9.-]{0,180}$/;
+const badId = (id) => (PAUSE_ID_RE.test(String(id || '')) ? null : { error: 'invalid_id', id: id || null, reason: 'a pause id looks like p-<kind>[-<run>][-<step>], as pause open or pause list prints it' });
+// Hours read from config: a value that does not parse falls back, and a huge one is capped.
+const MAX_TTL_HOURS = 24 * 365 * 10;
+function ttlHours(raw, fallback) {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const v = Number(raw);
+  if (!Number.isFinite(v) || v < 0) return fallback;
+  if (v === 0) return null;
+  return Math.min(v, MAX_TTL_HOURS);
+}
 const slug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
 
 /** `orchestration.pause_ttl_hours`: hours until a pause expires (null: never). */
 function pauseTtlHours(cwd) {
-  const v = Number(((store.rawConfig(cwd).orchestration) || {}).pause_ttl_hours);
-  return Number.isFinite(v) && v > 0 ? v : null;
+  return ttlHours(((store.rawConfig(cwd).orchestration) || {}).pause_ttl_hours, null);
 }
 
 /** A pause as it stands now: an open pause past expires_at reads as expired. */
@@ -52,6 +64,7 @@ function effective(p, now = Date.now()) {
 }
 
 function readPause(cwd, id) {
+  if (badId(id)) return null;
   const r = store.readRecord(pausePath(cwd, id));
   return r.data || null;
 }
@@ -119,6 +132,7 @@ function openPause(cwd, o) {
  */
 function answerPause(cwd, id, o = {}) {
   if (!id) return { error: 'id_required', reason: 'pause answer <id> --value <answer>' };
+  if (badId(id)) return badId(id);
   let value = o.value;
   if (o.json !== undefined && o.json !== null) {
     try { value = typeof o.json === 'string' ? JSON.parse(o.json) : o.json; } catch (e) { return { error: 'invalid_json', reason: e.message }; }
@@ -149,12 +163,27 @@ function answerPause(cwd, id, o = {}) {
   // The answer joins the run's journal when the pause belongs to a plan step.
   const p = w.data;
   if (p.run && p.step) {
-    try { require('./journal.cjs').journalStep(cwd, { plan: p.run, step: p.step, event: 'resumed', note: `pause ${p.id} answered: ${typeof p.answer === 'string' ? p.answer : JSON.stringify(p.answer)}`, by: 'pause' }); } catch { /* best-effort */ }
+    // The answer resumes the step; an answer that ends a checkpoint (approved,
+    // done, a decision's option) also completes it, with the answered pause file
+    // as the evidence, so resume never asks the same checkpoint again.
+    try {
+      const J = require('./journal.cjs');
+      J.journalStep(cwd, { plan: p.run, step: p.step, event: 'resumed', note: `pause ${p.id} answered: ${typeof p.answer === 'string' ? p.answer : JSON.stringify(p.answer)}`, by: 'pause' });
+      if (endsStep(p)) J.journalStep(cwd, { plan: p.run, step: p.step, event: 'completed', file: toPosix(path.relative(cwd, pausePath(cwd, p.id))), by: 'pause' });
+    } catch { /* best-effort */ }
   }
   return { answered: true, pause: p };
 }
 
+/** Does this answer finish the checkpoint step it was asked on? */
+function endsStep(p) {
+  if (p.kind === 'human-verify') return p.answer === 'approved';
+  if (p.kind === 'human-action') return p.answer === 'done';
+  return p.kind === 'decision' || p.kind === 'spec-conflict';
+}
+
 function cancelPause(cwd, id, reason) {
+  if (badId(id)) return badId(id);
   if (!reason || !String(reason).trim()) return { error: 'reason_required', reason: 'pause cancel <id> --reason "<why>"' };
   const w = store.updateRecord(pausePath(cwd, id), (cur) => {
     if (!cur) return store.abort({ error: 'pause_not_found', id });
@@ -202,4 +231,4 @@ function cmdPause(cwd, sub, opts, raw) {
   return output({ error: 'unknown_subcommand', reason: `unknown pause subcommand: ${sub}` }, raw);
 }
 
-module.exports = { KINDS, KIND_EXPECTS, PAUSES_DIR, openPause, answerPause, cancelPause, listPauses, readPause, pauseNextStep, pauseTtlHours, effective, cmdPause };
+module.exports = { PAUSE_ID_RE, ttlHours, KINDS, KIND_EXPECTS, PAUSES_DIR, openPause, answerPause, cancelPause, listPauses, readPause, pauseNextStep, pauseTtlHours, effective, cmdPause };

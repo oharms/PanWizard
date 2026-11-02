@@ -29,13 +29,14 @@ PAN's orchestration files are written so that concurrent writers no longer lose 
 
 ### Fixed
 
-- **Lost updates between concurrent PAN commands.** A command that edits `state.md`, `roadmap.md`, `requirements.md` or `config.json` now holds those files' locks for its whole run, so its read and its write fall inside one hold (`state.md` was locked only for the write, and the others not at all).
+- **Lost updates between concurrent PAN commands.** Every writer of `state.md`, `roadmap.md`, `requirements.md` and `config.json` now reads under the file's lock, held until its write (`state.md` was locked only for the write, and the others not at all); this covers focus close, `hygiene clean` and the memory optimiser as well as the `state`, `phase`, `roadmap`, `milestone` and `config` commands. Read-only subcommands take no lock. A lock is taken over only when its holder is gone, so a long command keeps it, and a focus run written from a stale read is refused `stale_write`.
 - **A `focus auto --stop` made while a cycle was opening came back as `in_progress`.** `focus open` wrote the run back from a copy read before it ran the tests; it now changes only `current_cycle` on the run as it is on disk. `--stop`, `--update`, `--continue` and a start hold the run's lock from their status check to their write.
 - **Focus batch files, autodev's `state.json` and `run.json`, and merge-gate approvals** are read and written under a lock and land atomically.
 - **Two concurrent `pan_confirm_merge` calls could both merge.** Evaluate, merge and consume now run under the approval record's lock; the second call is refused `already_consumed`.
 - **A bus message published while another process consumed the channel could be dropped.** Publish and consume share the channel's lock.
 - **Two focus cycles opened at once could take the same quick-task number.** The number is claimed under the quick directory's lock.
 - **The cost logger's transcript cursor** is read, advanced and written under a lock and lands by rename, so parallel subagent hooks never slice the same transcript lines.
+- **Records PAN cannot parse no longer dead-end a command.** A new focus run, a new focus batch, a new autodev run and a merge request move an unparseable record aside (`<file>.unreadable-<time>`) and replace it.
 - **A lock's temp-file rename that Windows refuses** (an antivirus scanner or reader holding the file) is retried before falling back to a write in place.
 
 ## [3.40.0] - 2026-11-01

@@ -64,9 +64,12 @@ const TABLES = Object.freeze({
     initial: ['started', 'completed', 'failed', 'paused'],
     edges: {
       started: ['completed', 'failed', 'paused'],
-      paused: ['resumed', 'failed'],
+      // A step may complete straight from paused or failed: its evidence (a
+      // commit, a file) is what counts, and a cancelled or expired pause must
+      // not strand the step.
+      paused: ['resumed', 'failed', 'completed'],
       resumed: ['completed', 'failed', 'paused'],
-      failed: ['started'],
+      failed: ['started', 'completed'],
       completed: [],
     },
   },

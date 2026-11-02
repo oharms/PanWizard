@@ -166,6 +166,13 @@ function planRoadmapCompaction(roadmap, opts = {}) {
  * @param {{apply?: boolean, keep?: number, now?: number}} [opts]
  */
 function compactRoadmap(cwd, opts = {}) {
+  if (!opts.apply) return compactRoadmapLocked(cwd, opts);
+  // Read, planned and written under roadmap.md's lock (hygiene clean reaches this
+  // as well as `roadmap compact`).
+  return require('./store.cjs').locked(planningPath(cwd, ROADMAP_FILE), () => compactRoadmapLocked(cwd, opts), { cwd });
+}
+
+function compactRoadmapLocked(cwd, opts = {}) {
   const roadmapPath = planningPath(cwd, ROADMAP_FILE);
   const roadmap = safeReadFile(roadmapPath);
   if (roadmap == null) return { found: false, path: planningRel(ROADMAP_FILE), archivable: [], applied: false };
@@ -201,8 +208,8 @@ function compactRoadmap(cwd, opts = {}) {
   const histEol = dominantEol(safeReadFile(historyPath) || '');
   fs.appendFileSync(historyPath, withEol(`\n\n${HISTORY_BATCH_MARK}${plan.stamp} -->\n${plan.archivedText}\n`, histEol), 'utf-8');
 
-  // 2. Only now shorten roadmap.md.
-  fs.writeFileSync(roadmapPath, plan.content, 'utf-8');
+  // 2. Only now shorten roadmap.md, atomically.
+  require('./lock.cjs').writeFileAtomic(roadmapPath, plan.content);
   return { ...result, applied: true, dry_run: false, archived: plan.archivable.map(v => v.phase) };
 }
 

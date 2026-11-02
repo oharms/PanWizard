@@ -9,12 +9,18 @@ const path = require('path');
 const os = require('os');
 const { acquireLock, releaseLock, withFileLock, writeFileAtomic } =
   require('../pan-wizard-core/bin/lib/lock.cjs');
-const lk = (f) => { const p = require('../pan-wizard-core/bin/lib/lock.cjs').lockPathFor(f); fs.mkdirSync(path.dirname(p), { recursive: true }); return p; };
+// A lock file planted for a test: it lives in the shared per-user lock directory,
+// not in the test's temp dir, so afterEach removes every one planted.
+const planted = [];
+const lk = (f) => { const p = require('../pan-wizard-core/bin/lib/lock.cjs').lockPathFor(f); fs.mkdirSync(path.dirname(p), { recursive: true }); planted.push(p); return p; };
 
 let tmpDir;
 
 beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-lock-')); });
-afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const p of planted.splice(0)) { try { fs.unlinkSync(p); } catch { /* released */ } }
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
 
 describe('acquireLock / releaseLock', () => {
   test('acquires and releases the lock file', () => {
@@ -55,7 +61,7 @@ describe('acquireLock / releaseLock', () => {
     fs.utimesSync(lockPath, old, old);
     const { acquired } = acquireLock(target, { retries: 2, intervalMs: 5, staleMs: 10_000 });
     assert.equal(acquired, true);
-    assert.equal(fs.readFileSync(lockPath, 'utf8').trim(), String(process.pid),
+    assert.equal(fs.readFileSync(lockPath, 'utf8').trim(), `${process.pid}@${require('os').hostname()}`,
       'stolen lock should now be owned by this process');
     // No stray .steal.* temp files left behind.
     const steals = fs.readdirSync(tmpDir).filter(f => f.includes('.steal.'));

@@ -385,9 +385,7 @@ function buildPlanIndex(phaseDir, planFiles, summaryFiles) {
     } catch { continue; }
 
     // Count tasks: XML <task> tags (current format) or legacy ## Task N headings
-    const xmlTaskMatches = content.match(/<task\b/gi) || [];
-    const mdTaskMatches = content.match(/##\s*Task\s*\d+/gi) || [];
-    const taskCount = xmlTaskMatches.length || mdTaskMatches.length;
+    const taskCount = require('./utils.cjs').countPlanTasks(content);
     const wave = parseInt(frontmatter.wave, 10) || 1;
 
     let autonomous = true;

@@ -63,6 +63,18 @@ const lockTimeout = (file) => ({
 });
 
 /**
+ * Run fn holding file's lock, for a writer that reads and writes the file in
+ * one place (planning markdown). Best-effort like state.md's lock always was,
+ * unless concurrency.strict: then a lock that cannot be taken returns
+ * lock_timeout and fn does not run.
+ * @returns {any} fn's result, or {error: 'lock_timeout', ...}
+ */
+function locked(file, fn, opts = {}) {
+  const run = withFileLock(file, fn, { strict: opts.strict ?? strictConfigured(opts.cwd) });
+  return run.timedOut ? lockTimeout(file) : run.result;
+}
+
+/**
  * Read a JSON record.
  * @returns {{data: object, rev: number, hash: string} | {missing: true} | {error: 'unreadable', file, reason}}
  */
@@ -87,24 +99,32 @@ function readRecord(file) {
  * @param {object} [opts] - {expectRev, strict (default true), space (default 2),
  *   keepMtime (restore the file's mtime after the write, for files ordered by it),
  *   transition (a transitions.cjs entity: a status change its table does not allow
- *   is refused illegal_transition, inside the lock), force (skip that check)}
+ *   is refused illegal_transition, inside the lock), force (skip that check),
+ *   replaceUnreadable (for writers whose mutate ignores the current record: an
+ *   unparseable file is moved aside to <file>.unreadable-<time> and replaced)}
  * @returns {{ok: true, data, rev, written: boolean} | {error, ...}}
  */
 function updateRecord(file, mutate, opts = {}) {
   const strict = opts.strict !== false;
-  // The lock file lives beside the record, so its directory must exist first.
-  fs.mkdirSync(path.dirname(file), { recursive: true });
   let outcome;
   const run = withFileLock(file, () => {
     const cur = readRecord(file);
-    if (cur.error) { outcome = cur; return; }
+    if (cur.error) {
+      if (!opts.replaceUnreadable) { outcome = cur; return; }
+      // A whole-record writer (its mutate ignores the current record) replaces
+      // what it cannot read, keeping the old bytes beside it for a person.
+      const aside = `${file}.unreadable-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+      try { fs.renameSync(file, aside); } catch (e) { outcome = { ...cur, reason: `${cur.reason}; could not move it aside: ${e.message}` }; return; }
+      cur.missing = true;
+      cur.moved_aside = aside;
+    }
     const rev = cur.missing ? 0 : cur.rev;
     if (opts.expectRev !== undefined && opts.expectRev !== null && Number(opts.expectRev) !== rev) {
       outcome = { error: 'stale_write', file, expected: Number(opts.expectRev), actual: rev };
       return;
     }
     const current = cur.missing ? null : cur.data;
-    const next = mutate(current ? structuredClone(current) : null);
+    const next = mutate(current ? JSON.parse(JSON.stringify(current)) : null);
     if (next && next[ABORT]) { outcome = next[ABORT]; return; }
     if (next === null || next === undefined) { outcome = { ok: true, data: current, rev, written: false }; return; }
     if (opts.transition && !opts.force) {
@@ -117,7 +137,7 @@ function updateRecord(file, mutate, opts = {}) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     writeFileAtomic(file, JSON.stringify(out, null, opts.space ?? 2) + '\n');
     if (st) fs.utimesSync(file, st.atime, st.mtime);
-    outcome = { ok: true, data: out, rev: rev + 1, written: true };
+    outcome = { ok: true, data: out, rev: rev + 1, written: true, ...(cur.moved_aside ? { moved_aside: cur.moved_aside } : {}) };
   }, { strict });
   if (run.timedOut) return lockTimeout(file);
   return outcome;
@@ -134,8 +154,6 @@ function updateRecord(file, mutate, opts = {}) {
  */
 function updateText(file, mutate, opts = {}) {
   const strict = opts.strict ?? strictConfigured(opts.cwd);
-  // The lock file lives beside the record, so its directory must exist first.
-  fs.mkdirSync(path.dirname(file), { recursive: true });
   let outcome;
   const run = withFileLock(file, () => {
     let raw = null;
@@ -156,20 +174,19 @@ function updateText(file, mutate, opts = {}) {
   return outcome;
 }
 
-/** The last parseable line's seq (0 when the file is missing or has none). */
+/** The highest seq of any parseable line (0 when the file is missing or has none). */
 function lastSeq(file) {
   let raw;
   try { raw = fs.readFileSync(file, 'utf-8'); } catch { return 0; }
-  const lines = raw.split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i].trim();
-    if (!line) continue;
+  let max = 0;
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
     try {
       const row = JSON.parse(line);
-      if (Number.isInteger(row.seq)) return row.seq;
-    } catch { /* a torn last line — keep looking */ }
+      if (Number.isInteger(row.seq) && row.seq > max) max = row.seq;
+    } catch { /* a torn line — skipped */ }
   }
-  return 0;
+  return max;
 }
 
 /**
@@ -182,15 +199,25 @@ function lastSeq(file) {
 function appendLine(file, row, opts = {}) {
   const strict = opts.strict !== false;
   const seqField = opts.seqField === undefined ? 'seq' : opts.seqField;
-  // The lock file lives beside the record, so its directory must exist first.
-  fs.mkdirSync(path.dirname(file), { recursive: true });
   let outcome;
   const run = withFileLock(file, () => {
     const seq = seqField ? lastSeq(file) + 1 : null;
     const body = typeof row === 'function' ? row(seq) : row;
     const line = seqField ? { [seqField]: seq, ...body } : body;
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.appendFileSync(file, JSON.stringify(line) + '\n', 'utf-8');
+    // A file whose last line has no newline (a torn append, an editor that trims
+    // it) would otherwise swallow this row into that line, losing both.
+    let lead = '';
+    try {
+      const size = fs.statSync(file).size;
+      if (size > 0) {
+        const fd = fs.openSync(file, 'r');
+        const b = Buffer.alloc(1);
+        try { fs.readSync(fd, b, 0, 1, size - 1); } finally { fs.closeSync(fd); }
+        if (b[0] !== 0x0a) lead = '\n';
+      }
+    } catch { /* new file */ }
+    fs.appendFileSync(file, lead + JSON.stringify(line) + '\n', 'utf-8');
     outcome = { ok: true, seq, row: line };
   }, { strict });
   if (run.timedOut) return lockTimeout(file);
@@ -231,37 +258,41 @@ function reserveDir(parent, nameOf, start, tries = 50) {
   return outcome;
 }
 
-// The planning markdown each dispatcher command reads and then writes. The
-// whole command holds these locks (released by lock.cjs's exit handler, since
-// output() ends the process), so its read and its write fall inside one hold.
-// Order is fixed — config, roadmap, requirements, state — so two commands
-// never wait on each other in opposite orders.
+// The planning markdown a dispatcher command reads in one function and writes
+// in another, so the write's own lock cannot cover the read. The whole command
+// holds these locks (released by lock.cjs's exit handler, since output() ends
+// the process). Writers that read and write in one place (withState,
+// compactState, compactRoadmap, the memory optimiser) lock themselves and need
+// no entry; read-only subcommands take no lock. Order is fixed — config,
+// roadmap, requirements, state — so two commands never wait on each other in
+// opposite orders. An entry is files, or {files, when(args)}.
 const ROADMAP = 'roadmap.md';
 const REQUIREMENTS = 'requirements.md';
 const STATE = 'state.md';
 const CONFIG = 'config.json';
+const STATE_WRITERS = ['update', 'patch', 'advance-plan', 'record-metric', 'update-progress', 'add-decision', 'add-blocker', 'resolve-blocker', 'record-session'];
 const COMMAND_LOCKS = {
-  'state': [STATE],
+  ...Object.fromEntries(STATE_WRITERS.map((sub) => [`state ${sub}`, [STATE]])),
   'phase add': [ROADMAP, STATE],
   'phase insert': [ROADMAP, STATE],
   'phase remove': [ROADMAP, REQUIREMENTS, STATE],
   'phase complete': [ROADMAP, REQUIREMENTS, STATE],
   'roadmap update-plan-progress': [ROADMAP],
-  'roadmap slice': [ROADMAP],
-  'roadmap compact': [ROADMAP, STATE],
+  'roadmap slice': { files: [ROADMAP], when: (args) => args.includes('--write') },
   'requirements mark-complete': [REQUIREMENTS],
   'milestone complete': [ROADMAP, REQUIREMENTS, STATE],
-  'validate health': [CONFIG, ROADMAP, REQUIREMENTS, STATE],
+  'validate health': { files: [CONFIG, ROADMAP, REQUIREMENTS, STATE], when: (args) => args.includes('--repair') },
   'config-set': [CONFIG],
   'config-ensure-section': [CONFIG],
-  'memory': [STATE],
   'design handoff': [ROADMAP],
 };
 const ORDER = [CONFIG, ROADMAP, REQUIREMENTS, STATE];
 
 /** The planning files a command locks ([] for most commands). */
-function commandLockFiles(verb, sub) {
-  const files = COMMAND_LOCKS[`${verb} ${sub}`] || COMMAND_LOCKS[verb] || [];
+function commandLockFiles(verb, sub, args = []) {
+  const entry = COMMAND_LOCKS[`${verb} ${sub}`] || COMMAND_LOCKS[verb];
+  if (!entry) return [];
+  const files = Array.isArray(entry) ? entry : (entry.when(args) ? entry.files : []);
   return ORDER.filter((f) => files.includes(f));
 }
 
@@ -271,8 +302,8 @@ function commandLockFiles(verb, sub) {
  * taken refuses the command with lock_timeout before it reads anything.
  * @returns {null | {error: 'lock_timeout', ...}}
  */
-function lockCommand(cwd, verb, sub) {
-  const files = commandLockFiles(verb, sub);
+function lockCommand(cwd, verb, sub, args = []) {
+  const files = commandLockFiles(verb, sub, args);
   if (files.length === 0) return null;
   const strict = strictConfigured(cwd);
   for (const name of files) {
@@ -286,6 +317,7 @@ function lockCommand(cwd, verb, sub) {
 
 module.exports = {
   abort,
+  locked,
   readRecord,
   updateRecord,
   updateText,

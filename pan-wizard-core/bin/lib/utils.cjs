@@ -210,6 +210,16 @@ function detectPlanningModel(planningDir) {
  * @param {string} cwd - Project root
  * @returns {number}
  */
+/**
+ * A plan's task count: its XML <task> elements (the current format), else its
+ * legacy "## Task N" headings. phase-plan-index and the step journal share it, so
+ * task-N in a journal is the N-th task the executor was given.
+ */
+function countPlanTasks(content) {
+  const text = String(content || '');
+  return (text.match(/<task\b/gi) || []).length || (text.match(/##\s*Task\s*\d+/gi) || []).length;
+}
+
 function nextQuickNum(cwd) {
   const { QUICK_DIR } = require('./constants.cjs');
   try {
@@ -224,6 +234,7 @@ function nextQuickNum(cwd) {
 }
 
 module.exports = {
+  countPlanTasks,
   readJsonFile,
   removeQuotes,
   planningPath,

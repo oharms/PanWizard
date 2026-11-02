@@ -125,16 +125,30 @@ describe('cost cursor', () => {
     assert.equal(num(hook, /CURSOR_LOCK_STALE_MS = ([\d_]+)/), num(lockSrc, /DEFAULT_STALE_MS = ([\d_]+)/));
     assert.match(hook, /flag: 'wx'/);
     assert.match(hook, /renameSync\(tmp, cursorFilePath\(cwd\)\)/, 'the cursor lands by rename');
-    assert.match(hook, /'pan-locks'/, 'the same lock directory');
-    assert.match(lockSrc, /LOCK_DIR = 'pan-locks'/);
-    assert.match(hook, /\.slice\(0, 20\)/);
-    assert.match(lockSrc, /\.slice\(0, 20\)/);
   });
 
-  test('the cursor read and write sit inside one hold of the lock', () => {
+  test('the hook and lock.cjs name the same lock file for the cursor, through any spelling of the project', () => {
+    const H = require(path.join(ROOT, 'hooks', 'pan-cost-logger.js'));
+    fs.mkdirSync(path.join(dir, '.planning', 'metrics'), { recursive: true });
+    const cursor = path.join(dir, '.planning', 'metrics', H.CURSOR_FILE);
+    assert.equal(H.cursorLockPath(dir), lock.lockPathFor(cursor));
+    const real = fs.realpathSync.native(dir);
+    assert.equal(H.cursorLockPath(real), lock.lockPathFor(cursor), 'the real path meets the same lock');
+  });
+
+  test('the hook treats Windows pending-delete errors as contention, as lock.cjs does', () => {
+    assert.match(hook, /LOCK_CONTENTION = process\.platform === 'win32' \? \['EPERM', 'EACCES', 'EBUSY'\] : \[\]/);
+    assert.match(lockSrc, /CONTENTION = process\.platform === 'win32' \? \['EPERM', 'EACCES', 'EBUSY'\] : \[\]/);
+  });
+
+  test('the cursor read and write sit inside one hold of the lock, the slice read before it', () => {
+    const peek = hook.indexOf('let since = readCursor(cwd)[keyPath] || 0;');
     const start = hook.indexOf('const cursorLock = acquireCursorLock(cwd);');
     const read = hook.indexOf('const cursor = readCursor(cwd);');
-    const release = hook.indexOf('releaseCursorLock(cursorLock);');
+    const release = hook.indexOf('releaseCursorLock(cursorLock);', read);
+    assert.ok(peek > 0 && peek < start, 'the transcript slice is read before the lock');
+    assert.match(hook.slice(read, release), /if \(\(cursor\[keyPath\] \|\| 0\) !== since\) \{/, 'a moved cursor is re-sliced under the lock');
+    assert.match(hook.slice(release - 40, release), /finally \{/, 'released in finally');
     assert.ok(start > 0 && start < read && read < release, 'acquire, then read, then release');
     const writes = [...hook.slice(read, release).matchAll(/writeCursor\(cwd, cursor\)/g)];
     assert.equal(writes.length, 2, 'both cursor writes are inside the hold');
@@ -187,15 +201,15 @@ describe('guard: the writers stay on the store', () => {
     });
   }
 
-  test('bus publish and consume take the channel lock', () => {
+  test('bus publish takes the channel lock, and consume reads its entries inside it', () => {
     const text = src('pan-wizard-core/bin/lib/bus.cjs');
     assert.match(text, /withFileLock\(file, \(\) => fs\.appendFileSync\(file, line/);
-    assert.match(text, /withFileLock\(file, \(\) => \{\n\s+let allLines/);
+    assert.match(text, /withFileLock\(file, \(\) => \{\n\s+read = readChannel\(cwd, channel, opts\);/);
   });
 
   test('every command that edits planning markdown takes its locks in the dispatcher', () => {
     const tools = src('pan-wizard-core/bin/pan-tools.cjs');
-    const i = tools.indexOf("lockCommand(cwd, command, args[1])");
+    const i = tools.indexOf("lockCommand(cwd, command, args[1], args)");
     assert.ok(i > 0 && i < tools.indexOf('switch (command) {'), 'locks are taken before dispatch');
   });
 

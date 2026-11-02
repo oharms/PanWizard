@@ -400,7 +400,7 @@ function cmdFocusPlan(cwd, raw, ...args) {
   const batchPath = path.join(focusDir, `batch-${date}.json`);
   const batchData = { date, mode, budget, allocated, batch, remaining: remaining.length };
   try {
-    const w = store.updateRecord(batchPath, () => batchData);
+    const w = store.updateRecord(batchPath, () => batchData, { replaceUnreadable: true });
     if (w.error) throw new Error(w.reason || w.error);
   } catch (err) {
     output({ error: `Failed to write batch file: ${err.message}` }, raw);
@@ -1522,7 +1522,13 @@ function writeAutoRun(cwd, data) {
   try {
     // A status change the focus.run table does not allow is refused inside the
     // run's lock (transitions.cjs); the refusal is returned for the caller to report.
-    const w = store.updateRecord(planningPath(cwd, FOCUS_DIR, AUTO_RUN_FILE), () => data, { transition: 'focus.run' });
+    // A run read from disk carries its _rev: the write then fails stale_write if
+    // anything changed it since (a --stop from another session), instead of
+    // writing over it. A new run (no _rev) may replace a record that does not parse.
+    const read = Number.isInteger(data && data._rev);
+    const w = store.updateRecord(planningPath(cwd, FOCUS_DIR, AUTO_RUN_FILE), () => data, {
+      transition: 'focus.run', ...(read ? { expectRev: data._rev } : { replaceUnreadable: true }),
+    });
     return w.ok ? true : w;
   } catch {
     return false;

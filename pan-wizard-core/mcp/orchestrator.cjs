@@ -96,8 +96,20 @@ const COMPLETE_STATUS = 'complete';
  * case here is what makes the documented assembly path work at all.
  */
 function normalizeStatus(status) {
-  return typeof status === 'string' ? status.trim().toLowerCase() : '';
+  const s = typeof status === 'string' ? status.trim().toLowerCase() : '';
+  return STATUS_ALIASES[s] || s;
 }
+
+/**
+ * The statuses PAN's own snapshot sources emit that the phase table names
+ * differently: pan_roadmap_analyze's `no_directory` (a roadmap phase not yet
+ * started) and pan://progress's Title Case statuses (folded to lower case first).
+ */
+const STATUS_ALIASES = {
+  no_directory: 'empty',
+  pending: 'empty',
+  'in progress': 'partial',
+};
 
 /** True when a phase still needs work of any kind. */
 function isPhaseOpen(phase) {

@@ -311,6 +311,17 @@ function openHumanPause(cwd, runId, stop) {
   try { require('./pause.cjs').openPause(cwd, { kind: 'autodev-human', run: runId, question: stop.detail || 'autodev needs a person' }); } catch { /* best-effort */ }
 }
 
+/** A run whose owner process is alive, if any. */
+function liveDriver(cwd) {
+  let ids = [];
+  try { ids = fs.readdirSync(autodevDir(cwd)).filter((n) => n.startsWith('run-')); } catch { return null; }
+  for (const id of ids) {
+    const o = (readJson(path.join(autodevDir(cwd), id, 'run.json'), {}) || {}).owner;
+    if (o && o.pid !== process.pid && pidAlive(o.pid)) return { id, pid: o.pid };
+  }
+  return null;
+}
+
 const pidAlive = (pid) => {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
@@ -537,6 +548,9 @@ function runAutodevLoop(cwd, opts, claimed) {
   // A fresh run never starts beside a focus run or an open focus cycle: both would
   // edit the tree, and each would read the other's edits as its own (spec D5).
   if (!runId) {
+    // A fresh run never starts beside a run another live process is driving.
+    const driving = liveDriver(cwd);
+    if (driving) return { error: 'run_busy', reason: `autodev run ${driving.id} is being driven by process ${driving.pid}; let it stop, or resume it instead`, run: driving.id, owner_pid: driving.pid };
     const fa = require('./focus.cjs').focusActivity(cwd);
     if (fa.active) {
       const step = require('./focus.cjs').focusNextStep(fa);
@@ -549,7 +563,9 @@ function runAutodevLoop(cwd, opts, claimed) {
   let run = readJson(runFile, null);
   if (!run) {
     run = { id: runId, started: new Date().toISOString(), host: opts.host, limits: { maxUsd: opts.maxUsd ?? null, maxUsdDay: opts.maxUsdDay ?? null, maxTurns: opts.maxTurns ?? null } };
-    run = store.updateRecord(runFile, () => run).data;
+    const created = store.updateRecord(runFile, () => run, { replaceUnreadable: true });
+    if (created.error) return created;
+    run = created.data;
   }
   const busy = claimRun(runFile);
   if (busy) return busy;
@@ -678,6 +694,10 @@ function runAutodevLoop(cwd, opts, claimed) {
   function finish() {
     const rows = readRows(ledger);
     const stopped = rows.filter((r) => r.status === 'stopped').pop();
+    // Every human_needed stop, whichever path it took, opens the pause no run
+    // passes until a person answers it (openHumanPause ignores other reasons and
+    // returns the open pause when one exists).
+    openHumanPause(cwd, runId, stopped);
     return { run: runId, ledger: path.relative(cwd, ledger).replace(/\\/g, '/'), host, stop: { reason: stopped.reason, detail: stopped.detail }, units: units.map((x) => ({ action: x.action, phase: x.phase })), spent_usd: rows.filter((r) => r.status === 'finished').reduce((n, r) => n + (Number(r.cost_usd) || 0), 0) };
   }
 }

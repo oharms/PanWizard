@@ -787,9 +787,9 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 
 **Symptom:** A `pan-tools` command exits 1 with `error: "lock_timeout"`, a `file` and a `lock` path.
 
-**Root cause:** Another PAN process held the file's lock for longer than the wait (about 5 s for focus runs, batch files, autodev run records and merge-gate approvals; about 1 s for planning markdown, and only under `concurrency.strict: true` does that become a refusal). A lock left by a process that crashed is taken over once it is 10 s old.
+**Root cause:** Another PAN process held the file's lock for longer than the wait (about 7 s for focus runs, batch files, autodev run records, pauses and merge-gate approvals; about 1 s for planning markdown, and only under `concurrency.strict: true` does that become a refusal). A live process keeps its lock however long its command runs; a lock left by a process that has gone is taken over once it is 10 s old.
 
-**Fix:** Retry when the other command finishes. If no PAN process is running, the lock file the refusal names (under `pan-locks/` in the system temp directory) is left over from one that was killed: delete it, or wait 10 s and retry.
+**Fix:** Retry when the other command finishes. The lock file the refusal names (under `pan-locks-<user>/` in the system temp directory) holds the holder's `<pid>@<host>`: if that process is still running, let it finish; if it is gone, the next attempt after 10 s takes the lock over. Two processes that see different temp directories (a sandbox that sets its own `TMPDIR`) do not share locks.
 
 ### A command refuses with `illegal_transition` or `unknown_state`
 
@@ -827,7 +827,7 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 
 **Symptom:** Two Claude Code sessions running PAN on the same project produce conflicting commits, corrupted state.md, or duplicated work.
 
-**Root cause:** PAN's own writes no longer lose each other: a command that edits `state.md`, `roadmap.md`, `requirements.md` or `config.json` holds those files' locks for its whole run, and focus runs, batch files, autodev run records and merge-gate approvals are read and written under a lock and land atomically (ADR-0030, `store.cjs`). A second `autodev run` on a run another live process is driving is refused `run_busy`. PAN does not coordinate whole sessions, though: two sessions can still commit to the same branch, edit the same source files, or duplicate work — keep to one session per project.
+**Root cause:** PAN's own writes no longer lose each other: a command that edits `state.md`, `roadmap.md`, `requirements.md` or `config.json` reads and writes them under their lock, and focus runs, batch files, autodev run records, pauses and merge-gate approvals are read and written under a lock and land atomically (ADR-0030, ADR-0052, `store.cjs`). An `autodev run` beside a run another live process is driving is refused `run_busy`. PAN does not coordinate whole sessions, though: two sessions can still commit to the same branch, edit the same source files, or duplicate work — keep to one session per project.
 
 **Prevention:** Do not run multiple PAN sessions on the same project simultaneously. PAN is designed for single-session operation.
 

@@ -256,6 +256,12 @@ function planStateCompaction(cwd, opts = {}) {
  * @returns {Object} result
  */
 function compactState(cwd, opts = {}) {
+  if (!opts.apply) return compactStateLocked(cwd, opts);
+  // Planned and written under state.md's lock, so the plan is of the file written.
+  return require('./store.cjs').locked(planningPath(cwd, STATE_FILE), () => compactStateLocked(cwd, opts), { cwd });
+}
+
+function compactStateLocked(cwd, opts = {}) {
   const plan = planStateCompaction(cwd, opts);
   if (!plan.found) return { ...plan, applied: false, dry_run: !opts.apply };
   if (!opts.apply || plan.archivable.length === 0) {

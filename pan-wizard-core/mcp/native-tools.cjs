@@ -133,9 +133,11 @@ const NATIVE_TOOLS = [
       type: 'object', additionalProperties: false, required: ['branch'],
       properties: { branch: { type: 'string' }, ci_green: { type: 'boolean' }, verify_pass: { type: 'boolean' }, phase: { type: 'string' } },
     },
-    handler: ({ cwd, input }) => ({
-      json: mergeGate.requestMerge(cwd, { branch: input.branch, ci_green: input.ci_green, verify_pass: input.verify_pass, phase: input.phase }),
-    }),
+    handler: ({ cwd, input }) => {
+      const json = mergeGate.requestMerge(cwd, { branch: input.branch, ci_green: input.ci_green, verify_pass: input.verify_pass, phase: input.phase });
+      // A refusal (lock_timeout, unreadable, illegal_transition) staged nothing.
+      return { json, isError: Boolean(json && json.error) };
+    },
   },
   {
     name: 'pan_confirm_merge',

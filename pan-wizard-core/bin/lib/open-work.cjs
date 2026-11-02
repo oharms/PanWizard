@@ -47,8 +47,11 @@ function openWork(cwd) {
   const phasePlans = [];
   const continueHere = [];
   for (const dir of list(planningPath(cwd, PHASES_DIR))) {
-    const n = dir.match(/^(\d+(?:\.\d+)?)-/);
-    if (!n) continue;
+    // Every phase directory is listed, multi-level decimal (02.1.1) and letter
+    // (03A) phases included; `current` keeps the guard's own reading of state.md
+    // (one decimal level), which tests/open-work.test.cjs pins to the guard.
+    if (!/^\d+[A-Za-z]?(?:\.\d+)*-/.test(dir)) continue;
+    const n = dir.match(/^(\d+(?:\.\d+)?)-/) || [null, null];
     const full = planningPath(cwd, PHASES_DIR, dir);
     // A plan with a step journal resumes at the first task it cannot prove done
     // (journal.cjs); one without restarts at its first task, as before.
@@ -56,7 +59,7 @@ function openWork(cwd) {
     for (const plan of unfinishedPlans(full)) {
       const j = journals[plan];
       phasePlans.push({
-        phase: dir, plan: planningRel(PHASES_DIR, dir, plan), current: String(parseFloat(n[1])) === current,
+        phase: dir, plan: planningRel(PHASES_DIR, dir, plan), current: n[1] !== null && String(parseFloat(n[1])) === current,
         ...(j ? { resume_at: j.resume_at, completed_steps: j.completed, unverified_steps: j.unverified } : {}),
       });
     }

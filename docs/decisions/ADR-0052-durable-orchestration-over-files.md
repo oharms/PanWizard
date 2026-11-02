@@ -23,9 +23,9 @@ Adapt the ideas; do not adopt an engine. Five parts, each over files, each reach
    - JSON records are read inside their lock, written atomically, and carry `_rev`, with an optional compare-and-swap (`stale_write`).
    - Markdown gets the same through a hash of its raw bytes.
    - Journal lines are numbered under the lock, and numbered directories are claimed under one.
-   - A dispatcher command that edits planning markdown holds those files' locks for its whole run.
-   - Locks are re-entrant, released at process exit, and kept outside the project (`<os temp>/pan-locks/`), so nothing commits or lists them.
-   - Strict waits are timed (7 s, inside the 10 s stale window). `concurrency.strict` turns a markdown lock timeout into `lock_timeout`.
+   - A writer that reads and writes planning markdown holds the file's lock from read to write; the dispatcher locks the writing commands whose read and write sit in separate functions.
+   - Locks are re-entrant, released at process exit, and kept outside the project in a per-user directory (`<os temp>/pan-locks-<user>/`), named by the file's real path, so nothing commits or lists them and every spelling of a file meets at one lock.
+   - A lock is stale only when its holder is gone: a live command keeps its lock however long it runs, and a whole-record write states the revision it read. Strict waits are timed (7 s). `concurrency.strict` turns a markdown lock timeout into `lock_timeout`.
    - Autodev claims its run (`run_busy`).
 2. **Declared state tables (`transitions.cjs`, Stage B).** Focus runs, autodev runs, merge requests, plan steps, pauses and phases each declare their states and the changes allowed. A writer checks a change inside the record's lock (`illegal_transition`, `unknown_state`, with `allowed`), and next-action stops on a phase status no table knows instead of planning again.
 3. **A step journal (`journal.cjs`, Stage C).** `<plan>-journal.jsonl` beside each plan records each task's commit. Resume starts at the first task the journal cannot prove done. A line is evidence, not an instruction: a commit no longer reachable from HEAD, or a changed file, makes PAN redo the step, never skip it.

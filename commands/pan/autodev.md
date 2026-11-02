@@ -65,9 +65,11 @@ A failed session is classified before anything else happens: a compile or assert
 
    `report` writes `dossier.md` (a PR body) and `dossier.html` beside the ledger: per phase, the requirements, plans, units and commits, test gate, verdict, findings and cost. `replay` re-runs the stop logic over the recorded decisions and says whether it decides the same; `identical: false` means the record and the code disagree, so say so.
 
+   A run that does not start returns `error` instead of `stop`: `pause_open` (an earlier `human_needed` stop is still waiting for the user's answer: show its question and the answer command, and let the user run it), `run_busy` (another process is driving an autodev run: say which, and wait for it), `focus_active` (focus is working the project: show its next step).
+
 5. **Report** the result: `stop.reason` and `stop.detail`, the units run, `spent_usd`, and the ledger path (`.planning/autodev/<run>/ledger.jsonl`, one `started` and one `finished` row per unit with its argv, exit, cost and commits). Then route on the reason:
    - `done` → `/pan:milestone-audit`
-   - `human_needed` → show the phase's verification and the human checks it lists
+   - `human_needed` → show the phase's verification and the human checks it lists. The stop opened an `autodev-human` pause: no run starts until the user says what they did, and the user answers it, not you (`pan-tools pause answer <id> --value "<what they did>"`, the id from `pan-tools pause list --open`)
    - `ci_failed` → show the failing checks and the last fix round from the ledger
    - `gate_failed` → show the gate's reasons (`pan-tools phase gate <N>`), then `/pan:plan-phase <N> --gaps`
    - `budget_usd`, `turns` → offer `autodev resume` with a higher cap

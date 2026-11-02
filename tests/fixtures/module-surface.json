@@ -315,6 +315,7 @@
     "TIER_LADDER:object",
     "adjustTierForCapabilities:function",
     "buildCachedContext:function",
+    "commitReachable:function",
     "comparePhaseNum:function",
     "detectProvider:function",
     "dominantEol:function",
@@ -735,7 +736,9 @@
   "lock.cjs": [
     "acquireLock:function",
     "holdLock:function",
+    "holderGone:function",
     "isHeld:function",
+    "lockDir:function",
     "lockPathFor:function",
     "releaseHeld:function",
     "releaseLock:function",
@@ -888,6 +891,7 @@
     "KINDS:object",
     "KIND_EXPECTS:object",
     "PAUSES_DIR:string",
+    "PAUSE_ID_RE:object",
     "answerPause:function",
     "cancelPause:function",
     "cmdPause:function",
@@ -896,7 +900,8 @@
     "openPause:function",
     "pauseNextStep:function",
     "pauseTtlHours:function",
-    "readPause:function"
+    "readPause:function",
+    "ttlHours:function"
   ],
   "phase-gate.cjs": [
     "MODES:object",
@@ -1160,6 +1165,7 @@
     "hashOf:function",
     "lastSeq:function",
     "lockCommand:function",
+    "locked:function",
     "rawConfig:function",
     "readRecord:function",
     "reserveDir:function",
@@ -1229,6 +1235,7 @@
   ],
   "utils.cjs": [
     "classifyPhaseStatus:function",
+    "countPlanTasks:function",
     "detectPlanningModel:function",
     "fileAccessible:function",
     "filterPlanFiles:function",

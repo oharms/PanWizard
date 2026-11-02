@@ -401,7 +401,9 @@ To name the next command, ask the router after `phase complete`:
 NEXT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs next-action)
 ```
 
-It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.
+It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `answer_pause`, `focus`, `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.
+
+If it returns `answer_pause`, a question asked earlier is still open (`pause` holds its `question` and the answers its `expects` allows). Stop the transition there and show the user that question; do not answer it yourself. If it returns `focus`, focus work comes first: show its `detail` and `command`. Ask the router again once either is dealt with.
 
 For the next phase it returns `plan` (or `execute` when the phase is already planned); at the milestone boundary it returns `audit_milestone`.
 

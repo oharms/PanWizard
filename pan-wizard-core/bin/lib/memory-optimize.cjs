@@ -245,6 +245,13 @@ function cmdMemoryOptimize(cwd, opts = {}, raw) {
   const apply = !!opts.apply;
   const keep = opts.keep;
   const statePath = path.join(planningPath(cwd), 'state.md');
+  // An applying run reads and writes state.md under its lock, held to exit
+  // (output() ends the process).
+  if (apply && fs.existsSync(path.dirname(statePath))) {
+    const store = require('./store.cjs');
+    const got = require('./lock.cjs').holdLock(statePath, { strict: store.strictConfigured(cwd) });
+    if (!got.acquired && store.strictConfigured(cwd)) return output({ error: 'lock_timeout', file: 'state.md', reason: 'another PAN process holds state.md; retry when it finishes' }, raw);
+  }
   const before = safeReadFile(statePath);
 
   const result = { apply, state: { changed: false }, agents: [], archived: 0 };
@@ -327,6 +334,15 @@ function maybeAutoOptimizeMemory(cwd, opts = {}) {
   try {
     if (!autoOptimizeEnabled(cwd)) return { optimized: false, reason: 'disabled' };
     const statePath = path.join(planningPath(cwd), 'state.md');
+    const r = require('./store.cjs').locked(statePath, () => autoOptimizeLocked(cwd, statePath, opts), { cwd });
+    return r && r.error ? { optimized: false, reason: r.error } : r;
+  } catch {
+    return { optimized: false, reason: 'error' };
+  }
+}
+
+function autoOptimizeLocked(cwd, statePath, opts) {
+  try {
     const before = safeReadFile(statePath);
     if (before == null) return { optimized: false, reason: 'no_state_md' };
     const opt = optimizeStateContent(before, { keep: opts.keep });

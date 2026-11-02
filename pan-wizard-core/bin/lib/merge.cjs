@@ -23,6 +23,7 @@ function cmdMergeRequest(cwd, branch, opts, raw) {
   try {
     rec = gate.requestMerge(cwd, { branch, phase: opts.phase, ci_green: !!opts.ciGreen, now: new Date().toISOString() });
   } catch (e) { output({ error: 'invalid_branch', reason: e.message }, raw, 'error', 1); return; }
+  if (rec.error) { output(rec, raw, 'error', 1); return; }
   const { approval_token: _token, ...shown } = rec;
   output({ ...shown, next: `A person runs, in their own terminal: pan-tools merge confirm ${rec.branch}` }, raw, rec.status);
 }

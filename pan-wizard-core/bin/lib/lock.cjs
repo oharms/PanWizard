@@ -16,11 +16,18 @@
  * when the process exits — output() and error() end the process — is released
  * by an exit handler, so a command can hold a lock across its whole run.
  *
- * Lock files live outside the project, in <os temp>/pan-locks/, named by a
- * hash of the guarded file's absolute path: a command that commits or lists
- * `.planning/` while it holds a lock never sees the lock file, and nothing is
- * written into a planning tree PAN does not own. Every process on the machine
- * resolves the same file to the same lock.
+ * Lock files live outside the project, in a per-user directory under the
+ * system temp directory (`<os temp>/pan-locks-<user>/`, mode 0700), named by a
+ * hash of the guarded file's real directory and its name: a command that
+ * commits or lists `.planning/` while it holds a lock never sees the lock file,
+ * nothing is written into a planning tree PAN does not own, and every spelling
+ * of one file (symlink, junction, 8.3 short name) meets at one lock. Processes
+ * whose temp directories differ do not share locks.
+ *
+ * A lock is stale only when its holder is gone (durable orchestration R1): the
+ * lock file names `<pid>@<host>`, and a waiter steals a lock older than staleMs
+ * only when that pid is not alive on this host (a lock from another host is
+ * judged by age). A live holder keeps its lock however long its command runs.
  */
 
 'use strict';
@@ -33,19 +40,26 @@ const crypto = require('crypto');
 const DEFAULT_RETRIES = 40;
 const DEFAULT_INTERVAL_MS = 25;
 const DEFAULT_STALE_MS = 10_000;
-const STRICT_WAIT_MS = 7_000;          // strict callers: inside the 10 s stale window
-const LOCK_DIR = 'pan-locks';
+const STRICT_WAIT_MS = 7_000;
 const RENAME_RETRIES = 5;
 const RENAME_INTERVAL_MS = 20;
+const HOST = os.hostname();
+const OWNER = `${process.pid}@${HOST}`;
 
-// path -> { lockPath, depth }: the locks this process holds.
+/** How long a strict caller waits: PAN_LOCK_WAIT_MS when set (tests), else 7 s. */
+function strictWaitMs() {
+  const v = Number(process.env.PAN_LOCK_WAIT_MS);
+  return Number.isFinite(v) && v > 0 ? v : STRICT_WAIT_MS;
+}
+
+// lock path -> { depth }: the locks this process holds.
 const held = new Map();
 let exitHookInstalled = false;
 function installExitHook() {
   if (exitHookInstalled) return;
   exitHookInstalled = true;
   process.on('exit', () => {
-    for (const { lockPath } of held.values()) releaseLock(lockPath);
+    for (const lockPath of held.keys()) releaseLock(lockPath);
     held.clear();
   });
 }
@@ -56,22 +70,49 @@ function sleepSync(ms) {
   Atomics.wait(new Int32Array(sab), 0, 0, ms);
 }
 
-/**
- * The lock file that guards filePath: <os temp>/pan-locks/<hash>-<name>.lock.
- * The path is resolved, and lower-cased on Windows, whose paths are
- * case-insensitive, so every spelling of one file meets at one lock.
- */
-function lockPathFor(filePath) {
-  let abs = path.resolve(filePath);
-  if (process.platform === 'win32') abs = abs.toLowerCase();
-  const hash = crypto.createHash('sha1').update(abs).digest('hex').slice(0, 20);
-  return path.join(os.tmpdir(), LOCK_DIR, `${hash}-${path.basename(filePath)}.lock`);
+/** This user's lock directory: <os temp>/pan-locks-<user>. */
+function lockDir() {
+  let user = '';
+  try { user = os.userInfo().username; } catch { /* no passwd entry */ }
+  if (!user && typeof process.getuid === 'function') user = String(process.getuid());
+  return path.join(os.tmpdir(), `pan-locks-${String(user || 'user').replace(/[^A-Za-z0-9._-]/g, '_')}`);
 }
 
 /**
- * Try to acquire filePath's lock (see lockPathFor). Stale locks
- * (older than staleMs — a crashed holder) are stolen. Waits are jittered, so
- * contenders polling the same lock do not wake in step and starve one another.
+ * The lock file that guards filePath: <lock dir>/<hash>-<name>.lock. The hash is
+ * of the file's directory resolved through realpath (when it exists) and its
+ * name, lower-cased on Windows, whose paths are case-insensitive.
+ */
+function lockPathFor(filePath) {
+  const abs = path.resolve(filePath);
+  let dir = path.dirname(abs);
+  try { dir = fs.realpathSync.native(dir); } catch { /* not created yet: as resolved */ }
+  let id = path.join(dir, path.basename(abs));
+  if (process.platform === 'win32') id = id.toLowerCase();
+  const hash = crypto.createHash('sha1').update(id).digest('hex').slice(0, 20);
+  return path.join(lockDir(), `${hash}-${path.basename(abs)}.lock`);
+}
+
+/** Is the process that wrote this lock content gone? (Only judged on this host.) */
+function holderGone(content) {
+  const m = /^(\d+)(?:@(.*))?$/.exec(String(content || '').trim());
+  if (!m) return true;                      // unreadable owner: judged by age alone
+  if (m[2] && m[2] !== HOST) return true;   // another host: cannot ask, judged by age
+  const pid = Number(m[1]);
+  if (pid === process.pid) return false;
+  try { process.kill(pid, 0); return false; } catch (e) { return e.code !== 'EPERM'; }
+}
+
+// The errors that mean "someone else has it" rather than "this cannot work":
+// Windows answers EPERM/EBUSY/EACCES while a released lock file is still being
+// deleted. On POSIX an EACCES is a directory this user cannot write: give up.
+const CONTENTION = process.platform === 'win32' ? ['EPERM', 'EACCES', 'EBUSY'] : [];
+
+/**
+ * Try to acquire filePath's lock (see lockPathFor). A lock older than staleMs
+ * whose holder is gone is stolen. Waits are jittered, so contenders polling
+ * the same lock do not wake in step and starve one another.
+ * @param {object} [opts] - {retries, intervalMs, staleMs, strict, waitMs}
  * @returns {{ acquired: boolean, lockPath: string }}
  */
 function acquireLock(filePath, opts = {}) {
@@ -79,23 +120,21 @@ function acquireLock(filePath, opts = {}) {
   const intervalMs = opts.intervalMs ?? DEFAULT_INTERVAL_MS;
   const staleMs = opts.staleMs ?? DEFAULT_STALE_MS;
   const lockPath = lockPathFor(filePath);
-  try { fs.mkdirSync(path.dirname(lockPath), { recursive: true }); } catch { return { acquired: false, lockPath }; }
+  try { fs.mkdirSync(path.dirname(lockPath), { recursive: true, mode: 0o700 }); } catch { return { acquired: false, lockPath }; }
 
-  // A strict caller waits by the clock, not by a count: on a slow filesystem a
-  // count of retries ran past the stale window, and the wait then stole a live lock.
-  const deadline = opts.strict && opts.retries == null ? Date.now() + STRICT_WAIT_MS : null;
+  // A strict caller waits by the clock, not by a count.
+  const deadline = opts.strict && opts.retries == null ? Date.now() + (opts.waitMs ?? strictWaitMs()) : null;
   const more = (attempt) => (deadline ? Date.now() < deadline : attempt < retries);
+  const pause = () => sleepSync(Math.max(1, Math.round(intervalMs * (0.5 + Math.random()))));
 
-  for (let attempt = 0; deadline ? true : attempt <= retries; attempt++) {
+  for (let attempt = 0; ; attempt++) {
     try {
-      fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
+      fs.writeFileSync(lockPath, OWNER, { flag: 'wx' });
       return { acquired: true, lockPath };
     } catch (err) {
-      // Windows answers EPERM (not EEXIST) while a released lock file is still
-      // being deleted: that is contention too, so wait and retry.
-      if (['EPERM', 'EACCES', 'EBUSY'].includes(err.code)) {
+      if (CONTENTION.includes(err.code)) {
         if (!more(attempt)) break;
-        sleepSync(Math.max(1, Math.round(intervalMs * (0.5 + Math.random()))));
+        pause();
         continue;
       }
       if (err.code !== 'EEXIST') {
@@ -104,24 +143,25 @@ function acquireLock(filePath, opts = {}) {
       }
       try {
         const age = Date.now() - fs.statSync(lockPath).mtimeMs;
-        if (age > staleMs) {
-          // Holder likely crashed — steal via an atomic rename to a unique name.
+        if (age > staleMs && holderGone(fs.readFileSync(lockPath, 'utf-8'))) {
+          // The holder is gone — steal via an atomic rename to a unique name.
           // rename() moves the specific inode: exactly ONE concurrent stealer can
           // rename a given lock file; every other contender's rename fails with
-          // ENOENT (the source is gone) instead of blindly unlinking a lock that a
-          // winner may already have re-created. This closes the double-holder race
-          // where two processes both stat the same stale lock and both unlink it.
+          // ENOENT instead of unlinking a lock a winner may already have re-created.
           const stealPath = `${lockPath}.steal.${process.pid}.${Date.now()}`;
+          let stole = false;
           try {
             fs.renameSync(lockPath, stealPath);
-            // We won the steal — discard the stolen lock and retry wx-create.
+            stole = true;
             try { fs.unlinkSync(stealPath); } catch { /* best-effort */ }
-          } catch { /* another contender stole/cleared it first — loop retries */ }
-          continue;
+          } catch { /* another contender got there first, or it cannot be moved */ }
+          // A won steal retries at once; a failed one waits like any contention,
+          // so an unmovable stale lock cannot spin a strict caller forever.
+          if (stole) continue;
         }
       } catch { /* lock vanished between EEXIST and stat — loop retries */ }
       if (!more(attempt)) break;
-      sleepSync(Math.max(1, Math.round(intervalMs * (0.5 + Math.random()))));
+      pause();
     }
   }
   return { acquired: false, lockPath };
@@ -129,55 +169,68 @@ function acquireLock(filePath, opts = {}) {
 
 /**
  * Release a lock acquired by acquireLock. Best-effort, but ownership-verified:
- * only unlink when the lock file still contains THIS process's pid, so a lock
- * that was stolen (stale) and re-created by a successor is never deleted out
- * from under that successor.
+ * only unlink when the lock file still names THIS process, so a lock that was
+ * stolen and re-created by a successor is never deleted out from under it.
  */
 function releaseLock(lockPath) {
   try {
-    const owner = fs.readFileSync(lockPath, 'utf-8').trim();
-    if (owner !== String(process.pid)) return; // not ours anymore — leave it
+    if (!ownsLock(lockPath)) return; // not ours anymore — leave it
     fs.unlinkSync(lockPath);
   } catch { /* already gone / unreadable — nothing to release */ }
 }
 
+/** Does the lock file name this process? */
+function ownsLock(lockPath) {
+  try {
+    const owner = fs.readFileSync(lockPath, 'utf-8').trim();
+    return owner === OWNER || owner === String(process.pid);
+  } catch { return false; }
+}
+
 /**
- * Take <filePath>.lock and keep it until releaseHeld() or process exit.
- * Re-entrant: a path this process already holds only deepens the hold.
+ * Take filePath's lock and keep it until releaseHeld() or process exit.
+ * Re-entrant: a lock this process holds only deepens the hold, after checking
+ * the lock file still names this process (re-acquiring it if it does not).
  * @returns {{ acquired: boolean, lockPath: string }}
  */
 function holdLock(filePath, opts = {}) {
-  const key = require('path').resolve(filePath);
-  const mine = held.get(key);
-  if (mine) { mine.depth++; return { acquired: true, lockPath: mine.lockPath }; }
+  const lockPath = lockPathFor(filePath);
+  const mine = held.get(lockPath);
+  if (mine) {
+    if (ownsLock(lockPath)) { mine.depth++; return { acquired: true, lockPath }; }
+    held.delete(lockPath); // lost (deleted by hand): take it again, never assume it
+    const again = acquireLock(filePath, opts);
+    if (again.acquired) held.set(lockPath, { depth: mine.depth + 1 });
+    return again;
+  }
   const got = acquireLock(filePath, opts);
   if (got.acquired) {
     installExitHook();
-    held.set(key, { lockPath: got.lockPath, depth: 1 });
+    held.set(lockPath, { depth: 1 });
   }
   return got;
 }
 
 /** Undo one holdLock(); the lock file goes when the outermost hold ends. */
 function releaseHeld(filePath) {
-  const key = require('path').resolve(filePath);
-  const mine = held.get(key);
+  const lockPath = lockPathFor(filePath);
+  const mine = held.get(lockPath);
   if (!mine) return;
   if (--mine.depth > 0) return;
-  held.delete(key);
-  releaseLock(mine.lockPath);
+  held.delete(lockPath);
+  releaseLock(lockPath);
 }
 
-/** True when this process holds <filePath>.lock. */
+/** True when this process holds filePath's lock. */
 function isHeld(filePath) {
-  return held.has(require('path').resolve(filePath));
+  return held.has(lockPathFor(filePath));
 }
 
 /**
- * Run fn while holding <filePath>.lock.
- * @param {string} filePath - The file the lock guards (lock is filePath + '.lock')
+ * Run fn while holding filePath's lock.
+ * @param {string} filePath - The file the lock guards (see lockPathFor)
  * @param {Function} fn - Critical section
- * @param {object} [opts] - {retries, intervalMs, staleMs, strict}
+ * @param {object} [opts] - {retries, intervalMs, staleMs, strict, waitMs}
  * @returns {{ locked: boolean, result: any, timedOut?: boolean }} locked=false
  *   means fn ran WITHOUT the lock (best-effort fallback — see module header);
  *   under opts.strict it means fn did NOT run (timedOut: true).
@@ -227,6 +280,8 @@ module.exports = {
   releaseHeld,
   isHeld,
   lockPathFor,
+  lockDir,
+  holderGone,
   writeFileAtomic,
   sleepSync,
 };
