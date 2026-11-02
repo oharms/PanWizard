@@ -1521,7 +1521,10 @@ function readAutoRun(cwd) {
  */
 function writeAutoRun(cwd, data) {
   try {
-    return Boolean(store.updateRecord(planningPath(cwd, FOCUS_DIR, AUTO_RUN_FILE), () => data).ok);
+    // A status change the focus.run table does not allow is refused inside the
+    // run's lock (transitions.cjs); the refusal is returned for the caller to report.
+    const w = store.updateRecord(planningPath(cwd, FOCUS_DIR, AUTO_RUN_FILE), () => data, { transition: 'focus.run' });
+    return w.ok ? true : w;
   } catch {
     return false;
   }
@@ -1665,7 +1668,8 @@ function focusAutoStop(cwd, raw) {
   }
   run.status = AUTORUN_STATUSES.STOPPED;
   run.stop_reason = 'user_stop';
-  writeAutoRun(cwd, run);
+  const stopped = writeAutoRun(cwd, run);
+  if (stopped !== true) return output(stopped || { error: 'write_failed', reason: 'could not write the focus run' }, raw);
   // A cycle left open would keep counting as work in flight; stopping ends it as failed,
   // with no test run (the run is being abandoned, not verified).
   const current = runCurrentCycle(cwd, run);
@@ -1821,7 +1825,8 @@ function focusAutoUpdate(cwd, raw, getVal) {
     run.stop_reason = stopReason;
   }
 
-  writeAutoRun(cwd, run);
+  const updated = writeAutoRun(cwd, run);
+  if (updated !== true) return output(updated || { error: 'write_failed', reason: 'could not write the focus run' }, raw);
   const commitHash = focusAutoCheckpointCommit(cwd, cycle, run);
   return output({
     run_id: run.run_id, status: run.status, cycle_recorded: cycle.cycle,
@@ -1938,7 +1943,8 @@ function focusAutoContinue(cwd, raw) {
   if (busy) return output(busy, raw, busy.reason, 1);
   run.status = run.totals && run.totals.cycles_completed > 0 ? AUTORUN_STATUSES.IN_PROGRESS : AUTORUN_STATUSES.INITIALIZED;
   run.stop_reason = null;
-  writeAutoRun(cwd, run);
+  const continued = writeAutoRun(cwd, run);
+  if (continued !== true) return output(continued || { error: 'write_failed', reason: 'could not write the focus run' }, raw);
   const cyclesRemaining = run.max_cycles - (run.totals ? run.totals.cycles_completed : 0);
   return output({ ...run, ...budgetIndicators(run), cycles_remaining: cyclesRemaining }, raw);
 }
@@ -2015,7 +2021,8 @@ function focusAutoInit(cwd, raw, getVal, hasFlag) {
     return output({ dry_run: true, ...runData, run_file: planningRel(FOCUS_DIR, AUTO_RUN_FILE) }, raw);
   }
 
-  writeAutoRun(cwd, runData);
+  const started = writeAutoRun(cwd, runData);
+  if (started !== true) return output(started || { error: 'write_failed', reason: 'could not write the focus run' }, raw);
   output({ ...runData, run_file: planningRel(FOCUS_DIR, AUTO_RUN_FILE) }, raw);
 }
 

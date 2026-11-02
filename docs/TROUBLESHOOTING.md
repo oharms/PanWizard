@@ -791,6 +791,14 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 
 **Fix:** Retry when the other command finishes. If no PAN process is running, the lock file the refusal names (under `pan-locks/` in the system temp directory) is left over from one that was killed: delete it, or wait 10 s and retry.
 
+### A command refuses with `illegal_transition` or `unknown_state`
+
+**Symptom:** A focus run, autodev run or merge request write exits 1 with `error: "illegal_transition"` (with `from`, `to` and `allowed`) or `error: "unknown_state"`; or `next-action` stops with `unknown_state`.
+
+**Root cause:** Each of these records has a declared set of statuses and the changes allowed between them (`transitions.cjs`). `illegal_transition` means the change is not one of them, usually because another session moved the record first (a run it completed cannot be stopped or resumed). `unknown_state` means the file holds a status no PAN writer produces, typically after a hand edit.
+
+**Fix:** Read the record (`pan-tools focus auto --status`, `pan-tools autodev status`) and act from the status it has now. For `unknown_state`, restore the status to one of the listed states, or remove the record and start a new run.
+
 ### Multiple sessions interfere with each other
 
 **Symptom:** Two Claude Code sessions running PAN on the same project produce conflicting commits, corrupted state.md, or duplicated work.

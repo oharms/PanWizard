@@ -1,5 +1,7 @@
 'use strict';
 
+const { allowedFrom, statesOf } = require('../bin/lib/transitions.cjs');
+
 /**
  * The deterministic orchestrator ("next-action" state machine).
  *
@@ -165,8 +167,8 @@ function nextAction(state, caps) {
   // Complete on disk: the run facts decide. This is the branch that makes the
   // merge gate reachable — without it a completed phase was simply skipped.
   if (status === COMPLETE_STATUS) {
-    if (phase.verified !== true) return { action: 'verify', args, reason: 'phase_complete_unverified', done: false };
-    return { action: 'request_merge', args, reason: 'phase_verified_unmerged', done: false };
+    if (phase.verified !== true) return { action: 'verify', args, reason: 'phase_complete_unverified', done: false, allowed: allowedFrom('phase', status) };
+    return { action: 'request_merge', args, reason: 'phase_verified_unmerged', done: false, allowed: allowedFrom('phase', status) };
   }
 
   const action = PHASE_NEXT[status];
@@ -174,9 +176,12 @@ function nextAction(state, caps) {
     // An unknown status is a caller/producer mismatch, not a licence to re-plan.
     // Say so, rather than silently defaulting the way the old `|| 'plan'` did —
     // that default is what turned Title Case into an infinite plan loop.
-    return { action: 'plan', args, reason: `phase_unknown_status_${status || 'missing'}`, done: false };
+    // It stops (done:false, so it never reads as success) and names the state:
+    // a status that is not a state of the phase table is a corrupted or foreign
+    // record, and routing on it would act on a guess.
+    return { action: 'stop', args, reason: `phase_unknown_status_${status || 'missing'}`, error: 'unknown_state', state: status || null, known: statesOf('phase'), done: false };
   }
-  return { action, args, reason: `phase_${status}`, done: false };
+  return { action, args, reason: `phase_${status}`, done: false, allowed: allowedFrom('phase', status) };
 }
 
 module.exports = { nextAction, DEFAULT_CAPS, PHASE_NEXT, normalizeStatus, isPhaseOpen };

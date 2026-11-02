@@ -336,6 +336,14 @@ Three choices differ from D1 as written; each keeps its guarantee with a smaller
 
 The merge gate gained only the locked confirm in this stage (race 9). Expiry, the hashed token and refusing a request over a merged record are D5, in Stage D.
 
+### 3.8.2 Stage B as built (`2026-11-02`)
+
+`transitions.cjs` holds four tables (`focus.run`, `autodev.run`, `merge.request`, `phase`) and the Quick Tasks status values. `store.updateRecord`'s `transition` option checks a status change inside the record's lock. Only a change of status is checked; a write that sets no status, or a record with a new identity (`run_id`, `id`), is not refused. Three points differ from D2 as written, each because an existing contract or field said otherwise:
+
+- **`phase complete` on a complete phase stays idempotent.** `tests/scenarios/contracts-phase.test.cjs` pins it (it exits 0 with the same payload), and the autodev and transition flows rely on a retry being safe. The `phase` table is used by next-action, not by `phase complete`.
+- **A merged request may be staged again.** Re-staging a branch with new commits after a merge is the documented fresh-token flow (`tests/pan-zcode-orchestration.test.cjs`), so `merged → awaiting_approval` is an edge, not a refusal.
+- **state.md's `Status` stays free text.** It describes the current phase, and which change is legal depends on which phase that is. Checking it would refuse ordinary moves between phases. The phase is checked through its disk status instead. Quick-task status is an enum of the values the writers actually record (`verified`, `partial`, `failed` from focus; `Verified`, `Needs Review`, `Gaps` from `/pan:quick`; `done`), not `done | partial | failed`.
+
 ### 3.9 Test plan
 
 New files: `tests/store.test.cjs`, `tests/transitions.test.cjs`, `tests/journal.test.cjs`, `tests/pause.test.cjs`; additions to `tests/pan-zcode-orchestration.test.cjs` and `tests/phase-gate.test.cjs` (merge gate, `nextAction`), `tests/consolidate-surfaces.test.cjs` (the `next-action` router), `tests/open-work.test.cjs`, `tests/focus-integration.test.cjs`, `tests/autodev*.test.cjs`.

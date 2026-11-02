@@ -13,7 +13,13 @@ PAN's orchestration files are written so that concurrent writers no longer lose 
 
 - **`store.cjs`, one write path for orchestration files.** `updateRecord` reads a JSON record inside its lock, increments `_rev` and writes it atomically, with an optional compare-and-swap on the revision (`stale_write`); `updateText` does the same for markdown with a hash of the raw bytes; `appendLine` numbers journal lines under the lock; `reserveDir` claims numbered directories under a lock. A record written before this release reads as revision 0, so nothing needs migrating.
 - **`concurrency.strict`** (default `false`). With it set, a command that cannot take a planning file's lock refuses with `lock_timeout` instead of going ahead unlocked.
+- **Declared state tables (`transitions.cjs`).** Focus runs, autodev runs, merge requests and phases each have a table of their statuses and the changes allowed between them; a write that breaks one is refused `illegal_transition` inside the record's lock, with the `allowed` states. Autodev's `run.json` now carries `status` (`running` while a process drives it, `stopped` after).
+- **`state quick-task --status`** accepts the values PAN records (`verified`, `partial`, `failed`, `needs review`, `gaps`, `done`, any case) and refuses anything else with `invalid_status`.
 - **`autodev run` refuses `run_busy`** when another live process is driving the same run; `run.json` records the run's owner while it runs.
+
+### Changed
+
+- **`next-action` stops on a phase status it does not know** (`unknown_state`, `done: false`) instead of planning the phase again; routed answers from the MCP `pan_next_action` tool carry `allowed`.
 
 ### Fixed
 

@@ -29,6 +29,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { withFileLock, holdLock, writeFileAtomic, lockPathFor } = require('./lock.cjs');
 const { planningPath } = require('./utils.cjs');
+const transitions = require('./transitions.cjs');
 
 const ABORT = Symbol('store.abort');
 
@@ -78,7 +79,9 @@ function readRecord(file) {
  *   record as it is on disk now (null when missing); returns the new record,
  *   null/undefined to leave the file alone, or abort(payload) to refuse.
  * @param {object} [opts] - {expectRev, strict (default true), space (default 2),
- *   keepMtime (restore the file's mtime after the write, for files ordered by it)}
+ *   keepMtime (restore the file's mtime after the write, for files ordered by it),
+ *   transition (a transitions.cjs entity: a status change its table does not allow
+ *   is refused illegal_transition, inside the lock), force (skip that check)}
  * @returns {{ok: true, data, rev, written: boolean} | {error, ...}}
  */
 function updateRecord(file, mutate, opts = {}) {
@@ -98,6 +101,10 @@ function updateRecord(file, mutate, opts = {}) {
     const next = mutate(current ? structuredClone(current) : null);
     if (next && next[ABORT]) { outcome = next[ABORT]; return; }
     if (next === null || next === undefined) { outcome = { ok: true, data: current, rev, written: false }; return; }
+    if (opts.transition && !opts.force) {
+      const refused = transitions.checkRecord(opts.transition, current, next);
+      if (refused) { outcome = { ...refused, file }; return; }
+    }
     const out = { ...next, _rev: rev + 1 };
     let st = null;
     if (opts.keepMtime) { try { st = fs.statSync(file); } catch { /* new file */ } }

@@ -322,13 +322,13 @@ function claimRun(runFile) {
     if (o && o.pid !== process.pid && pidAlive(o.pid)) {
       return store.abort({ error: 'run_busy', reason: `autodev run ${cur.id} is being driven by process ${o.pid} (since ${o.since}); let it stop first`, run: cur.id, owner_pid: o.pid });
     }
-    return { ...cur, owner: { pid: process.pid, since: new Date().toISOString() } };
-  });
+    return { ...cur, status: 'running', owner: { pid: process.pid, since: new Date().toISOString() } };
+  }, { transition: 'autodev.run' });
   return r.error ? r : null;
 }
 
 function releaseRun(runFile) {
-  store.updateRecord(runFile, (cur) => (cur && cur.owner && cur.owner.pid === process.pid ? { ...cur, owner: null } : null));
+  store.updateRecord(runFile, (cur) => (cur && cur.owner && cur.owner.pid === process.pid ? { ...cur, status: 'stopped', owner: null } : null), { transition: 'autodev.run' });
 }
 
 /** Spend recorded today (UTC) across every run's ledger. */

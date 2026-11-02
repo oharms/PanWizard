@@ -1169,6 +1169,16 @@
     "stripAnsi:function",
     "testRunFacts:function"
   ],
+  "transitions.cjs": [
+    "QUICK_TASK_STATUSES:object",
+    "TABLES:object",
+    "allowedFrom:function",
+    "checkQuickTaskStatus:function",
+    "checkRecord:function",
+    "checkTransition:function",
+    "isState:function",
+    "statesOf:function"
+  ],
   "uat.cjs": [
     "cmdUatRecord:function",
     "cmdUatStatus:function",

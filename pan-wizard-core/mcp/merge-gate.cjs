@@ -48,7 +48,7 @@ function validateBranch(branch) {
 
 function recordPath(cwd, branch) { return path.join(approvalsDir(cwd), `${slugify(branch)}.json`); }
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } }
-function writeJson(p, obj) { return store.updateRecord(p, () => obj); }
+function writeJson(p, obj, opts = {}) { return store.updateRecord(p, () => obj, { transition: 'merge.request', force: opts.force }); }
 
 /**
  * Stage a merge request. Mints a fresh per-request approval token (nonce), records the
@@ -79,7 +79,9 @@ function requestMerge(cwd, opts = {}) {
     status: 'awaiting_approval',
     requested_at: opts.now || null,
   };
-  writeJson(recordPath(cwd, branch), record);
+  // Checked against merge.request: a pending or merged request may be staged again.
+  const w = writeJson(recordPath(cwd, branch), record, { force: opts.force });
+  if (w.error) return w;
   return record;
 }
 

@@ -187,6 +187,8 @@ function stateSection(cwd, name, op) {
 
 function stateQuickTask(cwd, o) {
   if (!o.description) return { error: 'description_required', reason: 'Usage: state quick-task --description D --commit SHA --directory DIR [--status S] [--date YYYY-MM-DD]' };
+  const badStatus = require('./transitions.cjs').checkQuickTaskStatus(o.status);
+  if (badStatus) return badStatus;
   return withState(cwd, (t) => {
     const withStatus = o.status != null;
     let s = findSection(t, 'Quick Tasks Completed');
