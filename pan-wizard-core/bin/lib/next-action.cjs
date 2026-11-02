@@ -105,12 +105,15 @@ function routeNextAction(cwd) {
 }
 
 /**
- * The next step the user should take: an open focus cycle or a stale focus run first
- * (spec D5), then the phase router. Autodev calls routeNextAction directly: it refuses
+ * The next step the user should take: an open pause waiting for a person first (a
+ * question asked before the session ended is asked again), then an open focus cycle
+ * or a stale focus run (spec D5), then the phase router. Autodev calls routeNextAction directly: it refuses
  * to start beside focus work, so it never needs this layer.
  * @returns {{action, phase, reason, command, done, focus?}}
  */
 function nextStep(cwd) {
+  const pause = require('./pause.cjs').pauseNextStep(cwd);
+  if (pause) return { action: pause.action, phase: null, reason: pause.reason, command: pause.command, done: false, detail: pause.detail, pause: pause.pause, open_pauses: pause.open_pauses };
   const focus = require('./focus.cjs');
   const fa = focus.focusActivity(cwd);
   const step = focus.focusNextStep(fa);

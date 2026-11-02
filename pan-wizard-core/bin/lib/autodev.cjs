@@ -305,6 +305,12 @@ function persistRunFacts(cwd) {
   });
 }
 
+/** A human_needed stop opens an autodev-human pause: the answer channel the stop had none of. */
+function openHumanPause(cwd, runId, stop) {
+  if (!stop || stop.reason !== 'human_needed') return;
+  try { require('./pause.cjs').openPause(cwd, { kind: 'autodev-human', run: runId, question: stop.detail || 'autodev needs a person' }); } catch { /* best-effort */ }
+}
+
 const pidAlive = (pid) => {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
@@ -522,6 +528,12 @@ function runAutodev(cwd, opts = {}) {
 function runAutodevLoop(cwd, opts, claimed) {
   let runId = opts.runId || (opts.resume ? latestRun(cwd) : null);
   if (opts.resume && !runId) return { error: 'no_run', reason: 'no autodev run to resume' };
+  // A human_needed stop left a pause: until a person answers it (what they did),
+  // no run starts or resumes, so the loop never retries the thing it stopped on.
+  const waiting = require('./pause.cjs').listPauses(cwd, { open: true }).find((p) => p.kind === 'autodev-human');
+  if (waiting) {
+    return { error: 'pause_open', pause: waiting.id, reason: `autodev stopped for a person (${waiting.question}); say what you did with: pan-tools pause answer ${waiting.id} --value "<what you did>"` };
+  }
   // A fresh run never starts beside a focus run or an open focus cycle: both would
   // edit the tree, and each would read the other's edits as its own (spec D5).
   if (!runId) {
@@ -581,6 +593,7 @@ function runAutodevLoop(cwd, opts, claimed) {
     if (stop) {
       append({ status: 'stopped', ...stop });
       persistRunFacts(cwd);
+      openHumanPause(cwd, runId, stop);
       return { run: runId, ledger: path.relative(cwd, ledger).replace(/\\/g, '/'), host, stop, units: units.map((u) => ({ action: u.action, phase: u.phase })), spent_usd: readRows(ledger).filter((r) => r.status === 'finished').reduce((n, r) => n + (Number(r.cost_usd) || 0), 0) };
     }
     if (opts.worktrees && !pending && unit.action === 'execute') {
@@ -588,7 +601,7 @@ function runAutodevLoop(cwd, opts, claimed) {
       if (groups.flat().length >= 2) {
         let next = new Set(rows.filter((r) => r.status === 'started').map((r) => r.seq)).size;
         const wt = runPlansInWorktrees(cwd, unit, host, groups, { append, opts, nextSeq: () => ++next });
-        if (wt.stop) { append({ status: 'stopped', ...wt.stop }); persistRunFacts(cwd); return finish(); }
+        if (wt.stop) { append({ status: 'stopped', ...wt.stop }); persistRunFacts(cwd); openHumanPause(cwd, runId, wt.stop); return finish(); }
         persistRunFacts(cwd);
         units.push(unit);
         continue;

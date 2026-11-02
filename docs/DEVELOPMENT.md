@@ -26,6 +26,7 @@ pan-wizard/
         store.cjs             # The write path for orchestration files: locked read-modify-write, _rev, appendLine, reserveDir
         transitions.cjs       # The state tables of focus runs, autodev runs, merge requests and phases (a new status goes in its table)
         journal.cjs           # The step journal beside each plan; resume-point proves each step by its commit or file
+        pause.cjs             # Typed pauses for a person's answer (pause-schema.cjs: what an answer must be)
         config.cjs            # Config CRUD (dot-notation get/set), standards catalog
         state.cjs             # state.md operations + frontmatter sync
         state-compact.cjs     # state compact — archive settled history to state-history.md (ADR-0044)

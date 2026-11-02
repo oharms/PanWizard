@@ -351,6 +351,14 @@ The merge gate gained only the locked confirm in this stage (race 9). Expiry, th
 - **Autodev's ledger keeps its shape.** Its rows are units (`started`, `finished`, `stopped` per unit seq), not plan steps, and `autodev replay` and the run status read them as they are. The claim from Stage A already stops two drivers appending to one run.
 - **`pan-exec-waves` writes no journal lines of its own.** Its executors journal every task through the shared commit protocol, and a plan's completion is its summary, which the script already uses to skip plans.
 
+### 3.8.4 Stage D as built (`2026-11-02`)
+
+`pause.cjs`, `pause-schema.cjs`, the `pause` verbs, `pan_list_pauses` and `pan_answer_pause` follow D4. The `pause` table joins `transitions.cjs`, and a second answer or a cancel of a closed pause is refused. Next-action puts `answer_pause` first, `open_work.pauses` lists open pauses, autodev's `human_needed` stops open an `autodev-human` pause, and every autodev run is refused `pause_open` until it is answered. exec-phase and execute-plan open a pause per checkpoint and record the answer through it, and auto-advance answers `human-verify` the same way. Merge requests get `requested_at`, `expires_at` and `approved_at`, with `approval_expired` as a refusal. Three points differ from D4 and D5:
+
+- **The approval token stays in the request file.** `pan-tools merge confirm` reads it there to approve in a person's terminal. What protects an MCP merge is that the token must be in the server's environment, which an agent cannot set, so hashing the file's copy would break the CLI path and gain nothing.
+- **`expects` is given by kind or `--options`.** `--expects '<json>'` remains for the rest, since JSON on a command line quotes differently in every shell PAN's runtimes use. `human-verify` uses a per-value note (`noteFor: ['issues']`), not a separate object answer.
+- **An open pause is not work in flight for the guard.** Nothing edits the tree while a question is open, and the guard's `workInFlight` copy stays pinned to `open_work.in_flight` unchanged.
+
 ### 3.9 Test plan
 
 New files: `tests/store.test.cjs`, `tests/transitions.test.cjs`, `tests/journal.test.cjs`, `tests/pause.test.cjs`; additions to `tests/pan-zcode-orchestration.test.cjs` and `tests/phase-gate.test.cjs` (merge gate, `nextAction`), `tests/consolidate-surfaces.test.cjs` (the `next-action` router), `tests/open-work.test.cjs`, `tests/focus-integration.test.cjs`, `tests/autodev*.test.cjs`.

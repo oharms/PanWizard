@@ -46,6 +46,14 @@ function validateBranch(branch) {
   return branch;
 }
 
+/** orchestration.approval_ttl_hours: hours a merge request stays approvable (default 72; 0 = never expires). */
+function approvalTtlHours(cwd) {
+  const o = store.rawConfig(cwd).orchestration || {};
+  if (o.approval_ttl_hours === undefined) return 72;
+  const v = Number(o.approval_ttl_hours);
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
 function recordPath(cwd, branch) { return path.join(approvalsDir(cwd), `${slugify(branch)}.json`); }
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } }
 function writeJson(p, obj, opts = {}) { return store.updateRecord(p, () => obj, { transition: 'merge.request', force: opts.force }); }
@@ -77,8 +85,12 @@ function requestMerge(cwd, opts = {}) {
     verify_source: gate ? 'phase_gate' : 'caller',
     ...(gate ? { gate } : {}),
     status: 'awaiting_approval',
-    requested_at: opts.now || null,
+    requested_at: opts.now || new Date().toISOString(),
   };
+  // An approval waits orchestration.approval_ttl_hours (default 72), then expires:
+  // a token found days later in an environment cannot merge what was reviewed then.
+  const ttl = approvalTtlHours(cwd);
+  if (ttl) record.expires_at = new Date(Date.parse(record.requested_at) + ttl * 3600000).toISOString();
   // Checked against merge.request: a pending or merged request may be staged again.
   const w = writeJson(recordPath(cwd, branch), record, { force: opts.force });
   if (w.error) return w;
@@ -99,6 +111,7 @@ function evaluateMerge(cwd, opts = {}, env = process.env) {
   if (!record) reasons.push('no_merge_request');
   if (record && record.branch !== branch) reasons.push('branch_mismatch');
   if (record && record.status !== 'awaiting_approval') reasons.push('already_consumed');
+  if (record && record.status === 'awaiting_approval' && record.expires_at && Date.parse(record.expires_at) <= (opts.nowMs || Date.now())) reasons.push('approval_expired');
   if (record && !record.ci_green) reasons.push('ci_not_green');
   if (record && !record.verify_pass) reasons.push('verify_not_passed');
   const token = env[APPROVAL_ENV];
@@ -139,6 +152,7 @@ function confirmMergeLocked(cwd, opts, env, gitImpl) {
   const p = recordPath(cwd, approvedBranch);
   const rec = readJson(p) || { id: verdict.id, branch: approvedBranch };
   rec.status = 'merged';
+  rec.approved_at = new Date().toISOString();
   writeJson(p, rec);
   if (env && Object.prototype.hasOwnProperty.call(env, APPROVAL_ENV)) delete env[APPROVAL_ENV];
 
@@ -146,7 +160,7 @@ function confirmMergeLocked(cwd, opts, env, gitImpl) {
 }
 
 module.exports = {
-  requestMerge, evaluateMerge, confirmMerge,
+  requestMerge, evaluateMerge, confirmMerge, approvalTtlHours,
   slugify, validateBranch, approvalsDir,
   APPROVAL_ENV, BRANCH_RE,
 };

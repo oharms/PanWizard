@@ -204,11 +204,11 @@
     "reason": "Focus Stage B (D1 ownership): the split is engine code, not the prompt's judgement. focus route stamps owners and records hand-offs, and focus open registers only focus-owned items whether or not the prompt routed (all_routed when none); tests/focus-integration.test.cjs (ownership describe) pins classifyOwner, the routed batch and the open."
   },
   {
-    "id": "pan-wizard-core/workflows/progress:86998b6c",
+    "id": "pan-wizard-core/workflows/progress:5459e08d",
     "reason": "Focus Stage C (D5): the focus action is engine code. next-action puts an open focus cycle or a stale focus run ahead of phase routing (next-action.cjs nextStep, focus.cjs focusNextStep); tests/focus-integration.test.cjs (visibility describe) pins each reason and command and that a project without focus work routes as before."
   },
   {
-    "id": "pan-wizard-core/workflows/resume-project:86998b6c",
+    "id": "pan-wizard-core/workflows/resume-project:5459e08d",
     "reason": "Focus Stage C (D5): the focus action is engine code. next-action puts an open focus cycle or a stale focus run ahead of phase routing (next-action.cjs nextStep, focus.cjs focusNextStep); tests/focus-integration.test.cjs (visibility describe) pins each reason and command and that a project without focus work routes as before."
   },
   {
@@ -218,5 +218,13 @@
   {
     "id": "pan-wizard-core/workflows/execute-plan:d77dd5aa",
     "reason": "Durable orchestration Stage C: a journal refusal is non-fatal by design. The engine side is enforced in code (journal step refuses commit_unknown and illegal_transition, tests/journal.test.cjs); the tier-0 scenario resume-from-journal planned for Stage E claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/exec-phase:56bf2be2",
+    "reason": "Durable orchestration Stage D: the answer is checked in code (pause answer refuses pause_answer_invalid and a second answer, tests/pause.test.cjs), and next-action returns answer_pause ahead of other work (same file). The tier-0 scenario pause-survives-session planned for Stage E claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/resume-project:1f7ab258",
+    "reason": "Durable orchestration Stage D: the answer is checked in code (pause answer refuses pause_answer_invalid and a second answer, tests/pause.test.cjs), and next-action returns answer_pause ahead of other work (same file). The tier-0 scenario pause-survives-session planned for Stage E claims this rule."
   }
 ]

@@ -878,6 +878,25 @@
     "revertApply:function",
     "unpromotePattern:function"
   ],
+  "pause-schema.cjs": [
+    "TYPES:object",
+    "schemaProblem:function",
+    "validateAnswer:function"
+  ],
+  "pause.cjs": [
+    "KINDS:object",
+    "KIND_EXPECTS:object",
+    "PAUSES_DIR:string",
+    "answerPause:function",
+    "cancelPause:function",
+    "cmdPause:function",
+    "effective:function",
+    "listPauses:function",
+    "openPause:function",
+    "pauseNextStep:function",
+    "pauseTtlHours:function",
+    "readPause:function"
+  ],
   "phase-gate.cjs": [
     "MODES:object",
     "cmdPhaseGate:function",
@@ -1140,6 +1159,7 @@
     "hashOf:function",
     "lastSeq:function",
     "lockCommand:function",
+    "rawConfig:function",
     "readRecord:function",
     "reserveDir:function",
     "strictConfigured:function",

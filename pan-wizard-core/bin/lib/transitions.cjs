@@ -70,6 +70,18 @@ const TABLES = Object.freeze({
       completed: [],
     },
   },
+  // .planning/pauses/<id>.json — a typed pause for a person's answer (pause.cjs).
+  'pause': {
+    statusField: 'status',
+    identity: 'id',
+    initial: ['open'],
+    edges: {
+      open: ['answered', 'expired', 'cancelled'],
+      answered: [],
+      expired: [],
+      cancelled: [],
+    },
+  },
   // A phase's status on disk (classifyPhaseStatus). Derived, never written as a
   // field: next-action routes on it and reports the edges open from it.
   // (`phase complete` on a complete phase stays idempotent, by contract.)

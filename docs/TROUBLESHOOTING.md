@@ -807,6 +807,22 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 
 **Fix:** Check out the branch the work was done on and resume again. If the work was moved by a rebase, record the new commit (`pan-tools journal step --plan <id> --step task-N --event forced --note "rebased"`, then `--event completed --commit <new sha>`).
 
+### Autodev refuses with `pause_open`
+
+**Symptom:** `pan-tools autodev run` returns `error: "pause_open"` and a `pause` id.
+
+**Root cause:** The last autodev run stopped with `human_needed` and opened an `autodev-human` pause. No run starts or resumes until a person says what they did, so the loop never retries what it stopped on.
+
+**Fix:** Do what the pause's question asks, then `pan-tools pause answer <id> --value "<what you did>"`, and run autodev again. If nothing needs doing, `pan-tools pause cancel <id> --reason "<why>"`.
+
+### A merge confirm is refused `approval_expired`
+
+**Symptom:** `pan-tools merge confirm` or `pan_confirm_merge` returns `merged: false` with `approval_expired`.
+
+**Root cause:** The request is older than `orchestration.approval_ttl_hours` (default 72), so what was reviewed may no longer be what would be merged.
+
+**Fix:** Request the merge again (`pan-tools merge request <branch>`), review it, and confirm. Set `orchestration.approval_ttl_hours` higher, or `0` for no expiry, if your reviews take longer.
+
 ### Multiple sessions interfere with each other
 
 **Symptom:** Two Claude Code sessions running PAN on the same project produce conflicting commits, corrupted state.md, or duplicated work.

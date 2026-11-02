@@ -40,13 +40,19 @@ function abort(payload) {
 
 const hashOf = (raw) => crypto.createHash('sha1').update(raw).digest('hex');
 
-/** True when .planning/config.json sets concurrency.strict. */
-function strictConfigured(cwd) {
-  if (!cwd) return false;
+/** .planning/config.json as written ({} when missing or unreadable): the sections loadConfig does not carry. */
+function rawConfig(cwd) {
+  if (!cwd) return {};
   try {
     const cfg = JSON.parse(fs.readFileSync(planningPath(cwd, 'config.json'), 'utf-8'));
-    return Boolean(cfg && cfg.concurrency && cfg.concurrency.strict === true);
-  } catch { return false; }
+    return cfg && typeof cfg === 'object' && !Array.isArray(cfg) ? cfg : {};
+  } catch { return {}; }
+}
+
+/** True when .planning/config.json sets concurrency.strict. */
+function strictConfigured(cwd) {
+  const c = rawConfig(cwd).concurrency;
+  return Boolean(c && c.strict === true);
 }
 
 const lockTimeout = (file) => ({
@@ -289,5 +295,6 @@ module.exports = {
   commandLockFiles,
   lockCommand,
   strictConfigured,
+  rawConfig,
   hashOf,
 };

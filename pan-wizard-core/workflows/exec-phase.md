@@ -46,7 +46,7 @@ Parse JSON for: `executor_model`, `verifier_model`, `reviewer_model`, `commit_do
 |---|---|
 | `ok`, `disabled` | Continue |
 | `legacy` | Continue, and say: "the plan check predates plan hashing, so it cannot show these plans are unchanged" |
-| `stale` | Stop: "The plans changed after they passed the plan check. Re-plan with `/pan:plan-phase {N} --skip-research`, which checks the new plans." Continue only if the user gives a reason, and record it: `pan-tools optimize trace log --type decision --category plan_check_overridden --description "<reason>"` |
+| `stale` | Stop: "The plans changed after they passed the plan check. Re-plan with `/pan:plan-phase {N} --skip-research`, which checks the new plans." Continue only if the user gives a reason. Open the pause first, so the question survives the session (`pan-tools pause open --kind plan-override --run {N} --question "<why the check stopped>"`), record the reason as its answer (`pan-tools pause answer <id> --value "<reason>"`), and log it: `pan-tools optimize trace log --type decision --category plan_check_overridden --description "<reason>"` |
 | `failed` | Stop: "The last plan check found issues." Same override |
 | `missing` | Stop: "No plan check is recorded for this phase." This includes plans made with `/pan:plan-phase --skip-verify` or with `workflow.plan_check` off after the fact. Same override |
 
@@ -290,7 +290,7 @@ AUTO_CFG=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-get workflow.
 ```
 
 When executor returns a checkpoint AND `AUTO_CFG` is `"true"`:
-- **human-verify** → Auto-spawn continuation agent with `{user_response}` = `"approved"`. Log `⚡ Auto-approved checkpoint`.
+- **human-verify** → Auto-spawn continuation agent with `{user_response}` = `"approved"`, recorded like any answer (`pause open`, then `pause answer <id> --value approved --note "auto_advance"`). Log `⚡ Auto-approved checkpoint`.
 - **decision** → The executor already took the plan's `auto_select` option when the task had one, so a decision that comes back has none: present it to the user (standard flow below). If a returned decision's task does carry `auto_select` in the plan file, auto-spawn the continuation agent with `{user_response}` = that option id and log `⚡ Auto-selected: [option] (auto_select)`. Never answer with an option because it is listed first.
 - **human-action** → Present to user (existing behavior below). Auth gates cannot be automated.
 
@@ -299,7 +299,11 @@ When executor returns a checkpoint AND `AUTO_CFG` is `"true"`:
 1. Spawn agent for checkpoint plan
 2. Agent runs until checkpoint task or auth gate → returns structured state
 3. Agent return includes: completed tasks table, current task + blocker, checkpoint type/details, what's awaited
-4. **Present to user:**
+4. **Open the pause**, so the question survives the session and the answer is checked (a `decision` passes the option ids; `human-verify` and `human-action` need no options):
+   ```bash
+   PAUSE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs pause open --kind <human-verify|decision|human-action> --run {plan_id} --step task-{resume_task_number} --question "<the checkpoint's Awaiting line>" [--options <id1,id2>] --raw)
+   ```
+   Then **present to user:**
    ```
    ## Checkpoint: [Type]
 
@@ -309,7 +313,7 @@ When executor returns a checkpoint AND `AUTO_CFG` is `"true"`:
    [Checkpoint Details from agent return]
    [Awaiting section from agent return]
    ```
-5. User responds: "approved"/"done" | issue description | decision selection
+5. User responds: "approved"/"done" | issue description | decision selection. **Record it:** `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs pause answer "$PAUSE" --value <approved|issues|done|option-id> [--note "<the issue as the user described it>"]`. A `pause_answer_invalid` refusal lists the allowed answers: ask the user again with them. The continuation gets the answer the pause recorded, never a guess
 6. **Spawn continuation agent (NOT resume)** with a prompt built inline from this structure:
    ```
    Continue executing plan {plan_id}. A previous agent paused at a checkpoint.

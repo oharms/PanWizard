@@ -153,7 +153,7 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
 // tests/config.test.cjs pins this list against the keys shipped code and prose use.
 const CONFIG_KEYS_BEYOND_DEFAULTS = Object.freeze({
   top: Object.freeze(['research', 'plan_checker', 'verifier', 'nyquist_validation', 'mode', 'depth', 'planning', 'git',
-    'focus', 'model_overrides', 'effort_overrides', 'cost', 'cache', 'build', 'verification', 'concurrency', 'memory']),
+    'focus', 'model_overrides', 'effort_overrides', 'cost', 'cache', 'build', 'verification', 'concurrency', 'memory', 'orchestration']),
   sections: Object.freeze({
     workflow: Object.freeze(['auto_advance', 'stop_guard', 'test_command', 'test_file_command']),
     planning: Object.freeze(['commit_docs', 'search_gitignored']),
@@ -162,7 +162,7 @@ const CONFIG_KEYS_BEYOND_DEFAULTS = Object.freeze({
 });
 // Sections whose keys are the user's own (model ids, agent names, file lists,
 // commands), so nothing below them is checked.
-const OPEN_CONFIG_SECTIONS = Object.freeze(['focus', 'model_overrides', 'effort_overrides', 'cost', 'cache', 'build', 'verification', 'concurrency', 'memory']);
+const OPEN_CONFIG_SECTIONS = Object.freeze(['focus', 'model_overrides', 'effort_overrides', 'cost', 'cache', 'build', 'verification', 'concurrency', 'memory', 'orchestration']);
 
 /** The known top-level keys, and the known keys one level inside each closed section. */
 function knownConfigKeys() {

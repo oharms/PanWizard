@@ -578,6 +578,8 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 | `commit_docs` | `true`, `false` | `true` | Whether `.planning/` files are committed to git |
 | `search_gitignored` | `true`, `false` | `false` | Reserved — read by `loadConfig` and reported by `init map-codebase`, but no workflow or agent acts on it, so no search adds `--no-ignore` |
 | `memory.auto_optimize` | `true`, `false` | `true` | Reconcile the always-loaded project memory (dedupe / cap-with-archive state.md's append-heavy sections) automatically at the focus-auto checkpoint and normal-flow session record. No-op when already lean; opt out to reconcile only via `pan-tools memory optimize`. |
+| `orchestration.approval_ttl_hours` | number | `72` | Hours a staged merge (`pan-tools merge request`, MCP `pan_request_merge`) can be approved; after that it must be requested again. `0` never expires |
+| `orchestration.pause_ttl_hours` | number | none | Hours a pause waits for an answer before it expires. Unset, a question waits until it is answered or cancelled |
 | `concurrency.strict` | `true`, `false` | `false` | What a PAN command does when another PAN process holds the lock on `state.md`, `roadmap.md`, `requirements.md` or `config.json` for more than about a second. `false` goes ahead unlocked, as PAN always has; `true` refuses with `lock_timeout` and writes nothing. Focus runs, batch files, autodev run records and merge-gate approvals always wait (about 5 s) and refuse, whatever this says |
 | `focus.stale_hours` | number | `12` | Hours a focus run may record nothing before it counts as stale: `focus auto --status` and `next-action` say so, `/pan:hygiene` reports `focus-stale-run`, and it no longer blocks autodev. The same window applies to an autodev run that blocks `focus auto` |
 | `budget.verify_reserve` | `0`–`0.5` | `0.15` | Fraction of the spawn budget held back for re-verification so the quality gate isn't starved. Surfaced as an indicator always; a hard early stop only when `budget.enforce` / `--enforce-budget` is on. Per-run override: `--verify-reserve`. |
@@ -756,6 +758,8 @@ claude --dangerously-skip-permissions
 ```
 
 If a session ended in the middle of a plan, `/pan:resume` says which tasks are done and where the plan resumes. The executor records each task's commit in a journal beside the plan, and a task counts as done only while its commit is still in the branch's history, so a commit lost in the crash is redone rather than skipped.
+
+A question PAN asked you and never got answered (a checkpoint, a decision, an autodev run that stopped for a person) is kept too. `/pan:progress` and `/pan:resume` ask it again before anything else, and accept only the answers it allows.
 
 ### Preparing for Release
 

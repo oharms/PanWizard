@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const mergeGate = require('./merge-gate.cjs');
 const orchestrator = require('./orchestrator.cjs');
+const pauses = require('../bin/lib/pause.cjs');
 
 /**
  * Fill in the `verified` run fact from disk where the caller did not state it.
@@ -152,6 +153,29 @@ const NATIVE_TOOLS = [
       const gitFailed = !res.merged && Array.isArray(res.reasons)
         && res.reasons.some((r) => r === 'git_merge_failed' || r === 'git_commit_failed');
       return { json: res, isError: gitFailed };
+    },
+  },
+  {
+    name: 'pan_list_pauses',
+    title: 'List pauses waiting for a person',
+    description: 'The typed pauses in .planning/pauses/: the question of each, what answer it expects, and its status (open, answered, expired, cancelled). An open pause is asked before any other work.',
+    readOnly: true, destructive: false,
+    inputSchema: { type: 'object', additionalProperties: false, properties: { open: { type: 'boolean', description: 'Only the open pauses.' } } },
+    handler: ({ cwd, input }) => ({ json: { pauses: pauses.listPauses(cwd, { open: input.open === true }) } }),
+  },
+  {
+    name: 'pan_answer_pause',
+    title: 'Record the answer a person gave to a pause',
+    description: 'Record the answer a person gave to an open pause. The answer is checked against what the pause expects (an enum value, text, true/false, or an object) and refused with pause_answer_invalid otherwise; an answered, expired or cancelled pause is final. Pass only what the person said.',
+    readOnly: false, destructive: false,
+    inputSchema: {
+      type: 'object', additionalProperties: false, required: ['id'],
+      properties: { id: { type: 'string' }, value: { type: ['string', 'boolean', 'object'] }, note: { type: 'string' } },
+    },
+    handler: ({ cwd, input }) => {
+      const isObj = input.value && typeof input.value === 'object';
+      const r = pauses.answerPause(cwd, input.id, isObj ? { json: input.value, note: input.note } : { value: input.value, note: input.note });
+      return { json: r, isError: Boolean(r.error) && r.error !== 'pause_answer_invalid' };
     },
   },
 ];

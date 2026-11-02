@@ -268,6 +268,14 @@
     "reason": "No shipped prompt calls it: it is for a person reading a plan's step journal by hand (CLI-REFERENCE, TROUBLESHOOTING). The prompts ask journal resume-point, which reads the same file and checks each step's commit."
   },
   {
+    "id": "caller:sub:pause cancel",
+    "reason": "No shipped prompt calls it: cancelling a question is a person's decision (CLI-REFERENCE); the prompts open and answer pauses."
+  },
+  {
+    "id": "caller:sub:pause list",
+    "reason": "No shipped prompt calls it: the prompts read open pauses from init resume's open_work and next-action's answer_pause; pause list (and the MCP pan_list_pauses tool) is for a person or an MCP client."
+  },
+  {
     "id": "caller:sub:bus drain",
     "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
   },

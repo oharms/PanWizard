@@ -395,8 +395,10 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | `state.cjs` | state.md operations: load, get, update, patch, json output (`state load` and `state json` carry `contract: "1.0"`, `STATE_CONTRACT` in constants.cjs, as `progress` JSON does), `readStateSafe()`, frontmatter sync; writes serialize through lock.cjs (ADR-0030) |
 | `lock.cjs` | Advisory file locking (`withFileLock`, stale-steal) + atomic temp-rename writes (`writeFileAtomic`) for .planning/ concurrency (ADR-0030). Holds are re-entrant within a process and released at exit (`holdLock`); `strict` callers do not run their section on timeout. Lock files live outside the project, in `pan-locks/` under the system temp directory, named by a hash of the guarded path (`lockPathFor`) |
 | `store.cjs` | One write path for orchestration files: `updateRecord` (JSON records, read inside the lock, `_rev` incremented, `expectRev` compare-and-swap, strict), `updateText` (markdown, `expectHash` on the raw bytes), `appendLine` (JSONL with `seq`), `reserveDir` (numbered directories claimed under a lock), and `lockCommand`, which the dispatcher calls so a command that edits planning markdown holds those files' locks for its whole run (`concurrency.strict` turns a timeout there into `lock_timeout`). `updateRecord`'s `transition` option checks a status change against transitions.cjs inside the lock |
-| `transitions.cjs` | The declared state machine of each entity PAN writes a status for: `focus.run` (auto-run.json), `plan.step` (a journal step), `autodev.run` (run.json), `merge.request` (merge-gate approvals) and `phase` (the disk status next-action routes on), plus the Quick Tasks status values. `checkTransition` / `checkRecord` return `illegal_transition` or `unknown_state` with the `allowed` states; only a change of status is checked, and a record with a new identity starts over |
+| `transitions.cjs` | The declared state machine of each entity PAN writes a status for: `focus.run` (auto-run.json), `plan.step` (a journal step), `pause` (a typed pause), `autodev.run` (run.json), `merge.request` (merge-gate approvals) and `phase` (the disk status next-action routes on), plus the Quick Tasks status values. `checkTransition` / `checkRecord` return `illegal_transition` or `unknown_state` with the `allowed` states; only a change of status is checked, and a record with a new identity starts over |
 | `journal.cjs` | The step journal a plan resumes from: `<plan>-journal.jsonl` beside each plan (and each focus cycle's plan), one line per step event appended through `store.appendLine`. `resumePoint` returns the first task whose latest event is not `completed` with an artifact that still checks out (a commit reachable from HEAD, or a file with the recorded hash), so a stale or forged line makes PAN redo a step, never skip one. `open_work` carries it as `resume_at` |
+| `pause.cjs` | Typed pauses for a person's answer: `.planning/pauses/<id>.json` with the question, what answer it `expects`, and `status` (open, answered, expired, cancelled; the `pause` table). `openPause` (a checkpoint, a plan-check override, an autodev `human_needed` stop), `answerPause` (checked against `expects` inside the lock; a second answer is refused), `cancelPause`, `listPauses`, and `pauseNextStep`, which next-action asks before focus and phase routing. Expiry: `orchestration.pause_ttl_hours` |
+| `pause-schema.cjs` | The small language a pause's `expects` is written in (`enum` with optional per-value notes, `string`, `boolean`, a flat `object`) and the validator that checks an answer against it |
 | `init.cjs` | Compound init commands: bootstrap all file paths and config for execute-phase, plan-phase, progress, phase-op, and the other major workflows |
 | `phase.cjs` | Phase CRUD facade: list, add, insert (decimal numbering), complete, next-decimal; re-exports phase-remove.cjs |
 | `phase-remove.cjs` | Phase removal + decimal/integer renumbering cascade, roadmap reference rewriting; extracted from phase.cjs |
@@ -789,6 +791,13 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │     ├── store.cjs
   │     └── transitions.cjs
   │
+  ├── pause.cjs
+  │     ├── core.cjs
+  │     ├── utils.cjs
+  │     ├── store.cjs
+  │     ├── pause-schema.cjs
+  │     └── journal.cjs (lazy, for the answer's journal line)
+  │
   ├── template.cjs
   │     ├── core.cjs
   │     ├── constants.cjs
@@ -1014,7 +1023,7 @@ own header puts it, the CLI's JSON contract **is** the tool contract.
   ```
 - **Safety is structural, not advisory:** shell-less `execFile` with an argv array, the verb
   always chosen from the registry allowlist, every argument validated against a whitelist
-  regex with a length bound (except `attempt`, an integer range; the per-call `cwd`, an existing absolute directory; and `pan_next_action`'s phase snapshot and `pan_request_merge`'s CI/verify flags, which never reach a process argument), a `FORBIDDEN_VERB` guard that refuses to expose any
+  regex with a length bound (except `attempt`, an integer range; the per-call `cwd`, an existing absolute directory; `pan_next_action`'s phase snapshot, `pan_request_merge`'s CI/verify flags, and `pan_answer_pause`'s answer, which never reach a process argument and are checked against the pause's own `expects`), a `FORBIDDEN_VERB` guard that refuses to expose any
   history-rewriting or force git op (recovery is revert-only), and a merge gate that requires
   an out-of-band human token an agent-supplied value cannot satisfy.
 - **The project root travels with the call.** Every tool accepts an optional `cwd` — the

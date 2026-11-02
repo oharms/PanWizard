@@ -226,6 +226,8 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `store.cjs` | The write path for orchestration files (focus runs and batches, autodev run records, merge-gate approvals) and the per-command locks the dispatcher takes for commands that edit `state.md`, `roadmap.md`, `requirements.md` or `config.json`. No verbs of its own; its refusals are `lock_timeout`, `stale_write` and `unreadable`. |
 | `transitions.cjs` | The state tables for focus runs, autodev runs, merge requests and phases, and the Quick Tasks status values. No verbs of its own; the writers it guards refuse with `illegal_transition` (a change the table does not allow, with `allowed`), `unknown_state` and, for `state quick-task`, `invalid_status`. |
 | `journal.cjs` | `journal step`, `journal show`, `journal resume-point`: the step journal beside each plan, and the resume point `open_work` reports. |
+| `pause.cjs` | `pause open`, `pause answer`, `pause list`, `pause cancel`: typed pauses for a person's answer, and the `answer_pause` step next-action puts first. |
+| `pause-schema.cjs` | The `expects` language of a pause and its answer validator. No verbs of its own. |
 | `utils.cjs` | Planning-root path builders (`planningPath()`, `planningRel()`, `phasesPath()`, `milestonesPath()`), `fileAccessible()`/`readJsonFile()`, plan/summary file filters and `classifyPhaseStatus()`, shared by the other modules. No CLI surface. (`toPosix()` and `safeReadFile()` live in `core.cjs`.) |
 | `planning-root.cjs` | Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance. Leaf module — requires only `fs`/`path`. `utils.planningPath()` / `utils.planningRel()` are the only path constructors built on it. No CLI surface. |
 | `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that another tool writes to, from markers PAN never writes. **gsd-core owns its tree:** its markers are `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys. `hygiene scan`/`clean` raises one `foreign-planning-tree` warning and refuses the rename fix, `validate health` reports `E006` and stops before `E002`–`E005`, and `init new-project` refuses with an error payload; the remedy is `--planning-dir <dir>`. **planning-with-files shares the tree:** its markers are `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories (`sessions/`, dated task directories without the plan file). PAN keeps working: `hygiene` raises a `shared-planning-tree` info finding, `validate health` reports `I004`, and `init new-project` returns `shared_planning_tree`. No CLI surface of its own. |
@@ -531,6 +533,10 @@ Quick reference of every CLI command and subcommand, with its category and the m
 | 261 | `journal step` | Durable orchestration | journal.cjs |
 | 262 | `journal show` | Durable orchestration | journal.cjs |
 | 263 | `journal resume-point` | Durable orchestration | journal.cjs |
+| 264 | `pause open` | Durable orchestration | pause.cjs |
+| 265 | `pause answer` | Durable orchestration | pause.cjs |
+| 266 | `pause list` | Durable orchestration | pause.cjs |
+| 267 | `pause cancel` | Durable orchestration | pause.cjs |
 
 ---
 
@@ -2161,7 +2167,9 @@ The one router `/pan:progress`, `/pan:resume` and the phase transition ask for t
 pan-tools next-action
 ```
 
-`action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` (no roadmap) or `stop`; `command` is the command that carries it out (for example `/pan:plan-phase 3`).
+`action` is one of `answer_pause`, `focus`, `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` (no roadmap) or `stop`; `command` is the command that carries it out (for example `/pan:plan-phase 3`).
+
+An open pause comes before everything else: `action: "answer_pause"`, `reason: "pause_open"`, a `pause` object (`id`, `kind`, `run`, `step`, `question`, `expects`), `open_pauses`, and a `command` (`pan-tools pause answer <id> --value <...>`) for the oldest one.
 
 A phase whose status is not one the phase table knows stops the router (`action: "stop"`, `done: false`, `error: "unknown_state"`, the reason `phase_unknown_status_<status>`) instead of planning it again; the MCP `pan_next_action` tool does the same, and its routed answers carry `allowed`, the phase statuses open from the current one.
 
@@ -2220,6 +2228,31 @@ pan-tools journal resume-point --plan <phase>-<plan>
 Any other `journal` subcommand exits 1 with `Error: Unknown journal subcommand. Available: step, show, resume-point` on stderr.
 
 **Module:** `journal.cjs`
+
+---
+
+### `pause open` · `pause answer` · `pause list` · `pause cancel`
+
+A typed pause for a person's answer, kept in `.planning/pauses/<id>.json` so it outlives the session that asked. A checkpoint, a plan-check override and an autodev `human_needed` stop open one; the answer is checked against what the pause expects before anything acts on it.
+
+```bash
+pan-tools pause open --kind <kind> --question "<text>" [--run <plan id or run>] [--step <step>] [--options a,b,c] [--expects '<json>']
+pan-tools pause answer <id> --value <answer> [--note "<text>"]
+pan-tools pause answer <id> --json '{"field": "value"}'
+pan-tools pause list [--open]
+pan-tools pause cancel <id> --reason "<why>"
+```
+
+`--kind` and what it expects unless `--expects` says otherwise: `human-verify` (`approved`, or `issues` with a `--note`), `human-action` (`done`), `decision` and `spec-conflict` (one of `--options`), `plan-override` and `autodev-human` (text). `--expects` takes `{"type":"enum","values":[...],"noteFor":[...]}`, `{"type":"string","pattern":"...","maxLength":n}`, `{"type":"boolean"}` or a flat `{"type":"object","required":[...],"properties":{...}}`.
+
+- **`open`:** `{opened, pause, file}` (`--raw`: the id, `p-<kind>[-<run>][-<step>]`). The same kind, run and step while one is open returns it (`opened: false`, `existing: true`). `orchestration.pause_ttl_hours` sets `expires_at`. **Refusals:** `invalid_kind`, `question_required`, `expects_required`, `invalid_expects`.
+- **`answer`:** `{answered, pause}` (`--raw`: `answered`). The pause records `answer`, `note`, `answered_at`; a pause with a `run` and `step` adds a `resumed` line to that plan's journal. **Refusals:** `pause_not_found`, `pause_answer_invalid` (with `reason` and, for an enum, `allowed`), `pause_expired`, `illegal_transition` (already answered, expired or cancelled), `invalid_json`.
+- **`list`:** `{pauses, open}`, newest first; an open pause past `expires_at` reads as `expired` (`--raw`: how many).
+- **`cancel`:** `{cancelled, pause}`. **Refusals:** `reason_required`, `pause_not_found`, `illegal_transition`.
+
+The MCP tools `pan_list_pauses` (read-only) and `pan_answer_pause` do the same. Any other `pause` subcommand exits 1 with `Error: Unknown pause subcommand. Available: open, answer, list, cancel` on stderr.
+
+**Module:** `pause.cjs`
 
 ---
 
@@ -3101,7 +3134,7 @@ pan-tools init resume [--raw]
 - `state_exists`, `roadmap_exists`, `project_exists`, `planning_exists` — File existence
 - `has_interrupted_agent`, `interrupted_agent_id` — Agent state recovery
 - `commit_docs` — Config
-- `open_work` — Work started and not finished: `{in_flight, phase_plans: [{phase, plan, current}], quick: [{dir, plan, source: "focus"|"quick", kind?, run_id?, opened_at?}], debug: [{file}], continue_here: [{path}]}`. `phase_plans` lists every phase's plans with no summary, `current` marking the phase state.md names; a plan with a step journal adds `resume_at`, `completed_steps` (`[{step, commit|file}]`) and `unverified_steps` (`[{step, why}]`), from `journal resume-point`. `in_flight` gives the answer the guard's `unrouted_write` rule uses: an unfinished plan in the current phase, an open quick task (a focus cycle included), or a debug session
+- `open_work` — Work started and not finished: `{in_flight, phase_plans: [{phase, plan, current}], quick: [{dir, plan, source: "focus"|"quick", kind?, run_id?, opened_at?}], debug: [{file}], continue_here: [{path}], pauses: [{id, kind, run, step, question, expects, created_at, expires_at}]}`. `phase_plans` lists every phase's plans with no summary, `current` marking the phase state.md names; a plan with a step journal adds `resume_at`, `completed_steps` (`[{step, commit|file}]`) and `unverified_steps` (`[{step, why}]`), from `journal resume-point`. `in_flight` gives the answer the guard's `unrouted_write` rule uses: an unfinished plan in the current phase, an open quick task (a focus cycle included), or a debug session
 
 ---
 
@@ -4739,7 +4772,7 @@ A verdict exits 0, whatever it is. Outside a git repository it prints `{error: "
 
 ### `merge request <branch> [--phase N] [--ci-green]` · `merge confirm <branch>` (program L6a)
 
-The human merge gate on the CLI, the same gate the MCP bridge uses. `request` stages the merge and prints the record without its approval token (`status: awaiting_approval`, `verify_pass`, `verify_source`, plus `gate` when `--phase` is given, in which case `verify_pass` is the phase gate's verdict, not the caller's word). `confirm` squash-merges only in an interactive terminal after the person types the branch name; without a TTY it exits 1 with `human_terminal_required`. There is no flag or environment variable that skips this.
+The human merge gate on the CLI, the same gate the MCP bridge uses. `request` stages the merge and prints the record without its approval token (`status: awaiting_approval`, `verify_pass`, `verify_source`, `requested_at` and `expires_at`, plus `gate` when `--phase` is given, in which case `verify_pass` is the phase gate's verdict, not the caller's word). A request can be approved for `orchestration.approval_ttl_hours` (default 72; `0` never expires); after that a confirm is refused `approval_expired` and the merge must be requested again. A confirmed merge records `approved_at`. `confirm` squash-merges only in an interactive terminal after the person types the branch name; without a TTY it exits 1 with `human_terminal_required`. There is no flag or environment variable that skips this.
 
 **Module:** `merge.cjs`
 

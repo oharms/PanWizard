@@ -61,6 +61,7 @@ cat .planning/project.md
 <step name="check_incomplete_work">
 Read the incomplete work from `open_work` in the init JSON. It is the same list the guard uses to decide whether PAN work is in flight, so resume and the guard never disagree:
 
+- `pauses`: questions a session asked a person and never got answered (`id`, `kind`, `question`, `expects`). Ask each again before any other work, with the answers its `expects` allows, and record the reply with `pan-tools pause answer <id> --value <answer>`; `next-action` returns `answer_pause` for the oldest one
 - `continue_here`: `.continue-here` checkpoints inside phase directories
 - `phase_plans`: phase plans with no summary (`current: true` for the phase state.md names). A plan with a step journal adds `resume_at` (the first task the journal cannot prove done), `completed_steps` (with their commits) and `unverified_steps` (recorded done, but the commit or file no longer checks out)
 - `quick`: quick tasks with a plan and no summary. `source: focus` is a focus cycle (`kind`, `run_id`); `source: quick` is a `/pan:quick` task
@@ -152,7 +153,7 @@ An interrupted agent or a `.continue-here` checkpoint comes first (below). Other
 NEXT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs next-action)
 ```
 
-It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `focus`, `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.
+It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `answer_pause`, `focus`, `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.
 
 When `action` is `focus`, focus work comes first: a focus cycle is open or a focus run went stale. `reason` says which (`focus_cycle_in_progress`, `focus_cycle_open`, `focus_run_stale`), `detail` says what to do, `focus` names the run and the cycle, and `command` carries it out. Show it above the phase position, and offer its `command` before any phase route.
 

@@ -1999,6 +1999,12 @@
    "baseline": true
   },
   {
+   "id": "pan-wizard-core/workflows/exec-phase:56bf2be2",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "User responds: \"approved\"/\"done\" | issue description | decision selection. **Record it:** `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs pause answer \"$PAUSE\" --value <approved|issues|done|option-id> [--note \"<the issue as the user described it>\"]`. A `pause_answer_invalid` refusal lists the allowed answers: ask the user again with them. The continuation gets the answer the pause recorded, never a guess",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/exec-phase:430bbcd2",
    "file": "pan-wizard-core/workflows/exec-phase.md",
    "text": "**Skip if** `--skip-review` or `--fast` flag is present in $ARGUMENTS. A lean phase (`SIZING.path`) keeps this step: the review finds what the tests and the verifier do not.",
@@ -2659,9 +2665,9 @@
    "baseline": true
   },
   {
-   "id": "pan-wizard-core/workflows/progress:86998b6c",
+   "id": "pan-wizard-core/workflows/progress:5459e08d",
    "file": "pan-wizard-core/workflows/progress.md",
-   "text": "It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `focus`, `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.",
+   "text": "It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `answer_pause`, `focus`, `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.",
    "baseline": false
   },
   {
@@ -2719,9 +2725,15 @@
    "baseline": false
   },
   {
-   "id": "pan-wizard-core/workflows/resume-project:86998b6c",
+   "id": "pan-wizard-core/workflows/resume-project:1f7ab258",
    "file": "pan-wizard-core/workflows/resume-project.md",
-   "text": "It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `focus`, `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.",
+   "text": "`pauses`: questions a session asked a person and never got answered (`id`, `kind`, `question`, `expects`). Ask each again before any other work, with the answers its `expects` allows, and record the reply with `pan-tools pause answer <id> --value <answer>`; `next-action` returns `answer_pause` for the oldest one",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/resume-project:5459e08d",
+   "file": "pan-wizard-core/workflows/resume-project.md",
+   "text": "It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `answer_pause`, `focus`, `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.",
    "baseline": false
   },
   {

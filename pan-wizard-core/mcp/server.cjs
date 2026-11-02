@@ -348,7 +348,7 @@ function createServer(opts = {}) {
           resultType: 'complete',
           supportedVersions: SUPPORTED_VERSIONS_LIST,
           capabilities: { tools: {}, resources: {} },
-          instructions: 'PAN Wizard engine bridge: planning, verification, and orchestration tools backed by the pan-tools CLI. All tools are read-only except the gated pan_confirm_merge.',
+          instructions: 'PAN Wizard engine bridge: planning, verification, and orchestration tools backed by the pan-tools CLI. pan_request_merge and pan_answer_pause record state; pan_confirm_merge, gated on a human token, is the only one that changes the repository.',
           ...REGISTRY_CACHE,
           _meta: { [META_SERVER_INFO_KEY]: SERVER_INFO },
         });

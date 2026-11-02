@@ -36,7 +36,7 @@ function unfinishedPlans(dir) {
 /**
  * The work started and not finished.
  * @param {string} cwd - Project root
- * @returns {{in_flight: boolean, phase_plans: Array, quick: Array, debug: Array, continue_here: Array}}
+ * @returns {{in_flight: boolean, phase_plans: Array, quick: Array, debug: Array, continue_here: Array, pauses: Array}}
  *   in_flight is the guard's question: an unfinished plan in the phase state.md names,
  *   an open quick task (focus cycles included), or a debug session. phase_plans lists
  *   every phase's unfinished plans, `current` marking the ones that count; a plan with
@@ -80,9 +80,14 @@ function openWork(cwd) {
 
   const debug = list(planningPath(cwd, 'debug')).filter((n) => n.endsWith('.md')).map((n) => ({ file: planningRel('debug', n) }));
 
+  // Pauses waiting for a person's answer (pause.cjs). They are not work in flight
+  // for the guard: nothing edits the tree while a question is open.
+  const pauses = require('./pause.cjs').listPauses(cwd, { open: true })
+    .map((p) => ({ id: p.id, kind: p.kind, run: p.run, step: p.step, question: p.question, expects: p.expects, created_at: p.created_at, expires_at: p.expires_at }));
+
   return {
     in_flight: phasePlans.some((p) => p.current) || quick.length > 0 || debug.length > 0,
-    phase_plans: phasePlans, quick, debug, continue_here: continueHere,
+    phase_plans: phasePlans, quick, debug, continue_here: continueHere, pauses,
   };
 }
 
