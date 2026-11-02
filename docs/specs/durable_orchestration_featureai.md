@@ -3,7 +3,7 @@
 **Status:** Design (`2026-11-02`), not implemented
 **Origin:** deep research `2026-11-01` on whether a LangGraph-style engine would improve PAN. Verdict: **adapt, do not adopt**. Take the engine's ideas — a checkpoint per step, typed state transitions, typed human-approval pauses, safe concurrent writes, fork from a checkpoint — and build them over `.planning/` files with no new runtime dependency.
 **Amends:** ADR-0030 (takes its escalation path), and the merge gate's record format (`pan-wizard-core/mcp/merge-gate.cjs`).
-**Proposed ADR:** ADR-0052 "Durable orchestration over files", written when Stage A lands.
+**ADR:** [ADR-0052](../decisions/ADR-0052-durable-orchestration-over-files.md), written in Stage E.
 
 ---
 
@@ -358,6 +358,13 @@ The merge gate gained only the locked confirm in this stage (race 9). Expiry, th
 - **The approval token stays in the request file.** `pan-tools merge confirm` reads it there to approve in a person's terminal. What protects an MCP merge is that the token must be in the server's environment, which an agent cannot set, so hashing the file's copy would break the CLI path and gain nothing.
 - **`expects` is given by kind or `--options`.** `--expects '<json>'` remains for the rest, since JSON on a command line quotes differently in every shell PAN's runtimes use. `human-verify` uses a per-value note (`noteFor: ['issues']`), not a separate object answer.
 - **An open pause is not work in flight for the guard.** Nothing edits the tree while a question is open, and the guard's `workInFlight` copy stays pinned to `open_work.in_flight` unchanged.
+
+### 3.8.5 Stage E as built (`2026-11-02`)
+
+ADR-0052 is written and amends ADR-0030. ARCHITECTURE gains a "Durable state" section and design decision 11. Hygiene H-15 (`checkDurableState`) reports `pause-open-stale` (a week) and `journal-abandoned` (a day, no summary). The tier-0 scenarios `resume-from-journal` and `pause-survives-session` run on the `journal-plan` seed, each with a control that the harness confirms turns it red. Opening a pause on a plan step now journals the step `paused`, so the answer's `resumed` line is a legal change. Two items wait:
+
+- **The prompt rules stay allowlisted, not claimed.** The four rules (the executor's and execute-plan's journal step, exec-phase's pause answer, resume's pauses line) are carried out by a model. A tier-0 scenario drives the engine, not the prompt, so a `--prompt-mutant` run that deleted the rule would still pass it and wrongly report the rule as decorative. A model-tier scenario is what can claim them.
+- **D6, fork from a checkpoint, is deferred** until journals have run in real projects.
 
 ### 3.9 Test plan
 

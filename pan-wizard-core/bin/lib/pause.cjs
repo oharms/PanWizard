@@ -101,7 +101,13 @@ function openPause(cwd, o) {
       return record;
     }, { transition: 'pause' });
     if (w.error) return w;
-    if (!taken) return { opened: true, pause: w.data, file: toPosix(path.relative(cwd, pausePath(cwd, id))) };
+    if (!taken) {
+      // A pause on a plan step marks the step paused in its journal; the answer resumes it.
+      if (record.run && record.step) {
+        try { require('./journal.cjs').journalStep(cwd, { plan: record.run, step: record.step, event: 'paused', note: `pause ${id}: ${record.question.slice(0, 200)}`, by: 'pause' }); } catch { /* best-effort */ }
+      }
+      return { opened: true, pause: w.data, file: toPosix(path.relative(cwd, pausePath(cwd, id))) };
+    }
   }
   return { error: 'too_many_pauses', reason: `${base}: 99 pauses already exist for this step` };
 }

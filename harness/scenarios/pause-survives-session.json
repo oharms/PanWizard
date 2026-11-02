@@ -1,0 +1,119 @@
+{
+  "id": "pause-survives-session",
+  "tier": 0,
+  "description": "On a packed install, a decision pause opened on a plan's checkpoint task is, in a fresh process, the first thing `next-action` asks for. An answer outside its options is refused, one of them is recorded and journaled, and the router then moves on.",
+  "why": "Durable orchestration Stage D (spec D4): a checkpoint's question used to live only in the conversation, so a session that ended lost it and the answer was checked only by the model. Unit tests prove the pause against the source; this proves it against the installed engine across separate processes, and the control proves next-action's answer comes from the pause file.",
+  "seed": "journal-plan",
+  "install": [
+    "--claude"
+  ],
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 4,
+    "maxStepMinutes": 2
+  },
+  "steps": [
+    {
+      "kind": "pan",
+      "argv": [
+        "pause",
+        "open",
+        "--kind",
+        "decision",
+        "--run",
+        "01-01",
+        "--step",
+        "task-3",
+        "--question",
+        "Which store backs three.js?",
+        "--options",
+        "redis,sqlite"
+      ],
+      "expect": [
+        "exit:0",
+        "json:opened=true",
+        "json:pause.id=p-decision-01-01-task-3",
+        "json:pause.status=open"
+      ],
+      "why": "The checkpoint's question is written down, with the answers it takes, before anyone is asked."
+    },
+    {
+      "kind": "pan",
+      "argv": [
+        "next-action"
+      ],
+      "expect": [
+        "exit:0",
+        "json:action=answer_pause",
+        "json:pause.id=p-decision-01-01-task-3"
+      ],
+      "why": "A later session (a new process) is asked the open question before any other work."
+    },
+    {
+      "kind": "pan",
+      "argv": [
+        "pause",
+        "answer",
+        "p-decision-01-01-task-3",
+        "--value",
+        "mongo"
+      ],
+      "expect": [
+        "exit:1",
+        "json:error=pause_answer_invalid",
+        "json:allowed.1=sqlite"
+      ],
+      "why": "An answer the pause does not take is refused by the engine, with the answers it does take."
+    },
+    {
+      "kind": "pan",
+      "argv": [
+        "pause",
+        "answer",
+        "p-decision-01-01-task-3",
+        "--value",
+        "sqlite"
+      ],
+      "expect": [
+        "exit:0",
+        "json:answered=true",
+        "json:pause.answer=sqlite"
+      ],
+      "why": "One of its options is recorded as the answer."
+    },
+    {
+      "kind": "pan",
+      "argv": [
+        "journal",
+        "show",
+        "--plan",
+        "01-01"
+      ],
+      "expect": [
+        "exit:0",
+        "json:entries.0.event=paused",
+        "json:entries.1.event=resumed"
+      ],
+      "why": "The plan's journal shows task 3 paused for the question and resumed by the answer."
+    },
+    {
+      "kind": "pan",
+      "argv": [
+        "next-action"
+      ],
+      "expect": [
+        "exit:0",
+        "json:action=new_project"
+      ],
+      "why": "With the question answered the router moves on (this seed has no roadmap, so to new_project)."
+    }
+  ],
+  "controls": [
+    {
+      "id": "pause-deleted",
+      "after": 0,
+      "delete": ".planning/pauses",
+      "why": "Without the pause file next-action routes as if nothing were asked, so the next step must fail: the question survives the session through the file."
+    }
+  ]
+}

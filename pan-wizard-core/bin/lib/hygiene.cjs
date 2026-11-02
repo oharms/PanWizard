@@ -431,6 +431,46 @@ function checkFocusStale(cwd, now = Date.now()) {
   return { findings };
 }
 
+/** A pause open this long has likely been forgotten. */
+const PAUSE_STALE_MS = 7 * 24 * 3600000;
+/** A journaled plan with no summary whose last step is this old was abandoned mid-run. */
+const JOURNAL_STALE_MS = 24 * 3600000;
+
+/**
+ * H-15: durable state left behind (durable orchestration, spec D3/D4). A pause still
+ * open after a week, and a plan whose journal stopped a day ago with no summary.
+ * Report-only: answering a question or finishing a plan is the person's call.
+ */
+function checkDurableState(cwd, now = Date.now()) {
+  const findings = [];
+  for (const p of require('./pause.cjs').listPauses(cwd, { open: true })) {
+    const age = now - Date.parse(p.created_at);
+    if (!(age >= PAUSE_STALE_MS)) continue;
+    findings.push(mkFinding('pause-open-stale', 'info', planningRel('pauses', `${p.id}.json`),
+      `${p.kind} pause ${p.id} has waited ${Math.round(age / 86400000)} days for an answer (${p.question.slice(0, 120)})`
+      + `; answer it (\`pan-tools pause answer ${p.id} --value <answer>\`) or cancel it (\`pan-tools pause cancel ${p.id} --reason <why>\`)`, null));
+  }
+  const J = require('./journal.cjs');
+  let phases = [];
+  try { phases = fs.readdirSync(planningPath(cwd, 'phases')); } catch { /* no phases */ }
+  for (const ph of phases) {
+    let names;
+    try { names = fs.readdirSync(planningPath(cwd, 'phases', ph)); } catch { continue; }
+    for (const j of names.filter((n) => n.endsWith(J.JOURNAL_SUFFIX))) {
+      const id = j.slice(0, -J.JOURNAL_SUFFIX.length);
+      if (names.includes(`${id}-summary.md`) || !names.includes(`${id}-plan.md`)) continue;
+      const rows = J.readJournal(planningPath(cwd, 'phases', ph, j));
+      const last = rows[rows.length - 1];
+      const age = last ? now - Date.parse(last.ts) : NaN;
+      if (!(age >= JOURNAL_STALE_MS)) continue;
+      findings.push(mkFinding('journal-abandoned', 'info', planningRel('phases', ph, j),
+        `plan ${id} last recorded ${last.event} ${last.step} ${Math.round(age / 3600000)}h ago and has no summary`
+        + `; resume it (\`pan-tools journal resume-point --plan ${id}\` names the task) or finish it`, null));
+    }
+  }
+  return { findings };
+}
+
 /**
  * Thousands separator that does not depend on the host locale. `toLocaleString()`
  * emits a narrow no-break space in some locales and a comma in others, which
@@ -782,6 +822,7 @@ function scanOneRoot(cwd, root, opts) {
       ...checkStaleReports(cwd, opts).findings,
       ...checkCachedContext(cwd).findings,
       ...checkFocusStale(cwd).findings,
+      ...checkDurableState(cwd).findings,
     ];
     for (const f of findings) f.track = root.name;
     return { findings, planning_exists: fragment.planning_exists !== false };
@@ -1083,6 +1124,7 @@ module.exports = {
   checkStaleReports,
   checkCachedContext,
   checkPlanningFragment,
+  checkDurableState,
   compareVersions,
   cmdHygieneScan,
   cmdHygieneClean,

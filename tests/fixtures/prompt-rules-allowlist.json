@@ -213,18 +213,18 @@
   },
   {
     "id": "agents/pan-executor:67f1a528",
-    "reason": "Durable orchestration Stage C: a journal refusal is non-fatal by design. The engine side is enforced in code (journal step refuses commit_unknown and illegal_transition, tests/journal.test.cjs); the tier-0 scenario resume-from-journal planned for Stage E claims this rule."
+    "reason": "Durable orchestration Stage C: a journal refusal is non-fatal by design, and the engine half is enforced in code (journal step refuses commit_unknown and illegal_transition, tests/journal.test.cjs) and proven on a packed install by the tier-0 scenario resume-from-journal. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
   },
   {
     "id": "pan-wizard-core/workflows/execute-plan:d77dd5aa",
-    "reason": "Durable orchestration Stage C: a journal refusal is non-fatal by design. The engine side is enforced in code (journal step refuses commit_unknown and illegal_transition, tests/journal.test.cjs); the tier-0 scenario resume-from-journal planned for Stage E claims this rule."
+    "reason": "Durable orchestration Stage C: a journal refusal is non-fatal by design, and the engine half is enforced in code (journal step refuses commit_unknown and illegal_transition, tests/journal.test.cjs) and proven on a packed install by the tier-0 scenario resume-from-journal. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
   },
   {
     "id": "pan-wizard-core/workflows/exec-phase:56bf2be2",
-    "reason": "Durable orchestration Stage D: the answer is checked in code (pause answer refuses pause_answer_invalid and a second answer, tests/pause.test.cjs), and next-action returns answer_pause ahead of other work (same file). The tier-0 scenario pause-survives-session planned for Stage E claims this rule."
+    "reason": "Durable orchestration Stage D: the answer is checked in code (pause answer refuses pause_answer_invalid and a second answer, tests/pause.test.cjs) and next-action asks an open pause first, proven on a packed install by the tier-0 scenario pause-survives-session. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
   },
   {
     "id": "pan-wizard-core/workflows/resume-project:1f7ab258",
-    "reason": "Durable orchestration Stage D: the answer is checked in code (pause answer refuses pause_answer_invalid and a second answer, tests/pause.test.cjs), and next-action returns answer_pause ahead of other work (same file). The tier-0 scenario pause-survives-session planned for Stage E claims this rule."
+    "reason": "Durable orchestration Stage D: the answer is checked in code (pause answer refuses pause_answer_invalid and a second answer, tests/pause.test.cjs) and next-action asks an open pause first, proven on a packed install by the tier-0 scenario pause-survives-session. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
   }
 ]

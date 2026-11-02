@@ -549,6 +549,19 @@ The tree below shows the core files. Depending on which features a project has u
 | `patterns.md` | `appendErrorPattern()`, which no verb, hook or workflow calls today | `appendErrorPattern()` (auto-increment PAT-NNN) | `readErrorPatterns()` (`progress health`, `learnings extract`, `focus scan`, `focus plan`), `preflight` (counts the entries), `/pan:focus-auto --step scan` |
 | `session-history.md` | `appendSessionSummary()`, which no verb, hook or workflow calls today | `appendSessionSummary()` (keeps last 20) | `progress health` |
 
+### Durable state (ADR-0052)
+
+Orchestration files are written through `store.cjs`, checked against `transitions.cjs`, and two kinds of record make a run resumable:
+
+| Record | Where | Written by | What it guarantees |
+|--------|-------|-----------|--------------------|
+| Locked planning markdown | `state.md`, `roadmap.md`, `requirements.md`, `config.json` | Dispatcher commands, each holding the files' locks for its whole run (`store.lockCommand`) | A command's read and write fall inside one hold; `concurrency.strict` refuses on timeout |
+| JSON records | `focus/auto-run.json`, focus batches, `autodev/<run>/run.json`, `orchestration/approvals/`, `pauses/` | `store.updateRecord` | Read inside the lock, `_rev` incremented, atomic, status changes checked against their table |
+| Step journal | `phases/<phase>/<plan>-journal.jsonl` (and each focus cycle's) | The executor's commit protocol, focus open and close, pauses | Resume starts at the first task not proven done by a reachable commit or an unchanged file |
+| Pause | `pauses/<id>.json` | Checkpoints, plan-check overrides, autodev `human_needed` | The question survives the session; the answer is checked against `expects`; next-action asks it first |
+
+Lock files live outside the project, in `pan-locks/` under the system temp directory, so no commit or listing of `.planning/` sees them.
+
 ---
 
 ## Additional Components
@@ -1102,3 +1115,8 @@ Agents never communicate directly. All data flows through `.planning/` files on 
 - Agents (Layer 3) never import other agents — they communicate via `.planning/` files
 - Core modules (Layer 4) call `output()` only on the CLI path: from `cmd*` entry points and a few CLI-only handlers they dispatch to (`focusAuto*` in focus.cjs, `renderHealthReport` in commands.cjs, `_notGitRepo`/`_noRemote` in git.cjs)
 - No upward dependencies (a core module never requires pan-tools.cjs)
+
+### 11. Durable Orchestration over Files, Not a Graph Engine
+
+A graph engine such as LangGraph would add runtime dependencies and a database to make its checkpoints durable, and it assumes an app that calls model APIs; PAN lives inside the host CLI. PAN takes the engine's ideas instead, over its own files: locked, versioned writes; declared state tables; a step journal that resume trusts only as far as its commits prove; and typed pauses whose answers are checked in code. See [ADR-0052](decisions/ADR-0052-durable-orchestration-over-files.md).
+

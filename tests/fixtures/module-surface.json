@@ -640,6 +640,7 @@
     "RUNTIME_DIRS:object",
     "checkCachedContext:function",
     "checkCostLedger:function",
+    "checkDurableState:function",
     "checkHostMemory:function",
     "checkHostMemoryRouting:function",
     "checkLegacyUppercase:function",

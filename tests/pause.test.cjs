@@ -218,3 +218,26 @@ describe('prompt contracts', () => {
     assert.match(read('pan-wizard-core/workflows/resume-project.md'), /- `pauses`:/);
   });
 });
+
+describe('hygiene H-15: durable state left behind', () => {
+  const H = require(path.join(LIB, 'hygiene.cjs'));
+  const J = require(path.join(LIB, 'journal.cjs'));
+
+  test('a pause open for a week and a journaled plan quiet for a day with no summary are reported', () => {
+    P.openPause(dir, { kind: 'human-action', question: 'Log in to the dashboard' });
+    fs.mkdirSync(path.join(dir, '.planning', 'phases', '01-a'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.planning', 'phases', '01-a', '01-01-plan.md'), '<task type="auto">x</task>\n');
+    fs.writeFileSync(path.join(dir, '.planning', 'phases', '01-a', `01-01${J.JOURNAL_SUFFIX}`), JSON.stringify({ seq: 1, ts: new Date().toISOString(), step: 'task-1', event: 'started' }) + '\n');
+    assert.deepEqual(H.checkDurableState(dir).findings, [], 'nothing is stale yet');
+    const found = H.checkDurableState(dir, Date.now() + 8 * 86400000).findings;
+    assert.deepEqual(found.map((f) => f.check).sort(), ['journal-abandoned', 'pause-open-stale']);
+    assert.ok(found.every((f) => f.severity === 'info' && f.fixable === false), 'report-only');
+  });
+
+  test('a plan with a summary is never reported, however old its journal', () => {
+    fs.mkdirSync(path.join(dir, '.planning', 'phases', '01-a'), { recursive: true });
+    for (const n of ['01-01-plan.md', '01-01-summary.md']) fs.writeFileSync(path.join(dir, '.planning', 'phases', '01-a', n), 'x\n');
+    fs.writeFileSync(path.join(dir, '.planning', 'phases', '01-a', `01-01${J.JOURNAL_SUFFIX}`), JSON.stringify({ seq: 1, ts: '2026-01-01T00:00:00Z', step: 'task-1', event: 'started' }) + '\n');
+    assert.deepEqual(H.checkDurableState(dir, Date.now()).findings, []);
+  });
+});

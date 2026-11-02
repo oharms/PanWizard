@@ -1,7 +1,7 @@
 # ADR-0030: `.planning/` Concurrency Hardening — Advisory Locks + Atomic Writes
 
 ## Status
-Accepted — v1 (best-effort) shipped 2026-06-11: `lock.cjs` primitive (`withFileLock`, `writeFileAtomic`) wired into `writeStateMd()`. Wider adoption and strict mode are the documented escalation path below.
+Accepted — v1 (best-effort) shipped 2026-06-11: `lock.cjs` primitive (`withFileLock`, `writeFileAtomic`) wired into `writeStateMd()`. Wider adoption and strict mode are the documented escalation path below. Amended by ADR-0052 (2026-11-02), which takes that path: every orchestration writer goes through `store.cjs`, JSON records lock strictly, `concurrency.strict` applies to planning markdown, and lock files move outside the project.
 
 ## Context
 
