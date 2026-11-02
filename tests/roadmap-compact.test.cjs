@@ -238,12 +238,15 @@ describe('roadmap compact on a project', () => {
 
   test('history is written before roadmap.md: a failed rewrite can duplicate, never lose', () => {
     const d = project();
-    const rmPath = path.join(d, '.planning', 'roadmap.md');
-    fs.chmodSync(rmPath, 0o444);
+    // Fail the roadmap.md rewrite itself. A read-only file does not do it on POSIX:
+    // the atomic write renames a temp file over it, which the directory allows.
+    const lock = require(path.join(LIB, 'lock.cjs'));
+    const real = lock.writeFileAtomic;
+    lock.writeFileAtomic = () => { throw Object.assign(new Error('disk full'), { code: 'ENOSPC' }); };
     try {
-      assert.throws(() => compactRoadmap(d, { apply: true }));
+      assert.throws(() => compactRoadmap(d, { apply: true }), /disk full/);
     } finally {
-      fs.chmodSync(rmPath, 0o644);
+      lock.writeFileAtomic = real;
     }
     assert.equal(rm(d), ROADMAP, 'roadmap.md untouched');
     assert.match(fs.readFileSync(hist(d), 'utf8'), /Base criterion 10,/, 'the sections are already safe in the history');
