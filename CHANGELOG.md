@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-PAN's orchestration files are written so that concurrent writers no longer lose each other's changes: the first stage of durable orchestration over files (`docs/specs/durable_orchestration_featureai.md`).
+## [3.41.0] - 2026-11-02
+
+Durable orchestration over PAN's own files (`docs/specs/durable_orchestration_featureai.md`, ADR-0052): concurrent commands no longer lose each other's writes, orchestration records only change status along declared transitions, a crashed plan resumes after its last proven task (a task commit is its own record), and a question PAN asks survives the session that asked it.
 
 ### Added
 
