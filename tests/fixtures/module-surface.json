@@ -721,6 +721,10 @@
   ],
   "lock.cjs": [
     "acquireLock:function",
+    "holdLock:function",
+    "isHeld:function",
+    "lockPathFor:function",
+    "releaseHeld:function",
     "releaseLock:function",
     "sleepSync:function",
     "withFileLock:function",
@@ -1116,6 +1120,19 @@
     "stateReplaceField:function",
     "syncStateFrontmatter:function",
     "writeStateMd:function"
+  ],
+  "store.cjs": [
+    "abort:function",
+    "appendLine:function",
+    "commandLockFiles:function",
+    "hashOf:function",
+    "lastSeq:function",
+    "lockCommand:function",
+    "readRecord:function",
+    "reserveDir:function",
+    "strictConfigured:function",
+    "updateRecord:function",
+    "updateText:function"
   ],
   "suggest.cjs": [
     "buildSubcommandIndex:function",

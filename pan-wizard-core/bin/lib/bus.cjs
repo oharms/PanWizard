@@ -25,6 +25,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { withFileLock, writeFileAtomic } = require('./lock.cjs');
 const { output, error } = require('./core.cjs');
 const { planningPath } = require('./utils.cjs');
 
@@ -86,7 +87,10 @@ function publish(cwd, channel, payload, opts) {
 
   const file = channelFile(cwd, channel);
   try {
-    fs.appendFileSync(file, line, { encoding: 'utf-8' });
+    // Under the channel's lock, so an append never lands between a consume's
+    // read and its rewrite (which would drop it).
+    const r = withFileLock(file, () => fs.appendFileSync(file, line, { encoding: 'utf-8' }), { strict: true });
+    if (r.timedOut) return { error: `Failed to append to channel ${channel}: lock_timeout` };
   } catch (e) {
     return { error: `Failed to append to channel ${channel}: ${e.message}` };
   }
@@ -167,12 +171,16 @@ function drain(cwd, channel, opts) {
       // — anything before the offset, or beyond the read limit / the 1000-message
       // default on large channels (H2, ADR audit 2026-08). Splice out the consumed
       // lines and write the remainder back.
-      let allLines = [];
-      try { allLines = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean); } catch { allLines = []; }
-      const offset = Math.max(0, Number(opts?.offset) || 0);
-      const consumed = read.entries.length; // raw lines actually returned by readChannel
-      const remaining = allLines.slice(0, offset).concat(allLines.slice(offset + consumed));
-      fs.writeFileSync(file, remaining.length ? remaining.join('\n') + '\n' : '', 'utf-8');
+      // The read and the rewrite share the channel's lock with publish.
+      const r = withFileLock(file, () => {
+        let allLines = [];
+        try { allLines = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean); } catch { allLines = []; }
+        const offset = Math.max(0, Number(opts?.offset) || 0);
+        const consumed = read.entries.length; // raw lines actually returned by readChannel
+        const remaining = allLines.slice(0, offset).concat(allLines.slice(offset + consumed));
+        writeFileAtomic(file, remaining.length ? remaining.join('\n') + '\n' : '');
+      }, { strict: true });
+      if (r.timedOut) return { ...read, mode, drain_error: 'lock_timeout' };
     } catch (e) {
       return { ...read, mode, drain_error: e.message };
     }

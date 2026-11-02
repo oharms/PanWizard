@@ -491,6 +491,48 @@ function addSeenSig(cursor, transcriptPath, sig) {
   for (let i = 0; i < keys.length - MAX_SEEN_TRANSCRIPTS; i++) delete se[keys[i]];
 }
 
+// The cursor is read, advanced and written back by every hook fire, and
+// parallel subagents fire at once. A best-effort copy of lock.cjs's protocol
+// (hooks cannot require core; tests/cost-cursor-lock.test.cjs pins the two):
+// <os temp>/pan-locks/<hash>-<name>.lock by exclusive create, ~1 s of retries,
+// a lock older than 10 s is
+// stolen, and on timeout the fire goes ahead unlocked — never block the agent.
+const CURSOR_LOCK_RETRIES = 40;
+const CURSOR_LOCK_INTERVAL_MS = 25;
+const CURSOR_LOCK_STALE_MS = 10_000;
+
+function acquireCursorLock(cwd) {
+  let abs = path.resolve(cursorFilePath(cwd));
+  if (process.platform === 'win32') abs = abs.toLowerCase();
+  const hash = require('crypto').createHash('sha1').update(abs).digest('hex').slice(0, 20);
+  const lockPath = path.join(require('os').tmpdir(), 'pan-locks', `${hash}-${path.basename(abs)}.lock`);
+  try { fs.mkdirSync(path.dirname(lockPath), { recursive: true }); } catch { return null; }
+  for (let attempt = 0; attempt <= CURSOR_LOCK_RETRIES; attempt++) {
+    try {
+      fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
+      return lockPath;
+    } catch (err) {
+      if (err.code !== 'EEXIST') return null;
+      try {
+        if (Date.now() - fs.statSync(lockPath).mtimeMs > CURSOR_LOCK_STALE_MS) {
+          const stealPath = `${lockPath}.steal.${process.pid}.${Date.now()}`;
+          try { fs.renameSync(lockPath, stealPath); fs.unlinkSync(stealPath); } catch { /* another fire stole it */ }
+          continue;
+        }
+      } catch { /* vanished — retry */ }
+      if (attempt < CURSOR_LOCK_RETRIES) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, CURSOR_LOCK_INTERVAL_MS);
+    }
+  }
+  return null;
+}
+
+function releaseCursorLock(lockPath) {
+  if (!lockPath) return;
+  try {
+    if (fs.readFileSync(lockPath, 'utf-8').trim() === String(process.pid)) fs.unlinkSync(lockPath);
+  } catch { /* already gone */ }
+}
+
 function writeCursor(cwd, cursor) {
   try {
     // Prune cursor keys for transcripts that no longer exist so the map can't
@@ -515,7 +557,13 @@ function writeCursor(cwd, cursor) {
       if (Object.keys(bounded).length) pruned[SEEN_EVENTS] = bounded;
     }
     fs.mkdirSync(path.dirname(cursorFilePath(cwd)), { recursive: true });
-    fs.writeFileSync(cursorFilePath(cwd), JSON.stringify(pruned), 'utf-8');
+    // Temp file + rename: a fire reading the cursor never sees half of it.
+    const tmp = `${cursorFilePath(cwd)}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(pruned), 'utf-8');
+    try { fs.renameSync(tmp, cursorFilePath(cwd)); } catch {
+      fs.writeFileSync(cursorFilePath(cwd), JSON.stringify(pruned), 'utf-8');
+      try { fs.unlinkSync(tmp); } catch { /* best-effort */ }
+    }
   } catch { /* best-effort — never block the agent loop */ }
 }
 
@@ -704,6 +752,10 @@ function buildCostRecord(data, cwd) {
     // missing agent file consumes nothing and is keyed by the parent, so the
     // re-fire / sibling marker logic below applies to it unchanged.
     const keyPath = sliceSource || parentPath;
+    // Held from this read to the write below, so two fires never slice the
+    // same transcript lines or overwrite each other's advance.
+    const cursorLock = acquireCursorLock(cwd);
+    if (cursorLock) process.once('exit', () => releaseCursorLock(cursorLock)); // if a throw skips the release below
     const cursor = readCursor(cwd);
     const since = cursor[keyPath] || 0;
     const fromTranscript = sliceSource
@@ -768,6 +820,7 @@ function buildCostRecord(data, cwd) {
         writeCursor(cwd, cursor);
       }
     }
+    releaseCursorLock(cursorLock);
   } else {
     // No transcript to slice — best-effort from data.usage, plausibility-guarded
     // so a cumulative counter can never slip through as a per-call value. Flag

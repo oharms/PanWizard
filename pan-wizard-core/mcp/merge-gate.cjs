@@ -24,6 +24,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const store = require('../bin/lib/store.cjs');
+const { withFileLock } = require('../bin/lib/lock.cjs');
 const crypto = require('crypto');
 
 const APPROVALS_SUBPATH = ['.planning', 'orchestration', 'approvals'];
@@ -46,7 +48,7 @@ function validateBranch(branch) {
 
 function recordPath(cwd, branch) { return path.join(approvalsDir(cwd), `${slugify(branch)}.json`); }
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } }
-function writeJson(p, obj) { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(obj, null, 2), 'utf8'); }
+function writeJson(p, obj) { return store.updateRecord(p, () => obj); }
 
 /**
  * Stage a merge request. Mints a fresh per-request approval token (nonce), records the
@@ -110,6 +112,17 @@ function evaluateMerge(cwd, opts = {}, env = process.env) {
  * it cannot be replayed without a fresh human approval.
  */
 function confirmMerge(cwd, opts = {}, env = process.env, gitImpl = null) {
+  // Evaluate, merge and consume under the record's lock: a second confirm waits,
+  // then reads `merged` and is refused already_consumed instead of merging twice.
+  let p;
+  try { p = recordPath(cwd, validateBranch(opts.branch)); } catch { return confirmMergeLocked(cwd, opts, env, gitImpl); }
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  const held = withFileLock(p, () => confirmMergeLocked(cwd, opts, env, gitImpl), { strict: true });
+  if (held.timedOut) return { merged: false, reasons: ['lock_timeout'], branch: opts.branch, id: slugify(opts.branch) };
+  return held.result;
+}
+
+function confirmMergeLocked(cwd, opts, env, gitImpl) {
   const verdict = evaluateMerge(cwd, opts, env);
   if (!verdict.allowed) return { merged: false, reasons: verdict.reasons, branch: verdict.branch, id: verdict.id };
   if (typeof gitImpl !== 'function') return { merged: false, reasons: ['no_git_executor'], branch: verdict.branch, id: verdict.id };

@@ -9,6 +9,7 @@ const path = require('path');
 const os = require('os');
 const { acquireLock, releaseLock, withFileLock, writeFileAtomic } =
   require('../pan-wizard-core/bin/lib/lock.cjs');
+const lk = (f) => { const p = require('../pan-wizard-core/bin/lib/lock.cjs').lockPathFor(f); fs.mkdirSync(path.dirname(p), { recursive: true }); return p; };
 
 let tmpDir;
 
@@ -27,15 +28,15 @@ describe('acquireLock / releaseLock', () => {
 
   test('contended fresh lock is not acquired within a small retry budget', () => {
     const target = path.join(tmpDir, 'state.md');
-    fs.writeFileSync(target + '.lock', '99999'); // fresh foreign lock
+    fs.writeFileSync(lk(target), '99999'); // fresh foreign lock
     const { acquired } = acquireLock(target, { retries: 2, intervalMs: 5 });
     assert.equal(acquired, false);
-    assert.ok(fs.existsSync(target + '.lock'), 'foreign fresh lock must not be stolen');
+    assert.ok(fs.existsSync(lk(target)), 'foreign fresh lock must not be stolen');
   });
 
   test('stale lock (crashed holder) is stolen', () => {
     const target = path.join(tmpDir, 'state.md');
-    const lockPath = target + '.lock';
+    const lockPath = lk(target);
     fs.writeFileSync(lockPath, '99999');
     const old = new Date(Date.now() - 60_000);
     fs.utimesSync(lockPath, old, old); // age it past staleMs
@@ -48,7 +49,7 @@ describe('acquireLock / releaseLock', () => {
     // L12: rename-based steal must leave a lock owned by the stealer, not the
     // stale pid, so releaseLock ownership checks work.
     const target = path.join(tmpDir, 'state.md');
-    const lockPath = target + '.lock';
+    const lockPath = lk(target);
     fs.writeFileSync(lockPath, '99999');
     const old = new Date(Date.now() - 60_000);
     fs.utimesSync(lockPath, old, old);
@@ -66,7 +67,7 @@ describe('acquireLock / releaseLock', () => {
     // A successor may hold the lock after our stale lock was stolen; our
     // releaseLock must not delete their fresh lock.
     const target = path.join(tmpDir, 'state.md');
-    const lockPath = target + '.lock';
+    const lockPath = lk(target);
     fs.writeFileSync(lockPath, '77777'); // owned by a different pid
     releaseLock(lockPath);
     assert.ok(fs.existsSync(lockPath), "another process's lock must survive our release");
@@ -79,22 +80,22 @@ describe('withFileLock', () => {
     const target = path.join(tmpDir, 'state.md');
     const out = withFileLock(target, () => 'done');
     assert.deepEqual(out, { locked: true, result: 'done' });
-    assert.ok(!fs.existsSync(target + '.lock'), 'lock released after the section');
+    assert.ok(!fs.existsSync(lk(target)), 'lock released after the section');
   });
 
   test('falls back to unlocked execution on contention (best-effort v1)', () => {
     const target = path.join(tmpDir, 'state.md');
-    fs.writeFileSync(target + '.lock', '99999');
+    fs.writeFileSync(lk(target), '99999');
     const out = withFileLock(target, () => 'ran anyway', { retries: 1, intervalMs: 5 });
     assert.equal(out.locked, false, 'should report the lock was not held');
     assert.equal(out.result, 'ran anyway', 'critical section still runs (no new failure mode)');
-    assert.ok(fs.existsSync(target + '.lock'), 'foreign lock untouched');
+    assert.ok(fs.existsSync(lk(target)), 'foreign lock untouched');
   });
 
   test('releases the lock even when fn throws', () => {
     const target = path.join(tmpDir, 'state.md');
     assert.throws(() => withFileLock(target, () => { throw new Error('boom'); }), /boom/);
-    assert.ok(!fs.existsSync(target + '.lock'), 'lock must not leak on throw');
+    assert.ok(!fs.existsSync(lk(target)), 'lock must not leak on throw');
   });
 });
 
@@ -124,7 +125,7 @@ describe('writeStateMd integration (ADR-0030)', () => {
     writeStateMd(statePath, '# Project State\n\n**Current Phase:** 1\n', tmpDir);
     const content = fs.readFileSync(statePath, 'utf8');
     assert.ok(content.includes('Current Phase'), 'content should land');
-    assert.ok(!fs.existsSync(statePath + '.lock'), 'lock released');
+    assert.ok(!fs.existsSync(lk(statePath)), 'lock released');
     const leftovers = fs.readdirSync(planningDir).filter(f => f.includes('.tmp'));
     assert.equal(leftovers.length, 0, 'no temp files should remain');
   });

@@ -23,6 +23,8 @@ const { extractFrontmatter, extractPriorityEffort } = require('./frontmatter.cjs
 const { enumerateRoadmapPhases } = require('./roadmap.cjs');
 const { readErrorPatterns } = require('./commands.cjs');
 const { weeklyLimitStop } = require('./cost.cjs');
+const store = require('./store.cjs');
+const { holdLock } = require('./lock.cjs');
 const { planningPath, listPhaseDirs, classifyPhaseStatus, filterPlanFiles, filterSummaryFiles, planningRel, nextQuickNum } = require('./utils.cjs');
 
 // ─── Scan helpers ───────────────────────────────────────────────────────────
@@ -398,7 +400,8 @@ function cmdFocusPlan(cwd, raw, ...args) {
   const batchPath = path.join(focusDir, `batch-${date}.json`);
   const batchData = { date, mode, budget, allocated, batch, remaining: remaining.length };
   try {
-    fs.writeFileSync(batchPath, JSON.stringify(batchData, null, 2), 'utf-8');
+    const w = store.updateRecord(batchPath, () => batchData);
+    if (w.error) throw new Error(w.reason || w.error);
   } catch (err) {
     output({ error: `Failed to write batch file: ${err.message}` }, raw);
     return;
@@ -851,23 +854,24 @@ function focusRoute(cwd, opts = {}) {
   if (batch.error) return { error: 'batch_unusable', reason: batch.error };
   const routed = routeItems(cwd, batch.batch);
   try {
-    const data = JSON.parse(fs.readFileSync(abs, 'utf-8'));
-    const list = data[batch.items_key];
     const owners = new Map([...routed.execute, ...routed.handoff].map((c) => [c.id, c]));
-    list.forEach((item, i) => {
-      if (item && typeof item === 'object') item.owner = owners.get(focusItemId(item, i)).owner;
-    });
-    if (routed.handoff.length) {
-      data.results = { ...(data.results || {}) };
-      data.routes = { ...(data.routes || {}) };
-      for (const h of routed.handoff) {
-        data.results[h.id] = 'routed';
-        data.routes[h.id] = { phase: h.phase || null, command: h.command, reason: h.reason };
+    const w = store.updateRecord(abs, (data) => {
+      if (!data) throw Object.assign(new Error('batch file vanished'), { code: 'ENOENT' });
+      data[batch.items_key].forEach((item, i) => {
+        const owner = owners.get(focusItemId(item, i));
+        if (item && typeof item === 'object' && owner) item.owner = owner.owner;
+      });
+      if (routed.handoff.length) {
+        data.results = { ...(data.results || {}) };
+        data.routes = { ...(data.routes || {}) };
+        for (const h of routed.handoff) {
+          data.results[h.id] = 'routed';
+          data.routes[h.id] = { phase: h.phase || null, command: h.command, reason: h.reason };
+        }
       }
-    }
-    const st = fs.statSync(abs);
-    fs.writeFileSync(abs, JSON.stringify(data, null, 2), 'utf-8');
-    fs.utimesSync(abs, st.atime, st.mtime);
+      return data;
+    }, { keepMtime: true });
+    if (w.error) throw Object.assign(new Error(w.reason || w.error), { code: w.error });
   } catch (e) {
     return { error: 'batch_unwritable', reason: `could not record the routes in ${batch.file}: ${e.code || e.message}` };
   }
@@ -1143,21 +1147,25 @@ function focusOpen(cwd, opts = {}) {
 
   const now = opts.now || new Date();
   const date = now.toISOString().slice(0, 10);
-  const num = nextQuickNum(cwd);
-  const name = `${num}-focus-${kind}-${date}`;
-  const dir = planningPath(cwd, QUICK_DIR, name);
-  try {
-    fs.mkdirSync(planningPath(cwd, QUICK_DIR), { recursive: true });
-    fs.mkdirSync(dir); // not recursive: an existing directory is a collision, never overwritten
-  } catch (e) {
-    return { error: 'mkdir_failed', reason: `could not create ${planningRel(QUICK_DIR, name)}: ${e.code || e.message}` };
+  // The number is claimed under the quick directory's lock, so two cycles (or a
+  // cycle and a quick task) opened at once never share one.
+  const reserved = store.reserveDir(planningPath(cwd, QUICK_DIR), (n) => `${n}-focus-${kind}-${date}`, () => nextQuickNum(cwd));
+  if (reserved.error) {
+    return { error: 'mkdir_failed', reason: `could not create a cycle directory in ${planningRel(QUICK_DIR)}: ${reserved.reason}` };
   }
+  const num = reserved.n;
+  const name = path.basename(reserved.dir);
+  const dir = reserved.dir;
   const planText = focusCyclePlan({ num, kind, items, ids, batchFile, runId, category, tests, openedAt: now.toISOString() });
   const planPath = path.join(dir, `${num}-plan.md`);
   fs.writeFileSync(planPath, planText, 'utf-8');
   if (tests && tests.command) fs.writeFileSync(path.join(dir, `${num}-test-baseline.json`), JSON.stringify(tests, null, 2), 'utf-8');
   // The run records this cycle by name at --update, never by searching for one.
-  if (run && run.run_id === runId) writeAutoRun(cwd, { ...run, current_cycle: planningRel(QUICK_DIR, name) });
+  // Written against the run as it is on disk now, not as it was read before the
+  // tests ran: a --stop in between is kept.
+  if (run && run.run_id === runId) {
+    store.updateRecord(planningPath(cwd, FOCUS_DIR, AUTO_RUN_FILE), (cur) => (cur && cur.run_id === runId ? { ...cur, current_cycle: planningRel(QUICK_DIR, name) } : null));
+  }
   return {
     opened: true, num, kind, dir: planningRel(QUICK_DIR, name), plan: toPosix(path.relative(cwd, planPath)),
     batch_file: batchFile, run_id: runId, items: ids, handoff, files_modified: focusCycleFiles(items),
@@ -1333,19 +1341,18 @@ function focusClose(cwd, opts = {}) {
   if (plan.batch_file) {
     const abs = path.resolve(cwd, plan.batch_file);
     try {
-      const data = JSON.parse(fs.readFileSync(abs, 'utf-8'));
-      if (data && typeof data === 'object' && !Array.isArray(data)) {
+      // Keep the mtime: listBatchFiles orders same-day batches by it, and a rewrite
+      // made this finished batch the newest, so the next run picked it again.
+      const w = store.updateRecord(abs, (data) => {
+        if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
         data.results = { ...(data.results || {}) };
         for (const id of done) data.results[id] = 'done';
         for (const id of failedIds) data.results[id] = 'failed';
         if (failedIds.length) data.result_reasons = { ...(data.result_reasons || {}), ...failed };
-        // Keep the mtime: listBatchFiles orders same-day batches by it, and a rewrite
-        // made this finished batch the newest, so the next run picked it again.
-        const st = fs.statSync(abs);
-        fs.writeFileSync(abs, JSON.stringify(data, null, 2), 'utf-8');
-        fs.utimesSync(abs, st.atime, st.mtime);
-        batchResults = 'written';
-      }
+        return data;
+      }, { keepMtime: true });
+      if (w.error) throw Object.assign(new Error(w.error), { code: w.error });
+      if (w.written) batchResults = 'written';
     } catch (e) {
       batchResults = `skipped: ${e.code || 'not valid JSON'}`;
     }
@@ -1513,11 +1520,8 @@ function readAutoRun(cwd) {
  * @returns {boolean} true on success
  */
 function writeAutoRun(cwd, data) {
-  const dirPath = planningPath(cwd, FOCUS_DIR);
   try {
-    fs.mkdirSync(dirPath, { recursive: true });
-    fs.writeFileSync(path.join(dirPath, AUTO_RUN_FILE), JSON.stringify(data, null, 2));
-    return true;
+    return Boolean(store.updateRecord(planningPath(cwd, FOCUS_DIR, AUTO_RUN_FILE), () => data).ok);
   } catch {
     return false;
   }
@@ -2023,6 +2027,13 @@ function cmdFocusAuto(cwd, raw, ...args) {
   };
 
   if (hasFlag('--status')) return focusAutoStatus(cwd, raw);
+  // --stop, --update, --continue and a start read the run, check its status and
+  // write it back: they hold its lock throughout, so the check and the write
+  // see the same run (released at exit, since output() ends the process).
+  const runFile = planningPath(cwd, FOCUS_DIR, AUTO_RUN_FILE);
+  if (fs.existsSync(path.dirname(runFile)) && !holdLock(runFile, { strict: true }).acquired) {
+    return output({ error: 'lock_timeout', file: planningRel(FOCUS_DIR, AUTO_RUN_FILE), reason: 'another PAN process is changing the focus run; retry when it finishes' }, raw);
+  }
   if (hasFlag('--stop')) return focusAutoStop(cwd, raw);
   if (hasFlag('--update')) return focusAutoUpdate(cwd, raw, getVal);
   if (hasFlag('--continue')) return focusAutoContinue(cwd, raw);

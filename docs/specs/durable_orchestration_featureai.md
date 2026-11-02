@@ -325,6 +325,17 @@ Creates a new journal `<plan>-journal.fork-<n>.jsonl` with lines 1..5 copied and
 | **E — integration** | ADR-0052; docs; hygiene/doctor checks; harness scenarios; prompt-rule and surface registries; CLAUDE.md counts | After the behaviour exists |
 | **F — fork (optional)** | `journal fork` | Only once C has run in real projects |
 
+### 3.8.1 Stage A as built (`2026-11-02`)
+
+Three choices differ from D1 as written; each keeps its guarantee with a smaller change:
+
+- **Planning markdown is locked per command, not per write.** Rather than rewriting each of the state, roadmap, requirements and config writers as an `updateText` mutation, the dispatcher calls `store.lockCommand(cwd, verb, sub)` before it dispatches. A table (`COMMAND_LOCKS`) names the files each command reads and writes, and the command holds those locks, in one fixed order, for its whole run. Holds are re-entrant, so `writeStateMd`'s own lock nests inside, and `lock.cjs` releases every held lock at process exit, since `output()` ends the process. The command's read and write fall inside one hold, which is the property D1 asks for. `updateText` exists for later stages and for callers outside the dispatcher.
+- **Autodev claims a run instead of locking its ledger.** A run lasts hours, longer than any lock should be held. `run.json` records `owner: {pid, since}`, a second driver is refused `run_busy` while that process is alive, and the claim is released when `runAutodev` returns. Ledger lines stay single appends, which ADR-0030 already treats as atomic.
+- **Lock files moved out of the project.** A command that holds a lock while it commits `.planning/` (`phase complete`) would have committed `<file>.lock`, and a lock beside a file showed up in directory listings and was written into planning trees PAN does not own. `lockPathFor` puts every lock in `<os temp>/pan-locks/<sha1 of the absolute path>-<name>.lock` (lower-cased on Windows). A strict wait is now measured by the clock (7 s, inside the 10 s stale window), and Windows `EPERM` on a lock being deleted counts as contention.
+- **Quick numbering** goes through `reserveDir` for focus cycles. `init quick`, which returns a number the model then uses to create the directory, is unchanged. A number cannot be reserved across a model turn, and `/pan:quick` runs in a single session.
+
+The merge gate gained only the locked confirm in this stage (race 9). Expiry, the hashed token and refusing a request over a merged record are D5, in Stage D.
+
 ### 3.9 Test plan
 
 New files: `tests/store.test.cjs`, `tests/transitions.test.cjs`, `tests/journal.test.cjs`, `tests/pause.test.cjs`; additions to `tests/pan-zcode-orchestration.test.cjs` and `tests/phase-gate.test.cjs` (merge gate, `nextAction`), `tests/consolidate-surfaces.test.cjs` (the `next-action` router), `tests/open-work.test.cjs`, `tests/focus-integration.test.cjs`, `tests/autodev*.test.cjs`.

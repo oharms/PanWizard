@@ -393,7 +393,8 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | `frontmatter.cjs` | YAML-like frontmatter CRUD: `extractFrontmatter()`, `reconstructFrontmatter()`, get/set/merge/validate |
 | `config.cjs` | Config CRUD: create default `config.json`, get/set with dot-notation paths (e.g., `workflow.auto_advance`), standards catalog (list, select, remove, status, recommend, phase-track, tools) |
 | `state.cjs` | state.md operations: load, get, update, patch, json output (`state load` and `state json` carry `contract: "1.0"`, `STATE_CONTRACT` in constants.cjs, as `progress` JSON does), `readStateSafe()`, frontmatter sync; writes serialize through lock.cjs (ADR-0030) |
-| `lock.cjs` | Advisory file locking (`withFileLock`, stale-steal) + atomic temp-rename writes (`writeFileAtomic`) for .planning/ concurrency (ADR-0030) |
+| `lock.cjs` | Advisory file locking (`withFileLock`, stale-steal) + atomic temp-rename writes (`writeFileAtomic`) for .planning/ concurrency (ADR-0030). Holds are re-entrant within a process and released at exit (`holdLock`); `strict` callers do not run their section on timeout. Lock files live outside the project, in `pan-locks/` under the system temp directory, named by a hash of the guarded path (`lockPathFor`) |
+| `store.cjs` | One write path for orchestration files: `updateRecord` (JSON records, read inside the lock, `_rev` incremented, `expectRev` compare-and-swap, strict), `updateText` (markdown, `expectHash` on the raw bytes), `appendLine` (JSONL with `seq`), `reserveDir` (numbered directories claimed under a lock), and `lockCommand`, which the dispatcher calls so a command that edits planning markdown holds those files' locks for its whole run (`concurrency.strict` turns a timeout there into `lock_timeout`) |
 | `init.cjs` | Compound init commands: bootstrap all file paths and config for execute-phase, plan-phase, progress, phase-op, and the other major workflows |
 | `phase.cjs` | Phase CRUD facade: list, add, insert (decimal numbering), complete, next-decimal; re-exports phase-remove.cjs |
 | `phase-remove.cjs` | Phase removal + decimal/integer renumbering cascade, roadmap reference rewriting; extracted from phase.cjs |
@@ -729,7 +730,7 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │  LAYER 1: Foundation (no internal deps)
   ├── constants.cjs
   ├── planning-root.cjs   (ADR-0043 — which .planning tree a command acts on)
-  ├── lock.cjs            (ADR-0030 — advisory file locking, used by state.cjs)
+  ├── lock.cjs            (ADR-0030 — advisory file locking, used by state.cjs, store.cjs, bus.cjs and the merge gate)
   │
   │  LAYER 2: Core (depends on constants, utils + Node.js builtins; roadmap-compact lazily)
   ├── core.cjs
@@ -772,6 +773,10 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │     ├── utils.cjs
   │     ├── lock.cjs
   │     └── memory-optimize.cjs (lazy)
+  │
+  ├── store.cjs
+  │     ├── lock.cjs
+  │     └── utils.cjs
   │
   ├── template.cjs
   │     ├── core.cjs

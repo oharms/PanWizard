@@ -32,6 +32,7 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const { output } = require('./core.cjs');
 const { planningPath } = require('./utils.cjs');
+const store = require('./store.cjs');
 const { HOSTS } = require('./hosts.cjs');
 const { routeNextAction, diskSnapshot } = require('./next-action.cjs');
 
@@ -295,12 +296,39 @@ function executeUnit(cwd, unit, host, opts = {}) {
 }
 
 function persistRunFacts(cwd) {
-  const p = path.join(autodevDir(cwd), 'state.json');
-  const st = readJson(p, { phases: {} });
-  for (const ph of diskSnapshot(cwd).phases) st.phases[String(ph.number)] = { verified: !!ph.verified, merged: !!ph.merged };
-  st.updated = new Date().toISOString();
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(st, null, 2) + '\n');
+  const phases = diskSnapshot(cwd).phases;
+  store.updateRecord(path.join(autodevDir(cwd), 'state.json'), (cur) => {
+    const st = cur && cur.phases ? cur : { ...(cur || {}), phases: {} };
+    for (const ph of phases) st.phases[String(ph.number)] = { verified: !!ph.verified, merged: !!ph.merged };
+    st.updated = new Date().toISOString();
+    return st;
+  });
+}
+
+const pidAlive = (pid) => {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
+};
+
+/**
+ * Claim a run for this process: run.json records the owner, and a run another
+ * live process owns is refused (run_busy), so two `autodev run --resume` calls
+ * never drive one run and append the same unit twice.
+ */
+function claimRun(runFile) {
+  const r = store.updateRecord(runFile, (cur) => {
+    if (!cur) return null;
+    const o = cur.owner;
+    if (o && o.pid !== process.pid && pidAlive(o.pid)) {
+      return store.abort({ error: 'run_busy', reason: `autodev run ${cur.id} is being driven by process ${o.pid} (since ${o.since}); let it stop first`, run: cur.id, owner_pid: o.pid });
+    }
+    return { ...cur, owner: { pid: process.pid, since: new Date().toISOString() } };
+  });
+  return r.error ? r : null;
+}
+
+function releaseRun(runFile) {
+  store.updateRecord(runFile, (cur) => (cur && cur.owner && cur.owner.pid === process.pid ? { ...cur, owner: null } : null));
 }
 
 /** Spend recorded today (UTC) across every run's ledger. */
@@ -483,6 +511,15 @@ function autodevActivity(cwd, staleHours = 12, now = Date.now()) {
  * @returns {{run, ledger, stop, units}}
  */
 function runAutodev(cwd, opts = {}) {
+  const claimed = {};
+  try {
+    return runAutodevLoop(cwd, opts, claimed);
+  } finally {
+    if (claimed.file) releaseRun(claimed.file);
+  }
+}
+
+function runAutodevLoop(cwd, opts, claimed) {
   let runId = opts.runId || (opts.resume ? latestRun(cwd) : null);
   if (opts.resume && !runId) return { error: 'no_run', reason: 'no autodev run to resume' };
   // A fresh run never starts beside a focus run or an open focus cycle: both would
@@ -500,9 +537,11 @@ function runAutodev(cwd, opts = {}) {
   let run = readJson(runFile, null);
   if (!run) {
     run = { id: runId, started: new Date().toISOString(), host: opts.host, limits: { maxUsd: opts.maxUsd ?? null, maxUsdDay: opts.maxUsdDay ?? null, maxTurns: opts.maxTurns ?? null } };
-    fs.mkdirSync(runDir, { recursive: true });
-    fs.writeFileSync(runFile, JSON.stringify(run, null, 2) + '\n');
+    run = store.updateRecord(runFile, () => run).data;
   }
+  const busy = claimRun(runFile);
+  if (busy) return busy;
+  claimed.file = runFile;
   const host = opts.host || run.host;
   if (!HOSTS[host] || !HOSTS[host].runner) return { error: 'unsupported_host', reason: `no autonomous adapter for host "${host}"`, hosts: Object.keys(HOSTS).filter((k) => HOSTS[k].runner) };
   const budgetCfg = (readJson(planningPath(cwd, 'config.json'), {}).budget) || {};
@@ -517,7 +556,7 @@ function runAutodev(cwd, opts = {}) {
   }
   if (opts.maxUsd != null || opts.maxUsdDay != null) {
     run.limits = { ...run.limits, maxUsd: limits.maxUsd, maxUsdDay: limits.maxUsdDay, maxTurns: limits.maxTurns };
-    fs.writeFileSync(runFile, JSON.stringify(run, null, 2) + '\n');
+    store.updateRecord(runFile, (cur) => ({ ...(cur || run), limits: run.limits }));
   }
   const append = (row) => fs.appendFileSync(ledger, JSON.stringify({ ts: new Date().toISOString(), ...row }) + '\n');
   const units = [];

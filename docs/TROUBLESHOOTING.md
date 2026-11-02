@@ -783,11 +783,19 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's loader requires `setup` (or `effect`), and older PAN plugins exported only `server`, so the compaction hand-off was lost. Re-run the installer with `--opencode` (or `/pan:update`) to get the plugin that exports both: OpenCode 1 keeps calling `server()`, OpenCode 2 calls `setup()`.
 
+### A command refuses with `lock_timeout`
+
+**Symptom:** A `pan-tools` command exits 1 with `error: "lock_timeout"`, a `file` and a `lock` path.
+
+**Root cause:** Another PAN process held the file's lock for longer than the wait (about 5 s for focus runs, batch files, autodev run records and merge-gate approvals; about 1 s for planning markdown, and only under `concurrency.strict: true` does that become a refusal). A lock left by a process that crashed is taken over once it is 10 s old.
+
+**Fix:** Retry when the other command finishes. If no PAN process is running, the lock file the refusal names (under `pan-locks/` in the system temp directory) is left over from one that was killed: delete it, or wait 10 s and retry.
+
 ### Multiple sessions interfere with each other
 
 **Symptom:** Two Claude Code sessions running PAN on the same project produce conflicting commits, corrupted state.md, or duplicated work.
 
-**Root cause:** `state.md` writes are serialized via advisory file locking plus atomic writes (ADR-0030), but PAN does not coordinate whole-session concurrency. Two sessions can still commit to the same branch, race on other artifacts, or duplicate work — keep to one session per project.
+**Root cause:** PAN's own writes no longer lose each other: a command that edits `state.md`, `roadmap.md`, `requirements.md` or `config.json` holds those files' locks for its whole run, and focus runs, batch files, autodev run records and merge-gate approvals are read and written under a lock and land atomically (ADR-0030, `store.cjs`). A second `autodev run` on a run another live process is driving is refused `run_busy`. PAN does not coordinate whole sessions, though: two sessions can still commit to the same branch, edit the same source files, or duplicate work — keep to one session per project.
 
 **Prevention:** Do not run multiple PAN sessions on the same project simultaneously. PAN is designed for single-session operation.
 

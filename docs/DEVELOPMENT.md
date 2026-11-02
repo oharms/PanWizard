@@ -23,6 +23,7 @@ pan-wizard/
         utils.cjs             # readJsonFile, planningPath()/planningRel() (built on planning-root), listPhaseDirs
         planning-root.cjs     # Which .planning tree a command acts on: --track / --planning-dir + provenance (ADR-0043)
         lock.cjs              # Advisory file locking + atomic writes for .planning/ concurrency (ADR-0030)
+        store.cjs             # The write path for orchestration files: locked read-modify-write, _rev, appendLine, reserveDir
         config.cjs            # Config CRUD (dot-notation get/set), standards catalog
         state.cjs             # state.md operations + frontmatter sync
         state-compact.cjs     # state compact — archive settled history to state-history.md (ADR-0044)
