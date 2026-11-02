@@ -55,5 +55,8 @@
       ],
       "why": "Memory optimisation O2: the researcher, planner and checker read the phase's roadmap slice, not the whole roadmap.md and requirements.md, and no plan names the whole roadmap in its <context>. Counted from the agents' own transcripts: a Read with no limit, or a shell command that prints the file, is a whole read. The planner edits its own section of roadmap.md after a targeted read, which is allowed."
     }
+  ],
+  "covers": [
+    "agents/pan-planner:69334559"
   ]
 }

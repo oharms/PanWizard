@@ -1055,7 +1055,7 @@ If exists, load relevant documents by phase type:
 </step>
 
 <step name="identify_phase">
-The phase to plan is in your prompt, and its roadmap slice (`{phase_dir}/{phase}-roadmap-slice.md`) lists every phase in one line each. Do not read the whole roadmap.md: on a long project it is the largest file in `.planning/`, and the slice holds what planning this phase needs from it.
+The phase to plan is in your prompt, and its roadmap slice (`{phase_dir}/{phase}-roadmap-slice.md`) lists every phase in one line each. Do not read the whole roadmap.md: on a long project it is the largest file in `.planning/`, and the slice holds what planning this phase needs from it. The same holds for requirements.md: the slice carries this phase's requirement lines, so to add a `Test:` line, find the requirement with a search and read only that.
 ```bash
 ls .planning/phases/
 ```

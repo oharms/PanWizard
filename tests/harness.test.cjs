@@ -804,6 +804,21 @@ describe('context-reads.cjs counts what phase agents read, from their own transc
     assert.deepEqual(c, { whole_roadmap: 2, whole_requirements: 2, section_roadmap: 2, slice: 3 });
   });
 
+  test('a call written twice under one id counts once, and a print capped with head is targeted', () => {
+    // Claude Code writes each tool_use into the transcript twice; the 2026-11-02 live run doubled its count.
+    const twice = (id, name, input) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } });
+    const c = classifyReads(toolCalls([
+      twice('t1', 'Bash', { command: 'cat SEED.md && cat .planning/requirements.md' }),
+      twice('t1', 'Bash', { command: 'cat SEED.md && cat .planning/requirements.md' }),
+      twice('t2', 'Bash', { command: 'cat .planning/requirements.md | head -40' }),
+      twice('t2', 'Bash', { command: 'cat .planning/requirements.md | head -40' }),
+      twice('t3', 'PowerShell', { command: 'Get-Content .planning\\roadmap.md | Select-Object -First 30' }),
+      // A cap on a later command does not cap this one (the live planner's orientation command).
+      twice('t4', 'Bash', { command: 'cat SEED.md && cat .planning/roadmap.md && ls -R .planning/optimization | head -20' }),
+    ]));
+    assert.deepEqual(c, { whole_roadmap: 1, whole_requirements: 1, section_roadmap: 1, slice: 0 });
+  });
+
   function fixture({ reads, slice = true, planContext = '@.planning/phases/01-x/01-roadmap-slice.md' }) {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-ctxreads-home-'));
     const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-ctxreads-ws-'));

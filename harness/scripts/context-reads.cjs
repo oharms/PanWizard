@@ -17,7 +17,8 @@
  *
  * A "whole" read is a Read of the file with no `limit` (Read returns up to 2000
  * lines from the top) or a shell command that prints it (cat, type, Get-Content,
- * gc, more, less). A Read with a `limit`, or a grep / Select-String, is a targeted
+ * gc, more, less) with no line cap after it (`| head`, `| Select-Object -First`).
+ * A Read with a `limit`, a capped print, or a grep / Select-String, is a targeted
  * read and is counted as `section_roadmap` for the roadmap. Transcripts live under
  * ~/.claude/projects/<workspace path with every non-alphanumeric as '-'>/, one
  * `<session>/subagents/agent-<id>.jsonl` per spawned agent beside its `.meta.json`.
@@ -31,17 +32,27 @@ const ROADMAP_RE = /(^|[\\/\s"'`])\.planning[\\/]roadmap\.md\b/i;
 const REQUIREMENTS_RE = /(^|[\\/\s"'`])\.planning[\\/]requirements\.md\b/i;
 const SLICE_RE = /-roadmap-slice\.md\b/i;
 const SHELL_PRINT_RE = /(^|[;&|(\s])(cat|type|Get-Content|gc|more|less)\s/i;
+// A print piped through a line cap shows only that many lines: a targeted read.
+const BOUNDED_RE = /\|\s*(head\b|Select-Object\s+-First\b)/i;
 
-/** Tool calls in a transcript's lines: [{ name, input }]. Torn lines are skipped. */
+/**
+ * Tool calls in a transcript's lines: [{ name, input }]. Torn lines are skipped. Claude Code
+ * writes each tool_use into the transcript twice under the same id, so a call counts once.
+ */
 function toolCalls(lines) {
   const out = [];
+  const seen = new Set();
   for (const l of lines) {
     if (!l.trim()) continue;
     let j;
     try { j = JSON.parse(l); } catch { continue; }
     const content = j && j.message && j.message.content;
     if (!Array.isArray(content)) continue;
-    for (const p of content) if (p && p.type === 'tool_use') out.push({ name: p.name, input: p.input || {} });
+    for (const p of content) {
+      if (!p || p.type !== 'tool_use') continue;
+      if (p.id) { if (seen.has(p.id)) continue; seen.add(p.id); }
+      out.push({ name: p.name, input: p.input || {} });
+    }
   }
   return out;
 }
@@ -58,11 +69,14 @@ function classifyReads(calls) {
       else if (REQUIREMENTS_RE.test(p) && whole) c.whole_requirements++;
     } else if (name === 'Bash' || name === 'PowerShell') {
       const cmd = String(input.command || '');
-      const prints = SHELL_PRINT_RE.test(cmd);
+      // Judge each pipeline on its own: a `| head` caps only the command it follows
+      // (`cat requirements.md && ls -R x | head` still prints requirements.md whole).
+      const pipelines = cmd.split(/&&|\|\||;|\n/);
+      const printed = (re) => pipelines.some((p) => re.test(p) && SHELL_PRINT_RE.test(p) && !BOUNDED_RE.test(p));
       // One command can print the slice and a whole file too (`cat slice.md requirements.md`).
-      if (SLICE_RE.test(cmd) && prints) c.slice++;
-      if (ROADMAP_RE.test(cmd)) prints ? c.whole_roadmap++ : c.section_roadmap++;
-      if (REQUIREMENTS_RE.test(cmd) && prints) c.whole_requirements++;
+      if (printed(SLICE_RE)) c.slice++;
+      if (ROADMAP_RE.test(cmd)) printed(ROADMAP_RE) ? c.whole_roadmap++ : c.section_roadmap++;
+      if (printed(REQUIREMENTS_RE)) c.whole_requirements++;
     }
   }
   return c;
