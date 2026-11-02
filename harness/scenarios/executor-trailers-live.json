@@ -1,0 +1,51 @@
+{
+  "id": "executor-trailers-live",
+  "tier": 2,
+  "description": "A real executor runs plan 01-01 of the two-plan seed (two tasks) through `/pan:exec-phase 1 --plan 01-01 --fast`. Each task's commit must end with its `PAN-Step: 01-01/task-N` line; with the journal set aside, the installed engine must prove both tasks from those commits alone, and after a simulated crash takes the newest task commit, resume at the task that commit held.",
+  "why": "Self-recording step journal (spec self_recording_journal_featureai.md): the tier-0 scenario resume-from-trailers proves the engine reads trailers that a script wrote. This proves the other half: that the executor, following its commit template, writes them. If a model drops the line, resume silently falls back to restarting the plan at task 1, so this is the only scenario that would notice.",
+  "seed": "two-plan-phase",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 5,
+    "maxMinutes": 30,
+    "maxStepMinutes": 25
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "/pan:exec-phase 1 --plan 01-01 --fast",
+      "expect": [
+        "exit:0",
+        "file:src/greet.js",
+        "file:tests/greet.test.js",
+        "file:.planning/phases/01-greetings/01-01-summary.md"
+      ],
+      "why": "The executor finished the plan: both task files and its summary exist."
+    },
+    {
+      "kind": "sh",
+      "script": "check-trailers.cjs",
+      "args": [
+        "<ws>",
+        "01-01",
+        "2"
+      ],
+      "expect": [
+        "exit:0",
+        "json:recorded=2",
+        "json:full.all_done=true",
+        "json:rewind.match=true"
+      ],
+      "why": "Both tasks' commits carry their PAN-Step line; the commits alone prove the plan done; and after the crash takes the newest task commit, resume starts at the task it held (task-2, or task-1 when the executor coalesced both tasks into one commit)."
+    }
+  ],
+  "covers": [
+    "agents/pan-executor:3a51de50",
+    "pan-wizard-core/workflows/execute-plan:c717c482"
+  ]
+}

@@ -267,7 +267,7 @@ git add src/types/user.ts
 | `style` | Formatting | style(08-02): format auth module |
 | `chore` | Config/deps | chore(08-02): add bcrypt dependency |
 
-**4. Format:** `{type}({phase}-{plan}): {description}` with bullet points for key changes, and the message ends with `PAN-Step: ${PHASE}-${PLAN}/task-${TASK_NUM}` on its own line. The commit is the task's record: a crashed run resumes after it. Only the commit that finishes a task carries the line (a TDD RED commit does not); a coalesced commit carries one line per task.
+**4. Format:** `{type}({phase}-{plan}): {description}` with bullet points for key changes, and the message ends with `PAN-Step: ${PHASE}-${PLAN}/task-${TASK_NUM}` on its own line. The commit is the task's record: a crashed run resumes after it. Only the commit that finishes a task carries the line (a TDD RED commit does not); a coalesced commit carries one line per task. Any other trailer (such as `Co-Authored-By`) goes in the same final block, no blank line between; PAN finds the line anywhere in the message, so do not amend a commit just to move it.
 
 **5. Record hash:**
 ```bash
