@@ -55,6 +55,21 @@ const TABLES = Object.freeze({
       merged: ['awaiting_approval'],
     },
   },
+  // One step of a plan's or cycle's journal (journal.cjs): the latest event of a
+  // step is its state. A step may be recorded completed without a started line
+  // (an executor that records only its commits); completed is final.
+  'plan.step': {
+    statusField: 'event',
+    identity: 'step',
+    initial: ['started', 'completed', 'failed', 'paused'],
+    edges: {
+      started: ['completed', 'failed', 'paused'],
+      paused: ['resumed', 'failed'],
+      resumed: ['completed', 'failed', 'paused'],
+      failed: ['started'],
+      completed: [],
+    },
+  },
   // A phase's status on disk (classifyPhaseStatus). Derived, never written as a
   // field: next-action routes on it and reports the edges open from it.
   // (`phase complete` on a complete phase stays idempotent, by contract.)

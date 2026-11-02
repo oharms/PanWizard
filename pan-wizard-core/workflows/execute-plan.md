@@ -44,7 +44,7 @@ ls .planning/phases/XX-name/*-plan.md 2>/dev/null | sort
 ls .planning/phases/XX-name/*-summary.md 2>/dev/null | sort
 ```
 
-Find first PLAN without matching SUMMARY. Decimal phases supported (`01.1-hotfix/`):
+Find first PLAN without matching SUMMARY. Decimal phases supported (`01.1-hotfix/`). If that plan has a step journal, `pan-tools journal resume-point --plan <phase>-<plan>` names the task to start from (`resume_at`) and the tasks already done with their commits; execute from `resume_at` and treat the `completed` tasks as done (Pattern C, continuation):
 
 ```bash
 PHASE=$(basename "$PLAN_PATH" | grep -oE '^[0-9]+(\.[0-9]+)?')
@@ -273,6 +273,11 @@ git add src/types/user.ts
 ```bash
 TASK_COMMIT=$(git rev-parse --short HEAD)
 TASK_COMMITS+=("Task ${TASK_NUM}: ${TASK_COMMIT}")
+```
+
+**6. Journal the task** (a crashed run then resumes after it; a refusal is noted in the SUMMARY, never fatal):
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs journal step --plan "${PHASE}-${PLAN}" --step "task-${TASK_NUM}" --event completed --commit "$TASK_COMMIT"
 ```
 
 </task_commit>

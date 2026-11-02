@@ -598,6 +598,15 @@ function execGit(cwd, args, opts = {}) {
   }
 }
 
+/** A commit PAN may record as evidence (focus close, the step journal): a real commit reachable from HEAD, by its short sha. */
+function verifyCommit(cwd, sha) {
+  if (!/^[0-9a-f]{4,40}$/i.test(String(sha))) return null;
+  if (execGit(cwd, ['cat-file', '-e', `${sha}^{commit}`]).exitCode !== 0) return null;
+  if (execGit(cwd, ['merge-base', '--is-ancestor', sha, 'HEAD']).exitCode !== 0) return null;
+  const r = execGit(cwd, ['rev-parse', '--short', sha]);
+  return r.exitCode === 0 ? r.stdout.trim() : null;
+}
+
 // ─── Phase utilities ──────────────────────────────────────────────────────────
 
 function escapeRegex(value) {
@@ -1522,6 +1531,7 @@ module.exports = {
   loadConfig,
   isGitIgnored,
   isGitRepo,
+  verifyCommit,
   execGit,
   escapeRegex,
   escapeTableCell,

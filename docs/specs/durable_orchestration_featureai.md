@@ -344,6 +344,13 @@ The merge gate gained only the locked confirm in this stage (race 9). Expiry, th
 - **A merged request may be staged again.** Re-staging a branch with new commits after a merge is the documented fresh-token flow (`tests/pan-zcode-orchestration.test.cjs`), so `merged → awaiting_approval` is an edge, not a refusal.
 - **state.md's `Status` stays free text.** It describes the current phase, and which change is legal depends on which phase that is. Checking it would refuse ordinary moves between phases. The phase is checked through its disk status instead. Quick-task status is an enum of the values the writers actually record (`verified`, `partial`, `failed` from focus; `Verified`, `Needs Review`, `Gaps` from `/pan:quick`; `done`), not `done | partial | failed`.
 
+### 3.8.3 Stage C as built (`2026-11-02`)
+
+`journal.cjs` and the `journal step | show | resume-point` verbs follow D3. The `plan.step` table is in `transitions.cjs`, and `verifyCommit` moved into `core.cjs`, where focus close and the journal share it. `open_work` adds `resume_at`, `completed_steps` and `unverified_steps` per journaled plan. The executor's commit protocol and `execute-plan` journal each task, and a continuation starts from `resume-point`. Focus open and close journal the cycle in the engine. Two choices differ from D3:
+
+- **Autodev's ledger keeps its shape.** Its rows are units (`started`, `finished`, `stopped` per unit seq), not plan steps, and `autodev replay` and the run status read them as they are. The claim from Stage A already stops two drivers appending to one run.
+- **`pan-exec-waves` writes no journal lines of its own.** Its executors journal every task through the shared commit protocol, and a plan's completion is its summary, which the script already uses to skip plans.
+
 ### 3.9 Test plan
 
 New files: `tests/store.test.cjs`, `tests/transitions.test.cjs`, `tests/journal.test.cjs`, `tests/pause.test.cjs`; additions to `tests/pan-zcode-orchestration.test.cjs` and `tests/phase-gate.test.cjs` (merge gate, `nextAction`), `tests/consolidate-surfaces.test.cjs` (the `next-action` router), `tests/open-work.test.cjs`, `tests/focus-integration.test.cjs`, `tests/autodev*.test.cjs`.

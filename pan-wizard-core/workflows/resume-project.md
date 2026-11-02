@@ -62,7 +62,7 @@ cat .planning/project.md
 Read the incomplete work from `open_work` in the init JSON. It is the same list the guard uses to decide whether PAN work is in flight, so resume and the guard never disagree:
 
 - `continue_here`: `.continue-here` checkpoints inside phase directories
-- `phase_plans`: phase plans with no summary (`current: true` for the phase state.md names)
+- `phase_plans`: phase plans with no summary (`current: true` for the phase state.md names). A plan with a step journal adds `resume_at` (the first task the journal cannot prove done), `completed_steps` (with their commits) and `unverified_steps` (recorded done, but the commit or file no longer checks out)
 - `quick`: quick tasks with a plan and no summary. `source: focus` is a focus cycle (`kind`, `run_id`); `source: quick` is a `/pan:quick` task
 - `debug`: open debug sessions
 - `in_flight`: whether any of these counts as work in flight
@@ -79,6 +79,7 @@ Interrupted agents come from `has_interrupted_agent` and `interrupted_agent_id`.
 
 - Execution was started but not completed
 - Flag: "Found incomplete plan execution"
+- If the entry has `resume_at`, say where it resumes: "tasks done: <completed_steps>, resumes at <resume_at>". An `unverified_steps` entry is redone, not skipped
 
 **If an open focus cycle exists (`quick` entry with `source: focus`):**
 
@@ -168,7 +169,7 @@ Based on project state, determine the most logical next action:
 → Option: Start fresh on current plan
 
 **If incomplete plan (PLAN without SUMMARY):**
-→ Primary: Complete the incomplete plan
+→ Primary: Complete the incomplete plan (from `resume_at` when it has one: the executor gets `completed_steps` as its completed tasks)
 → Option: Abandon and move on
 
 **If an open focus cycle:**

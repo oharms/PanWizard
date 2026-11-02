@@ -42,6 +42,9 @@
  *   phase add <description>            Append new phase to roadmap + create dir
  *   design paths <name>                Where focus-design writes its spec, ADR and checker verdict
  *   design handoff <spec> --as phase|focus  Add a phase for a design, or hand it to focus
+ *   journal step --plan P --step S --event E [--commit SHA | --file F]  Record one step of a plan
+ *   journal show --plan P              A plan's journal
+ *   journal resume-point --plan P      The first task the journal cannot prove done
  *   phase insert <after> <description> Insert decimal phase after existing
  *   phase remove <phase> [--force] [--with-decimals]
  *                                      Remove phase, renumber all subsequent
@@ -400,7 +403,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, feedback, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, design, size, autodev, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, feedback, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, design, size, autodev, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, websearch, focus, journal, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -1426,6 +1429,16 @@ async function main() {
       } else {
         error('Unknown review subcommand. Available: scope, vote, cross-family');
       }
+      break;
+    }
+
+    case 'journal': {
+      // Durable orchestration Stage C: the step journal a plan resumes from.
+      if (!['step', 'show', 'resume-point'].includes(args[1])) error('Unknown journal subcommand. Available: step, show, resume-point');
+      require('./lib/journal.cjs').cmdJournal(cwd, args[1], {
+        plan: getArgValue(args, '--plan'), step: getArgValue(args, '--step'), event: getArgValue(args, '--event'),
+        commit: getArgValue(args, '--commit'), file: getArgValue(args, '--file'), note: getArgValue(args, '--note'), by: getArgValue(args, '--by'),
+      }, raw);
       break;
     }
 

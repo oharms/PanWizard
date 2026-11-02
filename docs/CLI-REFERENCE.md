@@ -225,6 +225,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `lock.cjs` | Advisory file-locking helper serializing concurrent writes to shared `.planning/` state. No CLI surface; imported where write races are possible. |
 | `store.cjs` | The write path for orchestration files (focus runs and batches, autodev run records, merge-gate approvals) and the per-command locks the dispatcher takes for commands that edit `state.md`, `roadmap.md`, `requirements.md` or `config.json`. No verbs of its own; its refusals are `lock_timeout`, `stale_write` and `unreadable`. |
 | `transitions.cjs` | The state tables for focus runs, autodev runs, merge requests and phases, and the Quick Tasks status values. No verbs of its own; the writers it guards refuse with `illegal_transition` (a change the table does not allow, with `allowed`), `unknown_state` and, for `state quick-task`, `invalid_status`. |
+| `journal.cjs` | `journal step`, `journal show`, `journal resume-point`: the step journal beside each plan, and the resume point `open_work` reports. |
 | `utils.cjs` | Planning-root path builders (`planningPath()`, `planningRel()`, `phasesPath()`, `milestonesPath()`), `fileAccessible()`/`readJsonFile()`, plan/summary file filters and `classifyPhaseStatus()`, shared by the other modules. No CLI surface. (`toPosix()` and `safeReadFile()` live in `core.cjs`.) |
 | `planning-root.cjs` | Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance. Leaf module — requires only `fs`/`path`. `utils.planningPath()` / `utils.planningRel()` are the only path constructors built on it. No CLI surface. |
 | `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that another tool writes to, from markers PAN never writes. **gsd-core owns its tree:** its markers are `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys. `hygiene scan`/`clean` raises one `foreign-planning-tree` warning and refuses the rename fix, `validate health` reports `E006` and stops before `E002`–`E005`, and `init new-project` refuses with an error payload; the remedy is `--planning-dir <dir>`. **planning-with-files shares the tree:** its markers are `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories (`sessions/`, dated task directories without the plan file). PAN keeps working: `hygiene` raises a `shared-planning-tree` info finding, `validate health` reports `I004`, and `init new-project` returns `shared_planning_tree`. No CLI surface of its own. |
@@ -249,7 +250,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `hosts.cjs` | **(program A0)** One table of how PAN runs each host CLI: the autonomous runner argv, the model family, the read-only review argv, the headless harness argv. No CLI surface. |
 | `design-handoff.cjs` | `design paths`, `design handoff`: where `/pan:focus-design` writes its spec, ADR and checker verdict (`docs/specs/` and `docs/decisions/` when the project has both, else `.planning/designs/<slug>/`), and the hand-off of a finished design to a roadmap phase (planned with `--prd <spec>`) or to focus. |
 | `next-action.cjs` | **(program L7)** `next-action`: reads roadmap.md and the phase directories into the MCP orchestrator's snapshot and maps its decision to a command; an open focus cycle or a stale focus run comes first (`action: "focus"`). |
-| `open-work.cjs` | Work started and not finished (unsummarised phase plans, open quick tasks and focus cycles, debug sessions, `.continue-here` files): the `open_work` block of `init resume`. |
+| `open-work.cjs` | Work started and not finished (unsummarised phase plans, open quick tasks and focus cycles, debug sessions, `.continue-here` files): the `open_work` block of `init resume`, with each journaled plan's resume point. |
 | `sizing.cjs` | Right-sized ceremony: `size phase/task` decide lean or full per piece of work, `size phase-plan` writes a lean phase's plans from its requirements (in waves, at most `workflow.lean_max_requirements` tasks each) and records their check, `size quick-plan` writes a lean quick task's plan, `size plan-check` is the lean path's plan check in code. |
 | `cross-family.cjs` | **(program R4)** `review cross-family <phase>`: one read-only review on another host's CLI, off unless `workflow.cross_family_review` names a host. |
 | `review-vote.cjs` | **(program R2)** `review vote`: merges k reviewer passes; a finding survives only with a quorum. |
@@ -527,6 +528,9 @@ Quick reference of every CLI command and subcommand, with its category and the m
 | 258 | `size phase-plan` | Right-sized ceremony | sizing.cjs |
 | 259 | `size quick-plan` | Right-sized ceremony | sizing.cjs |
 | 260 | `size plan-check` | Right-sized ceremony | sizing.cjs |
+| 261 | `journal step` | Durable orchestration | journal.cjs |
+| 262 | `journal show` | Durable orchestration | journal.cjs |
+| 263 | `journal resume-point` | Durable orchestration | journal.cjs |
 
 ---
 
@@ -2196,6 +2200,29 @@ pan-tools design handoff <spec> --as phase|focus [--raw]
 
 ---
 
+### `journal step` · `journal show` · `journal resume-point`
+
+The step journal a plan resumes from after a crash: `<plan>-journal.jsonl` beside the plan, one JSON line per event (`{seq, ts, run, step, event, artifact?, note?, by?}`). The executor records each task's commit; focus records each cycle's open and close.
+
+```bash
+pan-tools journal step --plan <phase>-<plan> --step task-3 --event completed --commit <sha>
+pan-tools journal step --plan <plan path> --step task-3 --event started [--note "<text>"] [--by <agent>]
+pan-tools journal show --plan <phase>-<plan>
+pan-tools journal resume-point --plan <phase>-<plan>
+```
+
+`--plan` is a plan id (`03-02`, phase 03, plan 02) or a plan file's path. `--event` is `started`, `completed`, `failed`, `paused`, `resumed` or `forced`. A `completed` step needs its evidence: `--commit <sha>` (a commit reachable from HEAD; stored short) or `--file <path>` (stored with its SHA-1). Event changes follow the `plan.step` table: a completed step is final, so starting it again is refused until a `forced` line records the override.
+
+- **`step`:** `{recorded, seq, plan, step, event, journal}` (`--raw`: the seq). **Refusals (exit 1):** `plan_required`, `plan_not_found`, `step_required`, `invalid_event` (with `allowed`), `artifact_required`, `commit_unknown`, `file_missing`, `illegal_transition`, `lock_timeout`.
+- **`show`:** `{plan, journal, entries}` (`--raw`: the number of entries).
+- **`resume-point`:** `{plan, journal, tasks, completed: [{step, commit|file}], unverified: [{step, why}], resume_at, all_done}`. `tasks` counts the plan's `<task>` elements (`task-1` … `task-N`). `resume_at` is the first task not proven done: a step recorded `completed` whose commit is no longer reachable from HEAD, or whose file changed, is in `unverified` and is redone. No journal: `journal: null`, `resume_at: null`, and the plan restarts at its first task. `--raw`: `resume_at`, `done`, or `start`.
+
+Any other `journal` subcommand exits 1 with `Error: Unknown journal subcommand. Available: step, show, resume-point` on stderr.
+
+**Module:** `journal.cjs`
+
+---
+
 ### `context-budget`
 
 Estimate context window utilization for the current phase. Measures how much of the assumed context window would be consumed by loading project files, roadmap, state, and plans for the active phase. The denominator is PAN's own fixed budget constant — 200,000 tokens (`CONTEXT_WINDOW` in `constants.cjs`) — **not a reading of your model's real window.** Nothing detects the model here; the number is a deliberately conservative planning assumption, so on a larger-context model the real headroom is greater than the report implies. That constant is the window size PAN commits to, and `progress health`'s `context` block divides by the same one.
@@ -3074,7 +3101,7 @@ pan-tools init resume [--raw]
 - `state_exists`, `roadmap_exists`, `project_exists`, `planning_exists` — File existence
 - `has_interrupted_agent`, `interrupted_agent_id` — Agent state recovery
 - `commit_docs` — Config
-- `open_work` — Work started and not finished: `{in_flight, phase_plans: [{phase, plan, current}], quick: [{dir, plan, source: "focus"|"quick", kind?, run_id?, opened_at?}], debug: [{file}], continue_here: [{path}]}`. `phase_plans` lists every phase's plans with no summary, `current` marking the phase state.md names. `in_flight` gives the answer the guard's `unrouted_write` rule uses: an unfinished plan in the current phase, an open quick task (a focus cycle included), or a debug session
+- `open_work` — Work started and not finished: `{in_flight, phase_plans: [{phase, plan, current}], quick: [{dir, plan, source: "focus"|"quick", kind?, run_id?, opened_at?}], debug: [{file}], continue_here: [{path}]}`. `phase_plans` lists every phase's plans with no summary, `current` marking the phase state.md names; a plan with a step journal adds `resume_at`, `completed_steps` (`[{step, commit|file}]`) and `unverified_steps` (`[{step, why}]`), from `journal resume-point`. `in_flight` gives the answer the guard's `unrouted_write` rule uses: an unfinished plan in the current phase, an open quick task (a focus cycle included), or a debug session
 
 ---
 

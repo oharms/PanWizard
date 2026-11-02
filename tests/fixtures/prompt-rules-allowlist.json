@@ -210,5 +210,13 @@
   {
     "id": "pan-wizard-core/workflows/resume-project:86998b6c",
     "reason": "Focus Stage C (D5): the focus action is engine code. next-action puts an open focus cycle or a stale focus run ahead of phase routing (next-action.cjs nextStep, focus.cjs focusNextStep); tests/focus-integration.test.cjs (visibility describe) pins each reason and command and that a project without focus work routes as before."
+  },
+  {
+    "id": "agents/pan-executor:67f1a528",
+    "reason": "Durable orchestration Stage C: a journal refusal is non-fatal by design. The engine side is enforced in code (journal step refuses commit_unknown and illegal_transition, tests/journal.test.cjs); the tier-0 scenario resume-from-journal planned for Stage E claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/execute-plan:d77dd5aa",
+    "reason": "Durable orchestration Stage C: a journal refusal is non-fatal by design. The engine side is enforced in code (journal step refuses commit_unknown and illegal_transition, tests/journal.test.cjs); the tier-0 scenario resume-from-journal planned for Stage E claims this rule."
   }
 ]

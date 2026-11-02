@@ -463,6 +463,12 @@
    "baseline": true
   },
   {
+   "id": "agents/pan-executor:67f1a528",
+   "file": "agents/pan-executor.md",
+   "text": "A refusal here (`commit_unknown`, `illegal_transition`) is reported in the SUMMARY's issues; it never stops the plan.",
+   "baseline": false
+  },
+  {
    "id": "agents/pan-executor:3a3eac1f",
    "file": "agents/pan-executor.md",
    "text": "**ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation.",
@@ -2075,6 +2081,12 @@
    "file": "pan-wizard-core/workflows/execute-plan.md",
    "text": "**2. Stage individually** (NEVER `git add .` or `git add -A`):",
    "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/execute-plan:d77dd5aa",
+   "file": "pan-wizard-core/workflows/execute-plan.md",
+   "text": "**6. Journal the task** (a crashed run then resumes after it; a refusal is noted in the SUMMARY, never fatal):",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/workflows/execute-plan:4a3fbcb9",

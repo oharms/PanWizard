@@ -353,6 +353,7 @@
     "toLf:function",
     "toPosix:function",
     "verbose:function",
+    "verifyCommit:function",
     "withEol:function"
   ],
   "cost-rebuild.cjs": [
@@ -669,6 +670,17 @@
     "cmdInitResume:function",
     "cmdInitTodos:function",
     "cmdInitVerifyWork:function"
+  ],
+  "journal.cjs": [
+    "EVENTS:object",
+    "JOURNAL_SUFFIX:string",
+    "cmdJournal:function",
+    "journalStep:function",
+    "journalsIn:function",
+    "planTasks:function",
+    "readJournal:function",
+    "resolvePlan:function",
+    "resumePoint:function"
   ],
   "knowledge.cjs": [
     "CITATION_ROOTS:object",

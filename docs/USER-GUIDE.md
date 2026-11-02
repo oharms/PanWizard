@@ -755,6 +755,8 @@ claude --dangerously-skip-permissions
 /pan:resume                 # Full context restoration from last session
 ```
 
+If a session ended in the middle of a plan, `/pan:resume` says which tasks are done and where the plan resumes. The executor records each task's commit in a journal beside the plan, and a task counts as done only while its commit is still in the branch's history, so a commit lost in the crash is redone rather than skipped.
+
 ### Preparing for Release
 
 ```bash

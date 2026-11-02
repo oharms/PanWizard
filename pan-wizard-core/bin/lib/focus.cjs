@@ -8,7 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, EXIT_OK, error, safeReadFile, loadConfig, scanPendingTodos, scanSourceTodos, toPosix, isGitRepo, execGit, escapeRegex, normalizePhaseName } = require('./core.cjs');
+const { output, EXIT_OK, error, safeReadFile, loadConfig, scanPendingTodos, scanSourceTodos, toPosix, isGitRepo, execGit, escapeRegex, normalizePhaseName, verifyCommit } = require('./core.cjs');
 const {
   PHASES_DIR, ROADMAP_FILE, PATTERNS_FILE, EFFORT_POINTS, PRIORITY_LEVELS, EFFORT_SIZES,
   FOCUS_MODES, FOCUS_TIERS, FOCUS_DIR, QUICK_DIR,
@@ -1159,6 +1159,9 @@ function focusOpen(cwd, opts = {}) {
   const planText = focusCyclePlan({ num, kind, items, ids, batchFile, runId, category, tests, openedAt: now.toISOString() });
   const planPath = path.join(dir, `${num}-plan.md`);
   fs.writeFileSync(planPath, planText, 'utf-8');
+  // The cycle's step journal (journal.cjs): one step, `cycle`, opened here and
+  // closed by focus close. Best-effort: a journal never blocks the cycle.
+  try { require('./journal.cjs').journalStep(cwd, { plan: toPosix(path.relative(cwd, planPath)), step: 'cycle', event: 'started', by: 'focus' }); } catch { /* best-effort */ }
   if (tests && tests.command) fs.writeFileSync(path.join(dir, `${num}-test-baseline.json`), JSON.stringify(tests, null, 2), 'utf-8');
   // The run records this cycle by name at --update, never by searching for one.
   // Written against the run as it is on disk now, not as it was read before the
@@ -1222,15 +1225,6 @@ function readCycleSummary(cycle) {
     tests_before: fmNumber(fm.tests_before), tests_after: fmNumber(fm.tests_after), run_id: fmScalar(fm.run_id), batch_file: fmScalar(fm.batch_file),
     regressions: fmNumber(fm.regressions) || 0,
   };
-}
-
-/** A commit the close may record: a real commit reachable from HEAD, by its short sha. */
-function verifyCommit(cwd, sha) {
-  if (!/^[0-9a-f]{4,40}$/i.test(String(sha))) return null;
-  if (execGit(cwd, ['cat-file', '-e', `${sha}^{commit}`]).exitCode !== 0) return null;
-  if (execGit(cwd, ['merge-base', '--is-ancestor', sha, 'HEAD']).exitCode !== 0) return null;
-  const r = execGit(cwd, ['rev-parse', '--short', sha]);
-  return r.exitCode === 0 ? r.stdout.trim() : null;
 }
 
 /**
@@ -1395,6 +1389,11 @@ function focusClose(cwd, opts = {}) {
   }
 
   fs.writeFileSync(cycle.summary, summary, 'utf-8');
+  try {
+    require('./journal.cjs').journalStep(cwd, status === 'failed'
+      ? { plan: toPosix(path.relative(cwd, cycle.plan)), step: 'cycle', event: 'failed', by: 'focus' }
+      : { plan: toPosix(path.relative(cwd, cycle.plan)), step: 'cycle', event: 'completed', file: toPosix(path.relative(cwd, cycle.summary)), by: 'focus' });
+  } catch { /* best-effort */ }
 
   // The cycle's record goes in under the planning rules (skipped under commit_docs:
   // false or a gitignored planning tree). Both sides of each todo move go with it, so

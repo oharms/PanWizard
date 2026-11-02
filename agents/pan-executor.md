@@ -305,7 +305,7 @@ If spawned as continuation agent (`<completed_tasks>` in prompt):
 
 1. Verify previous commits exist: `git log --oneline -5`
 2. DO NOT redo completed tasks
-3. Start from resume point in prompt
+3. Start from the resume point in the prompt; with none given, ask the journal: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs journal resume-point --plan {phase}-{plan}` returns `resume_at` and the `completed` tasks with their commits (a task in `unverified` is redone)
 4. Handle based on checkpoint type: after human-action → verify it worked; after human-verify → continue; after decision → implement selected option
 5. If another checkpoint hit → return with ALL completed tasks (previous + new)
 </continuation_handling>
@@ -355,6 +355,12 @@ git commit -m "{type}({phase}-{plan}): {concise task description}
 ```
 
 **5. Record hash:** `TASK_COMMIT=$(git rev-parse --short HEAD)` — track for SUMMARY.
+
+**6. Journal the task**, so a crashed run resumes after it (`{phase}-{plan}` is the plan's id, `N` the task's position in the plan; a coalesced commit records each task it holds):
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs journal step --plan {phase}-{plan} --step task-N --event completed --commit $TASK_COMMIT
+```
+A refusal here (`commit_unknown`, `illegal_transition`) is reported in the SUMMARY's issues; it never stops the plan.
 
 **P-1605 (v3.7.5) — coalesce micro-task commits.** Per-task commits are the default. **Coalesce consecutive trivial tasks** into a single commit when ALL of:
 

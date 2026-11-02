@@ -799,6 +799,14 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 
 **Fix:** Read the record (`pan-tools focus auto --status`, `pan-tools autodev status`) and act from the status it has now. For `unknown_state`, restore the status to one of the listed states, or remove the record and start a new run.
 
+### Resume redoes a task that was already done
+
+**Symptom:** `/pan:resume` or `pan-tools journal resume-point` lists a task under `unverified` and resumes at it, though the task was finished.
+
+**Root cause:** The journal recorded the task done with a commit (or a file), but that commit is no longer reachable from HEAD (a reset, a rebase, a different branch checked out) or the file has changed since. PAN trusts the evidence, not the line, so it redoes the step.
+
+**Fix:** Check out the branch the work was done on and resume again. If the work was moved by a rebase, record the new commit (`pan-tools journal step --plan <id> --step task-N --event forced --note "rebased"`, then `--event completed --commit <new sha>`).
+
 ### Multiple sessions interfere with each other
 
 **Symptom:** Two Claude Code sessions running PAN on the same project produce conflicting commits, corrupted state.md, or duplicated work.

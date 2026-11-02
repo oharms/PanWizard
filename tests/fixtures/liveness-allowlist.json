@@ -264,6 +264,10 @@
     "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
   },
   {
+    "id": "caller:sub:journal show",
+    "reason": "No shipped prompt calls it: it is for a person reading a plan's step journal by hand (CLI-REFERENCE, TROUBLESHOOTING). The prompts ask journal resume-point, which reads the same file and checks each step's commit."
+  },
+  {
     "id": "caller:sub:bus drain",
     "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
   },
