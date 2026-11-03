@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 300" font-family="'Gabarito','Segoe UI','Helvetica Neue',Arial,sans-serif">
+  <title>PanWizard: context engineering that makes AI coding reliable. npx pan-wizard@latest</title>
+  <defs>
+    <radialGradient id="glow" cx="18%" cy="40%" r="60%">
+      <stop offset="0" stop-color="#5B4BE6" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#5B4BE6" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#FBF7EE" fill-opacity="0.06"/>
+    </pattern>
+  </defs>
+  <rect width="980" height="300" rx="20" fill="#211E18"/>
+  <rect width="980" height="300" rx="20" fill="url(#dots)"/>
+  <rect width="980" height="300" rx="20" fill="url(#glow)"/>
+
+  <!-- mark -->
+  <g transform="translate(70,62) scale(1.55)">
+    <line x1="50" y1="26" x2="26" y2="74" stroke="#5B4BE6" stroke-width="7" stroke-linecap="round"/>
+    <line x1="50" y1="26" x2="74" y2="74" stroke="#5B4BE6" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="50" cy="26" r="15" fill="#FF5A3C"/>
+    <circle cx="26" cy="74" r="12" fill="#FFCE4A"/>
+    <circle cx="74" cy="74" r="12" fill="#1E8E5A"/>
+  </g>
+
+  <!-- wordmark + tagline -->
+  <text x="250" y="126" font-size="64" font-weight="800" letter-spacing="-1.5"><tspan fill="#FF5A3C">pan</tspan><tspan fill="#FBF7EE">wizard</tspan></text>
+  <text x="252" y="166" font-size="22" fill="#E9E1D0">Context engineering that makes AI coding reliable.</text>
+
+  <!-- install pill -->
+  <rect x="252" y="190" width="258" height="40" rx="20" fill="#FBF7EE"/>
+  <text x="274" y="216" font-family="'JetBrains Mono',Consolas,monospace" font-size="16" fill="#211E18"><tspan fill="#B8AE98">$ </tspan>npx pan-wizard@latest</text>
+
+  <!-- stage dots strip -->
+  <g transform="translate(252,258)" font-size="12" font-weight="700">
+    <circle cx="6" cy="0" r="5" fill="#FF5A3C"/><text x="18" y="4" fill="#C9C3B6">define</text>
+    <line x1="72" y1="0" x2="96" y2="0" stroke="#5B4BE6" stroke-width="2"/>
+    <circle cx="108" cy="0" r="5" fill="#FFCE4A"/><text x="120" y="4" fill="#C9C3B6">discuss</text>
+    <line x1="180" y1="0" x2="204" y2="0" stroke="#5B4BE6" stroke-width="2"/>
+    <circle cx="216" cy="0" r="5" fill="#5B4BE6"/><text x="228" y="4" fill="#C9C3B6">plan</text>
+    <line x1="268" y1="0" x2="292" y2="0" stroke="#5B4BE6" stroke-width="2"/>
+    <circle cx="304" cy="0" r="5" fill="#FF5A3C"/><text x="316" y="4" fill="#C9C3B6">execute</text>
+    <line x1="378" y1="0" x2="402" y2="0" stroke="#5B4BE6" stroke-width="2"/>
+    <circle cx="414" cy="0" r="5" fill="#1E8E5A"/><text x="426" y="4" fill="#C9C3B6">verify</text>
+  </g>
+</svg>

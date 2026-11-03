@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **The README is a landing page again.** It says what PAN is, how to start, the five-step flow and why it holds up (including durable resume and the harness), in place of a full manual that the npm page showed whole. The install detail it carried (non-interactive flags, what a local install writes, `--unified-skills`, Docker, permissions, protecting secrets, uninstalling, the development install and ZCode) moved to the new `docs/INSTALL.md`; commands and configuration were already in the User Guide.
+- **The README is a landing page again.** It says what PAN is, shows a phase run, the five-step flow and why it holds up (including durable resume and the harness), in place of a full manual that the npm page showed whole. New brand art in `assets/`: a wide banner (`pan-banner.svg`, replacing a square hero that filled the first screen), an illustrative phase session (`pan-session.svg`) and the flow (`pan-flow.svg`). The install detail it carried (non-interactive flags, what a local install writes, `--unified-skills`, Docker, permissions, protecting secrets, uninstalling, the development install and ZCode) moved to the new `docs/INSTALL.md`; commands and configuration were already in the User Guide.
 
 ## [3.41.1] - 2026-11-03
 

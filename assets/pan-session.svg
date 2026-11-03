@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 370" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace">
+  <title>Illustrative PAN session: one phase executed in two waves, reviewed, verified against its goals and the test suite, and gated complete</title>
+  <rect width="980" height="370" rx="16" fill="#211E18"/>
+  <rect width="980" height="46" rx="16" fill="#2A251D"/>
+  <rect y="32" width="980" height="14" fill="#2A251D"/>
+  <circle cx="28" cy="23" r="6.5" fill="#FF5A3C"/>
+  <circle cx="50" cy="23" r="6.5" fill="#FFCE4A"/>
+  <circle cx="72" cy="23" r="6.5" fill="#1E8E5A"/>
+  <g transform="translate(436,12) scale(0.22)">
+    <line x1="50" y1="26" x2="26" y2="74" stroke="#5B4BE6" stroke-width="9" stroke-linecap="round"/>
+    <line x1="50" y1="26" x2="74" y2="74" stroke="#5B4BE6" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="50" cy="26" r="13" fill="#FF5A3C"/>
+    <circle cx="26" cy="74" r="11" fill="#FFCE4A"/>
+    <circle cx="74" cy="74" r="11" fill="#1E8E5A"/>
+  </g>
+  <text x="462" y="28" font-family="'Gabarito','Segoe UI',sans-serif" font-size="13" font-weight="700"><tspan fill="#FF9077">Pan</tspan><tspan fill="#A7A091">Wizard · exec-phase</tspan></text>
+
+  <g transform="translate(40,86)" font-size="14">
+    <text y="0"><tspan fill="#76D2A2">~/shop</tspan><tspan fill="#6E685B"> $ </tspan><tspan fill="#FF9077">/pan:exec-phase </tspan><tspan fill="#FBF7EE">2</tspan></text>
+
+    <text y="38"><tspan fill="#FF5A3C" font-weight="700">◆ Phase 2 · Checkout</tspan><tspan fill="#8C8475">   3 plans in 2 waves · each executor in a fresh context</tspan></text>
+
+    <text y="74"><tspan x="18" fill="#8A7DF0" font-weight="700">Wave 1</tspan><tspan x="110" fill="#C9C3B6">02-01  cart API</tspan><tspan x="330" fill="#76D2A2">✓</tspan><tspan x="352" fill="#8C8475">3 tasks · 3 commits</tspan></text>
+    <text y="100"><tspan x="110" fill="#C9C3B6">02-02  price rules</tspan><tspan x="330" fill="#76D2A2">✓</tspan><tspan x="352" fill="#8C8475">2 tasks · 2 commits</tspan></text>
+    <text y="132"><tspan x="18" fill="#8A7DF0" font-weight="700">Wave 2</tspan><tspan x="110" fill="#C9C3B6">02-03  checkout page</tspan><tspan x="330" fill="#76D2A2">✓</tspan><tspan x="352" fill="#8C8475">3 tasks · 3 commits</tspan></text>
+
+    <text y="172"><tspan x="18" fill="#FFCE4A" font-weight="700">Review</tspan><tspan x="110" fill="#C9C3B6">diff read against each plan's review focus</tspan><tspan x="520" fill="#8C8475">0 high · 2 low</tspan></text>
+    <text y="200"><tspan x="18" fill="#FFCE4A" font-weight="700">Verify</tspan><tspan x="110" fill="#C9C3B6">5/5 must-haves delivered</tspan><tspan x="330" fill="#8C8475">test suite </tspan><tspan fill="#76D2A2">48 passed</tspan></text>
+    <text y="228"><tspan x="18" fill="#FFCE4A" font-weight="700">Gate</tspan><tspan x="110" fill="#76D2A2">✓ phase 2 complete</tspan><tspan x="330" fill="#8C8475">roadmap and state updated</tspan></text>
+
+    <text y="272"><tspan x="18" fill="#6E685B" font-weight="700">next</tspan><tspan x="110" fill="#FF9077">/pan:plan-phase 3</tspan><tspan x="330" fill="#6E685B">interrupted?  </tspan><tspan fill="#FF9077">/pan:resume</tspan><tspan fill="#6E685B">  picks up after the last commit</tspan></text>
+  </g>
+</svg>

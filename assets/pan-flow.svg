@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 330" font-family="'Gabarito','Segoe UI','Helvetica Neue',Arial,sans-serif">
+  <title>PAN's flow: define, discuss, plan, execute, verify, each in a fresh context, with state kept in .planning/</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5B4BE6"/>
+    </marker>
+  </defs>
+  <rect width="980" height="330" rx="18" fill="#FBF7EE"/>
+  <rect x="0.5" y="0.5" width="979" height="329" rx="18" fill="none" stroke="#E7DDC8"/>
+
+  <text x="40" y="44" font-size="17" font-weight="700" fill="#211E18">Every step starts in a fresh context.</text>
+  <text x="40" y="66" font-size="13.5" fill="#6E685B">Everything that has to outlive the session is written to .planning/ and read back by the next step.</text>
+
+  <!-- cards: x = 40, 224, 408, 592, 776 ; width 164 -->
+  <g font-size="12.5">
+    <!-- 1 Define -->
+    <g transform="translate(40,92)">
+      <rect width="164" height="148" rx="12" fill="#FFFFFF" stroke="#E7DDC8"/>
+      <circle cx="22" cy="24" r="10" fill="#FF5A3C"/><text x="22" y="28.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">1</text>
+      <text x="40" y="29" font-size="15" font-weight="700" fill="#211E18">Define</text>
+      <text x="14" y="58" font-family="'JetBrains Mono',Consolas,monospace" font-size="11.5" fill="#C2410C">/pan:new-project</text>
+      <text x="14" y="84" fill="#3A352C">Questions until it</text>
+      <text x="14" y="100" fill="#3A352C">understands the idea</text>
+      <text x="14" y="132" font-family="'JetBrains Mono',Consolas,monospace" font-size="11" fill="#1E8E5A">→ roadmap.md</text>
+    </g>
+    <!-- 2 Discuss -->
+    <g transform="translate(224,92)">
+      <rect width="164" height="148" rx="12" fill="#FFFFFF" stroke="#E7DDC8"/>
+      <circle cx="22" cy="24" r="10" fill="#FFCE4A"/><text x="22" y="28.5" font-size="12" font-weight="700" fill="#211E18" text-anchor="middle">2</text>
+      <text x="40" y="29" font-size="15" font-weight="700" fill="#211E18">Discuss</text>
+      <text x="14" y="58" font-family="'JetBrains Mono',Consolas,monospace" font-size="11.5" fill="#C2410C">/pan:discuss-phase</text>
+      <text x="14" y="84" fill="#3A352C">You settle the gray</text>
+      <text x="14" y="100" fill="#3A352C">areas, once</text>
+      <text x="14" y="132" font-family="'JetBrains Mono',Consolas,monospace" font-size="11" fill="#1E8E5A">→ context.md</text>
+    </g>
+    <!-- 3 Plan -->
+    <g transform="translate(408,92)">
+      <rect width="164" height="148" rx="12" fill="#FFFFFF" stroke="#E7DDC8"/>
+      <circle cx="22" cy="24" r="10" fill="#5B4BE6"/><text x="22" y="28.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">3</text>
+      <text x="40" y="29" font-size="15" font-weight="700" fill="#211E18">Plan</text>
+      <text x="14" y="58" font-family="'JetBrains Mono',Consolas,monospace" font-size="11.5" fill="#C2410C">/pan:plan-phase</text>
+      <text x="14" y="84" fill="#3A352C">Small plans, checked</text>
+      <text x="14" y="100" fill="#3A352C">against requirements</text>
+      <text x="14" y="132" font-family="'JetBrains Mono',Consolas,monospace" font-size="11" fill="#1E8E5A">→ plan.md × N</text>
+    </g>
+    <!-- 4 Execute -->
+    <g transform="translate(592,92)">
+      <rect width="164" height="148" rx="12" fill="#FFFFFF" stroke="#E7DDC8"/>
+      <circle cx="22" cy="24" r="10" fill="#FF5A3C"/><text x="22" y="28.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">4</text>
+      <text x="40" y="29" font-size="15" font-weight="700" fill="#211E18">Execute</text>
+      <text x="14" y="58" font-family="'JetBrains Mono',Consolas,monospace" font-size="11.5" fill="#C2410C">/pan:exec-phase</text>
+      <text x="14" y="84" fill="#3A352C">Parallel waves, one</text>
+      <text x="14" y="100" fill="#3A352C">commit per task</text>
+      <text x="14" y="132" font-family="'JetBrains Mono',Consolas,monospace" font-size="11" fill="#1E8E5A">→ code + summary</text>
+    </g>
+    <!-- 5 Verify -->
+    <g transform="translate(776,92)">
+      <rect width="164" height="148" rx="12" fill="#FFFFFF" stroke="#E7DDC8"/>
+      <circle cx="22" cy="24" r="10" fill="#1E8E5A"/><text x="22" y="28.5" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle">5</text>
+      <text x="40" y="29" font-size="15" font-weight="700" fill="#211E18">Verify</text>
+      <text x="14" y="58" font-family="'JetBrains Mono',Consolas,monospace" font-size="11.5" fill="#C2410C">/pan:verify-phase</text>
+      <text x="14" y="84" fill="#3A352C">Goals checked, gated</text>
+      <text x="14" y="100" fill="#3A352C">on your test suite</text>
+      <text x="14" y="132" font-family="'JetBrains Mono',Consolas,monospace" font-size="11" fill="#1E8E5A">→ verification.md</text>
+    </g>
+  </g>
+
+  <!-- arrows between cards -->
+  <g stroke="#5B4BE6" stroke-width="2" marker-end="url(#arrow)">
+    <line x1="206" y1="166" x2="221" y2="166"/>
+    <line x1="390" y1="166" x2="405" y2="166"/>
+    <line x1="574" y1="166" x2="589" y2="166"/>
+    <line x1="758" y1="166" x2="773" y2="166"/>
+  </g>
+
+  <!-- state bar -->
+  <g stroke="#B8AE98" stroke-width="1.5" stroke-dasharray="3 4">
+    <line x1="122" y1="240" x2="122" y2="268"/>
+    <line x1="306" y1="240" x2="306" y2="268"/>
+    <line x1="490" y1="240" x2="490" y2="268"/>
+    <line x1="674" y1="240" x2="674" y2="268"/>
+    <line x1="858" y1="240" x2="858" y2="268"/>
+  </g>
+  <rect x="40" y="268" width="900" height="40" rx="10" fill="#211E18"/>
+  <text x="60" y="293" font-family="'JetBrains Mono',Consolas,monospace" font-size="13"><tspan fill="#FF9077" font-weight="700">.planning/</tspan><tspan fill="#C9C3B6">   project · requirements · roadmap · state · plans · summaries</tspan><tspan fill="#76D2A2">   ↻ next phase</tspan></text>
+</svg>
