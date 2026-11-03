@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.41.1] - 2026-11-03
+
+### Fixed
+
+- **The planner and the plan checker no longer print the whole `requirements.md`.** The roadmap slice already carries the phase's requirement lines; both prompts now say to search for one requirement and read only that. The live harness scenario `plan-phase-checker-loop`, which asks that the phase agents make no whole read of `roadmap.md` or `requirements.md`, failed on 3.41.0 (the planner printed the file while orienting, and after its fix the checker did) and passes with both fixes (`2026-11-03`).
+- **The harness's context-reads measure counted every tool call twice.** Claude Code writes each tool call into a transcript twice under one id; the measure now counts it once, and judges each pipeline in a shell command on its own, so a `| head` caps only the print it follows.
+
 ## [3.41.0] - 2026-11-02
 
 Durable orchestration over PAN's own files (`docs/specs/durable_orchestration_featureai.md`, ADR-0052): concurrent commands no longer lose each other's writes, orchestration records only change status along declared transitions, a crashed plan resumes after its last proven task (a task commit is its own record), and a question PAN asks survives the session that asked it.
