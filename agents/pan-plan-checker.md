@@ -576,6 +576,8 @@ cat "$PHASE_DIR"/*-design.md 2>/dev/null   # approved design from /pan:design-ph
 
 **Extract:** Phase goal, requirements (decompose goal), locked decisions, deferred ideas.
 
+Do not print the whole requirements.md or roadmap.md: the roadmap slice and `roadmap get-phase` carry this phase's requirement lines. To read one requirement's full text, find it with a search and read only that.
+
 ## Step 2: Load All Plans
 
 Use pan-tools to validate plan structure:

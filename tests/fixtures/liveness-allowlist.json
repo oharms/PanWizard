@@ -192,10 +192,6 @@
     "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
   },
   {
-    "id": "agent:pan-plan-checker",
-    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
-  },
-  {
     "id": "agent:pan-previewer",
     "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
   },

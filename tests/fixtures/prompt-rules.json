@@ -721,6 +721,12 @@
    "baseline": true
   },
   {
+   "id": "agents/pan-plan-checker:581ec9d1",
+   "file": "agents/pan-plan-checker.md",
+   "text": "Do not print the whole requirements.md or roadmap.md: the roadmap slice and `roadmap get-phase` carry this phase's requirement lines. To read one requirement's full text, find it with a search and read only that.",
+   "baseline": false
+  },
+  {
    "id": "agents/pan-plan-checker:671ab6b5",
    "file": "agents/pan-plan-checker.md",
    "text": "`verify plan-set` also reports `missing_property_task`: a requirement whose EARS criterion is a validation rule (`IF … THEN … SHALL`, or a claim over any or every input) has no property-test task in the plan that covers it. One example test cannot show a rule over many inputs. It is a blocker under `verification_derivation`.",

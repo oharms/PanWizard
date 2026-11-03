@@ -57,6 +57,7 @@
     }
   ],
   "covers": [
-    "agents/pan-planner:69334559"
+    "agents/pan-planner:69334559",
+    "agents/pan-plan-checker:581ec9d1"
   ]
 }
