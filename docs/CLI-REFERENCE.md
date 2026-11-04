@@ -223,7 +223,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `links.cjs` | Doc-Code Link Graph engine behind `links validate` (ADR-0027): parses frontmatter link declarations, resolves doc↔code references, and reports dangling/stale links. |
 | `constants.cjs` | Shared constants used across the dispatcher — e.g. `COMMAND_RENAME_MAP` (legacy→current command names) and `FOCUS_CATEGORIES`. No CLI surface; imported by other modules. |
 | `lock.cjs` | Advisory file-locking helper serializing concurrent writes to shared `.planning/` state. No CLI surface; imported where write races are possible. |
-| `store.cjs` | The write path for orchestration files (focus runs and batches, autodev run records, merge-gate approvals) and the per-command locks the dispatcher takes for commands that edit `state.md`, `roadmap.md`, `requirements.md` or `config.json`. No verbs of its own; its refusals are `lock_timeout`, `stale_write` and `unreadable`. |
+| `store.cjs` | The write path for orchestration files (focus runs and batches, autodev run records, merge-gate approvals) and the per-command locks the dispatcher takes for commands that edit `state.md`, `roadmap.md`, `requirements.md` or `config.json`. No verbs of its own; its refusals are `lock_timeout`, `stale_write` and `unreadable`. A `lock_timeout` refusal names the `lock`, its `holder` (`{pid, host}`), `lock_age_ms`, `holder_alive` and `holder_gone`, and advises deleting the lock file only when `holder_gone`. |
 | `transitions.cjs` | The state tables for focus runs, autodev runs, merge requests and phases, and the Quick Tasks status values. No verbs of its own; the writers it guards refuse with `illegal_transition` (a change the table does not allow, with `allowed`), `unknown_state` and, for `state quick-task`, `invalid_status`. |
 | `journal.cjs` | `journal step`, `journal show`, `journal resume-point`: the step journal beside each plan, and the resume point `open_work` reports. |
 | `pause.cjs` | `pause open`, `pause answer`, `pause list`, `pause cancel`: typed pauses for a person's answer, and the `answer_pause` step next-action puts first. |
@@ -577,7 +577,7 @@ pan-tools state                   # bare `state` is an alias for `state load`
 
 Output state.md frontmatter as JSON. Returns the YAML frontmatter block parsed into a JSON object. If no frontmatter exists, it is built from the markdown body.
 
-**How writers keep the frontmatter.** Every `state` writer patches only the keys it owns, line by line; comments, quoting, order and keys PAN does not know stay byte for byte. `update`, `patch`, `advance-plan`, `apply` and `init` own `current_phase`, `current_phase_name`, `current_plan`, `status`, `last_activity` and `last_updated`; `add-decision`, `add-blocker`, `resolve-blocker`, `record-metric`, `record-session`, `section` and `quick-task` own `last_updated` only; `update-progress` and `phase complete` own the first set plus the `progress.*` keys already present; `milestone complete` and `init` (milestone new) also own `milestone` and `milestone_name`. `last_activity` never moves backwards, and a recorded `milestone` is replaced only when the roadmap marks another milestone current.
+**How writers keep the frontmatter.** Every `state` writer patches only the keys it owns, line by line; comments, quoting, order and keys PAN does not know stay byte for byte. `update`, `patch`, `advance-plan`, `apply` and `init` own `current_phase`, `current_phase_name`, `current_plan`, `status`, `last_activity` and `last_updated`; `add-decision`, `add-blocker`, `resolve-blocker`, `record-metric`, `record-session`, `section` and `quick-task` own `last_updated` only; `update-progress` and `phase complete` own the first set plus the `progress.*` keys already present; `milestone complete` and `init` (milestone new) also own `milestone` and `milestone_name`. `init` also updates the `progress.*` keys already present. `last_activity` never moves backwards, and a recorded `milestone` is replaced only by `milestone complete` (with the milestone it closes) or when the roadmap marks another milestone current.
 
 ```bash
 pan-tools state json [--raw]
@@ -957,7 +957,7 @@ pan-tools phase add "API Integration Layer" [--raw]
 
 **`--raw` output:** The padded phase number.
 
-**Side effects:** Creates `.planning/phases/NN-slug/` (empty, no placeholder file), appends a new `### Phase N:` detail section to roadmap.md whose `**Depends on:**` names the last phase in roadmap order (a decimal included), adds a `- [ ] **Phase N: <name>**` checklist entry when the roadmap has a checklist, and adds a Progress-table row (`0/0`, `Not started`) when the roadmap has a table with Plans and Status columns.
+**Side effects:** Creates `.planning/phases/NN-slug/` (empty, no placeholder file), appends a new `### Phase N:` detail section to roadmap.md whose `**Depends on:**` names the highest-numbered phase in the roadmap (a decimal included), adds a `- [ ] **Phase N: <name>**` checklist entry when the roadmap has a checklist, and adds a Progress-table row (`0/0`, `Not started`) when the roadmap has a table with Plans and Status columns.
 
 ---
 
@@ -1038,7 +1038,7 @@ Mark a phase as done. Updates roadmap.md checkboxes and progress table, advances
 
 ```bash
 pan-tools phase complete 5 [--no-commit]
-# Auto-commits what it wrote (roadmap.md, requirements.md, state.md and the phase directory; no other
+# Auto-commits what it wrote (roadmap.md, requirements.md, state.md and the phase directory; no other planning file is staged). Anything you had already staged goes into the same commit.
 # planning file) as "docs(NN): complete phase — <name>" and reports commit_hash,
 # unless --no-commit is passed, commit_docs is false, the planning tree is gitignored, or cwd is not a git repo.
 ```

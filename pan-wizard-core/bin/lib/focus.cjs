@@ -25,7 +25,7 @@ const { readErrorPatterns } = require('./commands.cjs');
 const { weeklyLimitStop } = require('./cost.cjs');
 const store = require('./store.cjs');
 const { holdLock } = require('./lock.cjs');
-const { planningPath, listPhaseDirs, classifyPhaseStatus, filterPlanFiles, filterSummaryFiles, planningRel, nextQuickNum, readMarkdownTables, tableCellText } = require('./utils.cjs');
+const { planningPath, listPhaseDirs, classifyPhaseStatus, filterPlanFiles, filterSummaryFiles, planningRel, nextQuickNum, readMarkdownTables, tableCellText, localDay } = require('./utils.cjs');
 
 // ─── Scan helpers ───────────────────────────────────────────────────────────
 
@@ -396,7 +396,7 @@ function cmdFocusPlan(cwd, raw, ...args) {
   const focusDir = planningPath(cwd, FOCUS_DIR);
   try { fs.mkdirSync(focusDir, { recursive: true }); } catch { /* exists */ }
 
-  const date = new Date().toISOString().split('T')[0];
+  const date = localDay();
   const batchPath = path.join(focusDir, `batch-${date}.json`);
   const batchData = { date, mode, budget, allocated, batch, remaining: remaining.length };
   try {
@@ -1166,7 +1166,7 @@ function focusOpen(cwd, opts = {}) {
   const tests = kind === 'exec' ? (opts.measure || measureTests)(cwd) : null;
 
   const now = opts.now || new Date();
-  const date = now.toISOString().slice(0, 10);
+  const date = localDay(now);
   // The number is claimed under the quick directory's lock, so two cycles (or a
   // cycle and a quick task) opened at once never share one.
   const reserved = store.reserveDir(planningPath(cwd, QUICK_DIR), (n) => `${n}-focus-${kind}-${date}`, () => nextQuickNum(cwd));
@@ -1321,7 +1321,7 @@ function focusClose(cwd, opts = {}) {
   }
 
   const now = opts.now || new Date();
-  const date = now.toISOString().slice(0, 10);
+  const date = localDay(now);
   const failedIds = Object.keys(failed);
   const q = (v) => (v == null ? 'null' : JSON.stringify(String(v)));
   const cell = (t) => String(t).replace(/\|/g, '\\|').replace(/\r?\n+/g, ' ');
@@ -1561,7 +1561,7 @@ function writeAutoRun(cwd, data) {
  * @returns {string} Run ID like "auto-2026-03-03-1"
  */
 function generateRunId(cwd) {
-  const date = new Date().toISOString().slice(0, 10);
+  const date = localDay();
   const existing = readAutoRun(cwd);
   if (existing && existing.run_id && existing.run_id.startsWith(`auto-${date}`)) {
     const match = existing.run_id.match(/-(\d+)$/);

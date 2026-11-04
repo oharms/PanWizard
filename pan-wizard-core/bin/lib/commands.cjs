@@ -6,7 +6,7 @@ const path = require('path');
 const { safeReadFile, loadConfig, isGitIgnored, isGitRepo, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, resolveModelInternal, resolveModelDetailed, resolveEffortInternal, detectProvider, resolveTierToModel, estimateCostMultiplier, MODEL_PROFILES, output, error, findPhaseInternal, scanPendingTodos, toPosix, toLf } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { PHASES_DIR, MILESTONES_DIR, QUICK_DIR, STATE_FILE, ROADMAP_FILE, PROJECT_FILE, PATTERNS_FILE, SESSION_HISTORY_FILE, LEARNINGS_FILE, CONTEXT_SUFFIX, UAT_SUFFIX, VERIFICATION_SUFFIX, isPlanFile, isSummaryFile, ARCHIVE_DIR_RE, PHASE_DIR_RE, CONTEXT_WINDOW, WARNING_THRESHOLD, CRITICAL_THRESHOLD, VALID_COMMIT_TYPES, DEFAULT_SENSITIVE_PATTERNS, STATE_CONTRACT } = require('./constants.cjs');
-const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, planningRel } = require('./utils.cjs');
+const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, planningRel, localDay } = require('./utils.cjs');
 const { estimateTokens } = require('./context-budget.cjs');
 const { collectPhaseSummaries, readErrorPatterns, appendErrorPattern, appendSessionSummary, parseLearnings, formatLearningEntry, cmdLearningsExtract, cmdLearningsList, cmdLearningsPrune } = require('./commands-learnings.cjs');
 const { planningRootRel } = require('./planning-root.cjs');
@@ -43,7 +43,7 @@ function cmdCurrentTimestamp(format, raw) {
 
   switch (format) {
     case 'date':
-      result = now.toISOString().split('T')[0];
+      result = localDay(now);
       break;
     case 'filename':
       result = now.toISOString().replace(/:/g, '-').replace(/\..+/, '');
@@ -941,7 +941,7 @@ function completeTodo(cwd, filename) {
     return { error: `Failed to create completed directory: ${e.message}` };
   }
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDay();
   // /pan:todo-add writes YAML frontmatter; the date goes inside it. Prepending it
   // put `completed:` above the opening `---` and broke the block. A file with no
   // frontmatter keeps the old first-line form.
@@ -987,7 +987,7 @@ function cmdTodoComplete(cwd, filename, raw) {
 function cmdScaffold(cwd, type, options, raw) {
   const { phase, name } = options;
   const padded = phase ? normalizePhaseName(phase) : '00';
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDay();
 
   // Find phase directory
   const phaseInfo = phase ? findPhaseInternal(cwd, phase) : null;

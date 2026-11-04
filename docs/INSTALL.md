@@ -46,14 +46,15 @@ npx pan-wizard --copilot --local   # Install to ./.github/
 npx pan-wizard --all --global      # Install to all directories
 ```
 
-Use `--global` (`-g`) to install into your home config directory; `--local` (`-l`) is the default and may be omitted. Use `--claude`, `--opencode`, `--gemini`, `--codex`, `--copilot`, or `--all` to skip the runtime prompt.
+Use `--global` (`-g`) to install into your home config directory; `--local` (`-l`) is the default and may be omitted, except with `--uninstall`, which needs `--global` or `--local`. Use `--claude`, `--opencode`, `--gemini`, `--codex`, `--copilot`, or `--all` to skip the runtime prompt.
 
 ### What a local install writes outside the runtime directory
 
 - a marker-fenced PAN section in the project's `AGENTS.md`, with a short table of which PAN command a plain request belongs to (`instructions.routing`);
 - for Gemini CLI, `AGENTS.md` added to `context.fileName` in `.gemini/settings.json` so Gemini loads it;
 - for Claude Code, a marker-fenced block in `CLAUDE.md` (the `@AGENTS.md` import, and compact instructions that keep PAN's position through compaction) and a `pan` MCP server in `.mcp.json`;
-- for Codex or `--unified-skills`, the shared `.agents/` tree (skills, plus a shared core under `--unified-skills`).
+- for Codex or `--unified-skills`, the shared `.agents/` tree (skills, plus a shared core under `--unified-skills`);
+- a `<runtime dir>/pan-local-patches/` line in `.gitignore` under a `# PAN Wizard` comment, so the update backups are never committed (a missing `.gitignore` is created only in a git repository).
 
 An update rewrites those blocks only while they hold PAN's own text: once your project edits one, PAN keeps your version and says so. `--uninstall` removes them (the `AGENTS.md` and `CLAUDE.md` blocks and the `.agents/` tree stay while another PAN runtime in the project still uses them).
 
@@ -65,7 +66,7 @@ Add `--unified-skills` to install commands as one shared `.agents/skills/` tree 
 
 ### Commands only you can start (`--user-invoked-only`)
 
-On Claude Code the model may start any PAN command. To keep some for yourself, name them: `--user-invoked-only health,update` marks `/pan:health` and `/pan:update` (or `/pan-health` and `/pan-update` after `--unified-skills`) `disable-model-invocation: true`, so they run only when you type them. A local install also reads `claude.user_invoked_only` from the project's `.planning/config.json` and applies it on every reinstall and `/pan:update`; a global install uses the flag only. Other runtimes ignore it.
+On Claude Code the model may start any PAN command. To keep some for yourself, name them: `--user-invoked-only health,update` marks `/pan:health` and `/pan:update` (or `/pan-health` and `/pan-update` after `--unified-skills`) `disable-model-invocation: true`, so they run only when you type them. A local install also reads `claude.user_invoked_only` from the project's `.planning/config.json` on every reinstall and `/pan:update`; a global install uses the flag only. The installer records the flag's names, so an update keeps them without the flag; `--user-invoked-only none` clears them. Other runtimes ignore it.
 
 ### Docker and containers
 

@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { PHASES_DIR, MILESTONES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, STATE_FILE, isPlanFile } = require('./constants.cjs');
-const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible, planningRel, readMarkdownTables, tableCellText, replaceTableCell } = require('./utils.cjs');
+const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible, planningRel, readMarkdownTables, tableCellText, replaceTableCell, localDay } = require('./utils.cjs');
 const { output, error, isGitRepo, isGitIgnored, execGit, escapeRegex, loadConfig } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { writeStateMd } = require('./state.cjs');
@@ -228,7 +228,7 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
   const statePath = path.join(planningDir, STATE_FILE);
   const milestonesPath = path.join(planningDir, 'milestones.md');
   const archiveDir = path.join(planningDir, MILESTONES_DIR);
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDay();
   const milestoneName = options.name || version;
 
   try {
@@ -324,4 +324,5 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
 module.exports = {
   cmdRequirementsMarkComplete,
   cmdMilestoneComplete,
+  markTraceabilityRows,
 };

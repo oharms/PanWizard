@@ -303,6 +303,28 @@ describe('DD-6: phase complete', () => {
     assert.match(s, /^  plans_executed: 3$/m, 'unknown nested key kept');
     assert.match(fs.readFileSync(P('roadmap.md'), 'utf8'), /\| 2\/2 \| Complete /);
   });
+
+  // PAN-03: phase complete marked requirements with a three-column `Pending` regex, so a
+  // traceability table with the Status column elsewhere was never updated.
+  test('a five-column traceability table is marked Complete by its Status header', () => {
+    gateOff(dir);
+    write('roadmap.md', ROADMAP.replace('**Goal:** decimal\n', '**Goal:** decimal\n**Requirements:** CHK-01\n'));
+    write('requirements.md', [
+      '# Requirements', '',
+      '- [ ] **CHK-01**: checkout totals the cart', '',
+      '## Traceability', '',
+      '| Requirement | Description | Phase | Status | Notes |',
+      '|-------------|-------------|-------|--------|-------|',
+      '| CHK-01 | Checkout totals | 29.4 | In Progress | owner: ops |',
+      '',
+    ].join('\n'));
+    write('phases/29.4-decimal/29.4-02-summary.md', '# summary 2\n');
+    const r = pan('phase', 'complete', '29.4', '--no-commit');
+    assert.equal(r.status, 0, `${r.stdout} ${r.stderr}`);
+    const req = fs.readFileSync(P('requirements.md'), 'utf8');
+    assert.match(req, /\| CHK-01 \| Checkout totals \| 29\.4 \| Complete +\| owner: ops \|/);
+    assert.match(req, /- \[x\] \*\*CHK-01\*\*/);
+  });
 });
 
 describe('DD-4: health never rewrites an existing state.md', () => {

@@ -119,6 +119,22 @@ describe('a project keeps chosen commands user-invoked only (DD-12)', () => {
     assert.deepEqual(marked(path.join(dir, '.claude', 'commands', 'pan')), ['health.md', 'progress.md']);
   });
 
+  // /pan:update reinstalls without repeating the flag; before the manifest recorded the
+  // flag's names, an update silently dropped them (a global install has no config to fall back on).
+  test('the flag\'s names survive a reinstall without the flag; "none" clears them', () => {
+    const dir = withConfig('uio-keep', undefined);
+    dirs.push(dir);
+    const cmdDir = path.join(dir, '.claude', 'commands', 'pan');
+    install(dir, ['--claude', '--local', '--skip-warnings', '--user-invoked-only', 'health']);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, '.claude', 'pan-file-manifest.json'), 'utf8')).user_invoked_only, ['health']);
+    install(dir, ['--claude', '--local', '--skip-warnings']);
+    assert.deepEqual(marked(cmdDir), ['health.md'], 'a reinstall without the flag keeps the recorded names');
+    install(dir, ['--claude', '--local', '--skip-warnings', '--user-invoked-only', 'none']);
+    assert.deepEqual(marked(cmdDir), [], '"none" clears them');
+    install(dir, ['--claude', '--local', '--skip-warnings']);
+    assert.deepEqual(marked(cmdDir), [], 'and the cleared list stays cleared');
+  });
+
   test('a flag value that is not a command name is refused', () => {
     const dir = freshDir('uio-badflag');
     dirs.push(dir);

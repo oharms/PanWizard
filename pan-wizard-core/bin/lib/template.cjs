@@ -8,7 +8,7 @@ const {
   PHASES_DIR, PLAN_SUFFIX, SUMMARY_SUFFIX, VERIFICATION_SUFFIX, ROADMAP_SLICE_SUFFIX,
   SIMPLE_TASK_THRESHOLD, SIMPLE_FILE_THRESHOLD, COMPLEX_TASK_THRESHOLD, COMPLEX_FILE_THRESHOLD,
 } = require('./constants.cjs');
-const { planningPath, phasesPath } = require('./utils.cjs');
+const { planningPath, phasesPath, localDay } = require('./utils.cjs');
 const { normalizePhaseName, findPhaseInternal, generateSlugInternal, toPosix, output, EXIT_OK, error } = require('./core.cjs');
 const { reconstructFrontmatter } = require('./frontmatter.cjs');
 
@@ -160,7 +160,7 @@ function generatePlanTemplate(phaseId, planId, phaseName, phaseSlug, phaseNum, o
  * @returns {{frontmatter: Object, body: string, fileName: string}}
  */
 function generateSummaryTemplate(phaseId, planId, phaseName, phaseNum, fields) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDay();
   const padded = phaseId.split('-')[0];
 
   const frontmatter = {

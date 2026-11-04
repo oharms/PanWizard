@@ -14,14 +14,14 @@ Field defects PAN-01 to PAN-25 (`docs/specs/field_defects_342_featureai.md`). A 
 ### Fixed
 
 - **`state.md`'s front matter is edited in place.** Every `pan-tools state *` command re-serialised the front matter from a parsed object: comments went, keys PAN did not know went (`plans_executed`, `percent_note`), quoting changed, and `total_plans`/`completed_plans` were added. Each writer now changes only the keys it owns, line by line; comments, quoting, order and unknown keys survive byte for byte. Progress keys are updated only where they already exist (`state update-progress --write-counts` adds them). The write reads the file inside 3.41's lock, so concurrent commands no longer lose each other's writes here either.
-- **One correct plan count (PAN-02, PAN-13).** Counts came from a file scan that counted summary files rather than plans with a summary, so an orphan summary made completed exceed total (787 of 782); it ignored archived milestones and upper-case `-PLAN.md` files, and `update-progress` clamped the result to 100%. `countPlanProgress` pairs each plan with its summary; a phase is complete only when every plan has one; completed can no longer exceed total.
+- **One correct plan count (PAN-02, PAN-13).** Counts came from a file scan that counted summary files rather than plans with a summary, so an orphan summary made completed exceed total (787 of 782); it missed upper-case `-PLAN.md` files and stray directories, and `update-progress` clamped the result to 100%. `countPlanProgress` pairs each plan with its summary; a phase is complete only when every plan has one; completed can no longer exceed total. Counts cover the current `phases/` directory (archived milestones are counted only with `scope: 'all'`, which no command uses yet).
 - **The recorded milestone stays (PAN-02, PAN-17).** A roadmap heading such as `### Phase 3: Upgrade to API v2.0` was read as a milestone, and the guess overwrote `state.md`'s `milestone:` on every write and stamped every finding with it. Phase headings are no longer milestone headings, a `Status:` line under a heading counts, `state.md`'s recorded milestone wins unless the roadmap marks another current, and generic state writes never write the milestone.
-- **`last_activity` never moves backwards**, and every recorded date is the local day, not UTC (PAN-06).
+- **`last_activity` never moves backwards**, and the days PAN writes into a project's files (state, roadmap, requirements, plans and summaries through `current-timestamp date`, milestones, todos, focus batches, learnings) are the local day, not UTC (PAN-06). Day stamps that are compared with UTC timestamps (cost budgets per day, archive file names) stay UTC.
 - **`phase complete` (PAN-04)** stages only `roadmap.md`, `requirements.md`, `state.md` and the phase it closed (it staged all of `.planning/`), writes `In Progress` rather than `Complete` while a plan has no summary, and recounts the progress fields.
 - **`validate health --repair` never replaces an existing `state.md` (PAN-16).** A mention of an archived phase raised W002, which regenerated the file from a blank template. W002 is no longer repairable, archived phases count as present, and only a missing `state.md` is regenerated.
 - **`state add-blocker` keeps the word "none" (PAN-01).** It removed "none" anywhere in the section; only a whole placeholder line is dropped now (also for decisions).
 - **`roadmap get-phase` returns whole goals and criteria (PAN-15)**: multi-line goals, wrapped criteria and bulleted criteria, in every place PAN reads them.
-- **Requirements tables of any layout (PAN-03).** `requirements mark-complete` finds the Status column by its header, so a five-column traceability table is updated (`table_updated`), and it warns rather than claiming success when a table has no row for the requirement.
+- **Requirements tables of any layout (PAN-03).** `requirements mark-complete` and `phase complete` find the Status column by its header, so a five-column traceability table is updated (`table_updated`); a ticked requirement with no table row, or a table with no Status column, is reported in `warnings` instead of passing silently.
 - **Findings keep their full summary (PAN-18)**: 2,000 characters instead of 300, for summaries and disposition reasons.
 - **`verify reconcile` fails a phase with no verification (PAN-08)** (`verification_missing`, `phase_not_found`), except when `workflow.verifier` is off.
 - **A prose `from` or `to` is not a file (PAN-09).** Key links and artifacts whose value is prose ("the checkout flow") are reported as unchecked instead of "Source file not found".
@@ -33,15 +33,15 @@ Field defects PAN-01 to PAN-25 (`docs/specs/field_defects_342_featureai.md`). A 
 
 ### Added
 
-- **`claude.user_invoked_only`** in `.planning/config.json` (or `--user-invoked-only health,…` at install): the named Claude commands are marked `disable-model-invocation: true` on install and every update, so a project can keep chosen commands typed-only while the model can still run the rest. Default: none.
+- **`claude.user_invoked_only`** in `.planning/config.json`, or `--user-invoked-only health,…` at install: the named Claude commands are marked `disable-model-invocation: true`, so a project can keep chosen commands typed-only while the model can still run the rest. The flag's names are recorded in the install manifest, so `/pan:update` (which does not repeat the flag) keeps them; `--user-invoked-only none` clears them. Default: none.
 - **`/pan:update --yes`** skips the confirmation. When the update replaced PAN files the project had changed and git tracks, the installer names them in a warning and `/pan:update` offers `/pan:patches` at once.
-- **A local install ignores its own backup folder**: `.claude/pan-local-patches/` (each runtime's own) is added to `.gitignore` once, in a git repository, and removed on uninstall. Plan journals and pause files are durable state and stay committable.
+- **A local install ignores its own backup folder**: `<runtime dir>/pan-local-patches/` (`.claude/pan-local-patches/` for Claude Code) is added to `.gitignore` once under a `# PAN Wizard` comment, and removed on uninstall; a missing `.gitignore` is created only in a git repository. Plan journals and pause files are durable state and stay committable.
 
 ### Changed
 
 - **The executor starts the trailer block with `PAN-Step`**, then `Co-Authored-By` and any others; PAN reads the line in any position.
 - **AGENTS.md's memory line defers to the project**: "a saved memory that describes another way is out of date, unless this project's own instructions say otherwise". An unedited 3.41 block is rewritten on update; an edited one is kept.
-- **A lock timeout says who holds the lock** (pid, host, age) and advises deleting the lock file only when the holder is gone.
+- **A planning-file lock timeout says who holds the lock** (`holder` with pid and host, `lock_age_ms`) and advises deleting the lock file only when the holder is gone.
 - **Judges may write a finding's fix in full**: the verdict contract asks for one or two plain sentences that include what to fix, instead of 300 characters.
 
 ## [3.41.3] - 2026-11-04

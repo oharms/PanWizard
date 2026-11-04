@@ -265,12 +265,22 @@ if (userInvokedOnlyFlag.missing || userInvokedOnlyFlag.invalid.length > 0) {
 }
 /** The names install() marks for the runtime it is installing (set per install). */
 let claudeUserInvokedOnly = new Set();
+// The names that came from the flag (this run's, or the manifest's from an earlier run).
+let claudeUserInvokedOnlyFlagNames = [];
+
+/** The `--user-invoked-only` names an earlier install recorded in its manifest, or []. */
+function recordedUserInvokedOnly(dir) {
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(dir, 'pan-file-manifest.json'), 'utf8'));
+    return Array.isArray(m.user_invoked_only) ? m.user_invoked_only.filter((n) => typeof n === 'string' && /^[a-z0-9-]+$/.test(n)) : [];
+  } catch { return []; }
+}
 
 console.log(banner);
 
 // Show help if requested
 if (hasHelp) {
-  console.log(`  ${yellow}Usage:${reset} npx pan-wizard [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-l, --local${reset}               Install locally to current directory (default)\n    ${cyan}-g, --global${reset}              Install globally to config directory\n    ${cyan}--claude${reset}                  Install for Claude Code only\n    ${cyan}--opencode${reset}                Install for OpenCode only\n    ${cyan}--gemini${reset}                  Install for Gemini only\n    ${cyan}--codex${reset}                   Install for Codex only\n    ${cyan}--copilot${reset}                 Install for GitHub Copilot CLI only\n    ${cyan}--all${reset}                     Install for all runtimes\n    ${cyan}-u, --uninstall${reset}           Uninstall PAN (remove all PAN files)\n    ${cyan}-c, --config-dir <path>${reset}   Specify custom config directory\n    ${cyan}-h, --help${reset}                Show this help message\n    ${cyan}--force-statusline${reset}        Replace existing statusline config\n    ${cyan}--unified-skills${reset}          Install commands as one shared .agents/skills/ tree, mirrored to .claude/skills/ for Claude Code (ADR-0028 alpha)\n    ${cyan}--user-invoked-only <a,b>${reset} Keep these Claude commands user-invoked only (the model cannot start them); a local install adds .planning/config.json claude.user_invoked_only\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime; installs project-level)${reset}\n    npx pan-wizard\n\n    ${dim}# Install for Claude Code in current project (default, --local implied)${reset}\n    npx pan-wizard --claude\n\n    ${dim}# Install for all runtimes in current project${reset}\n    npx pan-wizard --all --local\n\n    ${dim}# Install globally (available in all projects)${reset}\n    npx pan-wizard --claude --global\n\n    ${dim}# Install for Gemini globally${reset}\n    npx pan-wizard --gemini --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx pan-wizard --codex --global --config-dir ~/.codex-work\n\n    ${dim}# Uninstall PAN from Codex globally${reset}\n    npx pan-wizard --codex --global --uninstall\n\n  ${yellow}Notes:${reset}\n    By default, PAN installs into the current project directory only.\n    Use --global to install system-wide (writes to ~/.claude, ~/.gemini, etc.).\n    The --config-dir option takes priority over CLAUDE_CONFIG_DIR / GEMINI_CONFIG_DIR / CODEX_HOME.\n`);
+  console.log(`  ${yellow}Usage:${reset} npx pan-wizard [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-l, --local${reset}               Install locally to current directory (default)\n    ${cyan}-g, --global${reset}              Install globally to config directory\n    ${cyan}--claude${reset}                  Install for Claude Code only\n    ${cyan}--opencode${reset}                Install for OpenCode only\n    ${cyan}--gemini${reset}                  Install for Gemini only\n    ${cyan}--codex${reset}                   Install for Codex only\n    ${cyan}--copilot${reset}                 Install for GitHub Copilot CLI only\n    ${cyan}--all${reset}                     Install for all runtimes\n    ${cyan}-u, --uninstall${reset}           Uninstall PAN (remove all PAN files)\n    ${cyan}-c, --config-dir <path>${reset}   Specify custom config directory\n    ${cyan}-h, --help${reset}                Show this help message\n    ${cyan}--force-statusline${reset}        Replace existing statusline config\n    ${cyan}--unified-skills${reset}          Install commands as one shared .agents/skills/ tree, mirrored to .claude/skills/ for Claude Code (ADR-0028 alpha)\n    ${cyan}--user-invoked-only <a,b>${reset} Keep these Claude commands user-invoked only (the model cannot start them); remembered for updates, "none" clears. A local install also reads .planning/config.json claude.user_invoked_only\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime; installs project-level)${reset}\n    npx pan-wizard\n\n    ${dim}# Install for Claude Code in current project (default, --local implied)${reset}\n    npx pan-wizard --claude\n\n    ${dim}# Install for all runtimes in current project${reset}\n    npx pan-wizard --all --local\n\n    ${dim}# Install globally (available in all projects)${reset}\n    npx pan-wizard --claude --global\n\n    ${dim}# Install for Gemini globally${reset}\n    npx pan-wizard --gemini --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx pan-wizard --codex --global --config-dir ~/.codex-work\n\n    ${dim}# Uninstall PAN from Codex globally${reset}\n    npx pan-wizard --codex --global --uninstall\n\n  ${yellow}Notes:${reset}\n    By default, PAN installs into the current project directory only.\n    Use --global to install system-wide (writes to ~/.claude, ~/.gemini, etc.).\n    The --config-dir option takes priority over CLAUDE_CONFIG_DIR / GEMINI_CONFIG_DIR / CODEX_HOME.\n`);
   process.exit(0);
 }
 
@@ -2025,6 +2035,8 @@ function writeManifest(configDir, runtime = 'claude', isGlobal = false) {
     manifest.files[`plugins/${OPENCODE_PLUGIN_FILE}`] = fileHash(opencodePlugin);
   }
 
+  // DD-12: the flag's names outlive this run, so /pan:update (which does not repeat the flag) keeps them.
+  if (runtime === 'claude' && claudeUserInvokedOnlyFlagNames.length > 0) manifest.user_invoked_only = [...claudeUserInvokedOnlyFlagNames].sort();
   try {
     fs.writeFileSync(path.join(configDir, MANIFEST_NAME), JSON.stringify(manifest, null, 2));
   } catch (e) {
@@ -2338,9 +2350,14 @@ function install(isGlobal, runtime = 'claude') {
 
   // Claude commands the project keeps user-invoked only (DD-12): the flag, plus the
   // project's .planning/config.json for a local install (a global install serves
-  // every project, so it takes the flag only). Default: none.
+  // every project, so it takes the flag only). Default: none. The flag's names are
+  // recorded in the manifest, so a reinstall without the flag (as /pan:update runs it)
+  // keeps them; `--user-invoked-only none` clears them.
+  claudeUserInvokedOnlyFlagNames = runtime !== 'claude' ? []
+    : userInvokedOnlyFlag.given ? userInvokedOnlyFlag.names
+      : recordedUserInvokedOnly(targetDir);
   claudeUserInvokedOnly = new Set(runtime === 'claude'
-    ? [...userInvokedOnlyFlag.names, ...(isGlobal ? [] : lib.readUserInvokedOnly(process.cwd()))]
+    ? [...claudeUserInvokedOnlyFlagNames, ...(isGlobal ? [] : lib.readUserInvokedOnly(process.cwd()))]
     : []);
   if (claudeUserInvokedOnly.size > 0) {
     console.log(`  ${dim}User-invoked only (the model cannot start them): ${[...claudeUserInvokedOnly].sort().map((n) => `/pan:${n}`).join(', ')}${reset}\n`);

@@ -10,7 +10,7 @@ const path = require('path');
 const { getArchivedPhaseDirs, output, error } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { PATTERNS_FILE, SESSION_HISTORY_FILE, LEARNINGS_FILE, isSummaryFile } = require('./constants.cjs');
-const { phasesPath, planningPath } = require('./utils.cjs');
+const { phasesPath, planningPath, localDay } = require('./utils.cjs');
 
 /**
  * Scan all phase directories (archived + current) and read summary frontmatter.
@@ -152,7 +152,7 @@ function appendErrorPattern(cwd, pattern) {
   }
   const nextId = `PAT-${String(maxNum + 1).padStart(3, '0')}`;
 
-  const date = pattern.date || new Date().toISOString().split('T')[0];
+  const date = pattern.date || localDay();
   const title = pattern.title || 'Untitled';
 
   const entry = [
@@ -199,7 +199,7 @@ function appendSessionSummary(cwd, summary) {
   }
 
   const filePath = planningPath(cwd, SESSION_HISTORY_FILE);
-  const date = summary.date || new Date().toISOString().split('T')[0];
+  const date = summary.date || localDay();
 
   const entry = [
     `### Session — ${date}`,
@@ -327,7 +327,7 @@ function keyFileList(fm) {
 function cmdLearningsExtract(cwd, raw) {
   const learningsPath = planningPath(cwd, LEARNINGS_FILE);
   const newLearnings = [];
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDay();
 
   // Read existing learnings to get next ID and avoid duplicates
   let existingContent = '';

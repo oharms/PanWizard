@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, normalizePhaseName, toPosix, output, error, scanPendingTodos, isGitRepo, execGit, escapeTableCell } = require('./core.cjs');
 const { PHASES_DIR, CODEBASE_DIR, QUICK_DIR, MILESTONES_DIR, STATE_FILE, ROADMAP_FILE, CONFIG_FILE, PROJECT_FILE, REQUIREMENTS_FILE, isPlanFile, isSummaryFile, isResearchFile, isContextFile, isVerificationFile, PLAN_SUFFIX, SUMMARY_SUFFIX, CONTEXT_SUFFIX, RESEARCH_SUFFIX, VERIFICATION_SUFFIX, UAT_SUFFIX, MAX_SLUG_LENGTH } = require('./constants.cjs');
-const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus, hasBraveSearchKey, parsePhaseDir, planningRel, nextQuickNum } = require('./utils.cjs');
+const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus, hasBraveSearchKey, parsePhaseDir, planningRel, nextQuickNum, localDay } = require('./utils.cjs');
 const { classifyPlanTier } = require('./phase.cjs');
 const { planCheckStatus, planDrift } = require('./verify-plan-set.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
@@ -460,7 +460,7 @@ function cmdInitQuick(cwd, description, raw) {
     description_cell: description ? escapeTableCell(description) : null,
 
     // Timestamps
-    date: now.toISOString().split('T')[0],
+    date: localDay(now),
     timestamp: now.toISOString(),
 
     // Paths
@@ -649,7 +649,7 @@ function cmdInitTodos(cwd, area, raw) {
 
   const result = {
     commit_docs: config.commit_docs,
-    date: now.toISOString().split('T')[0],
+    date: localDay(now),
     timestamp: now.toISOString(),
     todo_count: count,
     todos,

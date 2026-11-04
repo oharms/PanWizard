@@ -173,12 +173,14 @@ function readUserInvokedOnly(projectRoot) {
 
 /**
  * The names given by `--user-invoked-only a,b` (or `--user-invoked-only=a,b`).
+ * `given` says the flag was passed at all; `none` clears the list (given, no names), so a
+ * reinstall can tell "keep the recorded list" from "mark nothing".
  * @param {string[]} argv
  * @param {string} [flag]
- * @returns {{names: string[], invalid: string[], missing: boolean}}
+ * @returns {{names: string[], invalid: string[], missing: boolean, given: boolean}}
  */
 function parseUserInvokedOnlyFlag(argv, flag = '--user-invoked-only') {
-  const out = { names: [], invalid: [], missing: false };
+  const out = { names: [], invalid: [], missing: false, given: false };
   for (let i = 0; i < argv.length; i++) {
     let value = null;
     if (argv[i] === flag) {
@@ -191,7 +193,9 @@ function parseUserInvokedOnlyFlag(argv, flag = '--user-invoked-only') {
     } else {
       continue;
     }
+    out.given = true;
     for (const n of value.split(',').map((s) => s.trim()).filter(Boolean)) {
+      if (n === 'none') continue;
       (USER_INVOKED_NAME.test(n) ? out.names : out.invalid).push(n);
     }
   }

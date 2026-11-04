@@ -816,7 +816,8 @@
   ],
   "milestone.cjs": [
     "cmdMilestoneComplete:function",
-    "cmdRequirementsMarkComplete:function"
+    "cmdRequirementsMarkComplete:function",
+    "markTraceabilityRows:function"
   ],
   "mutate.cjs": [
     "DEFAULT_FLOOR:number",

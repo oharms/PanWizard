@@ -2081,7 +2081,10 @@ describe('user-invoked-only Claude commands a project chooses (DD-12)', () => {
   });
 
   test('parseUserInvokedOnlyFlag takes both forms and reports bad names', () => {
-    assert.deepEqual(lib.parseUserInvokedOnlyFlag(['--claude']), { names: [], invalid: [], missing: false });
+    assert.deepEqual(lib.parseUserInvokedOnlyFlag(['--claude']), { names: [], invalid: [], missing: false, given: false });
+    // `given` lets a reinstall keep the manifest's recorded list unless the flag is passed; `none` clears it.
+    assert.deepEqual(lib.parseUserInvokedOnlyFlag(['--user-invoked-only', 'none']), { names: [], invalid: [], missing: false, given: true });
+    assert.equal(lib.parseUserInvokedOnlyFlag(['--user-invoked-only', 'health']).given, true);
     assert.deepEqual(lib.parseUserInvokedOnlyFlag(['--user-invoked-only', 'health, cost', '--local']).names, ['health', 'cost']);
     assert.deepEqual(lib.parseUserInvokedOnlyFlag(['--user-invoked-only=health']).names, ['health']);
     assert.equal(lib.parseUserInvokedOnlyFlag(['--user-invoked-only']).missing, true);

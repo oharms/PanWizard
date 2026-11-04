@@ -865,10 +865,9 @@ function markRequirementsCompleteForPhase(cwd, phaseNum, roadmapContent) {
         new RegExp(`(-\\s*\\[)[ ](\\]\\s*\\*\\*${reqEscaped}\\*\\*)`, 'gi'),
         '$1x$2'
       );
-      reqContent = reqContent.replace(
-        new RegExp(`(\\|\\s*${reqEscaped}\\s*\\|[^|]+\\|)\\s*Pending\\s*(\\|)`, 'gi'),
-        '$1 Complete $2'
-      );
+      // PAN-03: the Status column is found by its header, so a traceability table of any
+      // layout is updated (a three-column `Pending` regex left a five-column table stale).
+      reqContent = require('./milestone.cjs').markTraceabilityRows(reqContent, reqId).content;
     }
 
     try {
