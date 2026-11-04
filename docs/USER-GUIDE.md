@@ -356,7 +356,7 @@ Some commands were folded into flags of another command. The old names keep work
 | `/pan:resume` | Restore full context from last session | Starting a new session |
 | `/pan:pause` | Save context handoff | Stopping mid-phase |
 | `/pan:help` | Show all commands | Quick reference |
-| `/pan:update` | Update PAN with changelog preview, reinstalling the runtime it runs in (for a `--config-dir` or `--unified-skills` install, re-run the installer with your original flags) | Check for new versions |
+| `/pan:update` | Update PAN with changelog preview, reinstalling the runtime it runs in (for a `--config-dir` or `--unified-skills` install, re-run the installer with your original flags). `--yes` skips the confirmation; backed-up local edits are offered to `/pan:patches` at once | Check for new versions |
 
 ### Phase Management
 
@@ -1229,7 +1229,13 @@ Set `commit_docs: false` during `/pan:new-project` or with `pan-tools config-set
 
 ### PAN Update Overwrote My Local Changes
 
-The installer backs up locally modified files to `pan-local-patches/`. Run `/pan:patches` to merge your changes back.
+The installer backs up locally modified files to `pan-local-patches/`. Run `/pan:patches` to merge your changes back; `/pan:update` offers to run it as soon as it finds backups. When git tracks a file PAN replaced, the installer names it in a red warning, because your working tree now differs from your commits there: run `/pan:patches` before you commit.
+
+A local install adds `.claude/pan-local-patches/` (the runtime's own directory for other runtimes) to the project's `.gitignore` once, under a `# PAN Wizard` comment, since the backups belong to one machine; it creates `.gitignore` only in a git repository, and uninstalling removes the line.
+
+Plan journals (`.planning/phases/<phase>/<plan>-journal.jsonl`) are durable project state, not machine-local: commit them, so a run resumed on another machine knows which tasks are done.
+
+Pause files (`.planning/pauses/<id>.json`) are durable too: commit them, so an open question and its answer survive a clone or another machine.
 
 ### Subagent Appears to Fail but Work Was Done
 

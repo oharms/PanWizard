@@ -2839,6 +2839,18 @@
    "baseline": true
   },
   {
+   "id": "pan-wizard-core/workflows/update:c8870c67",
+   "file": "pan-wizard-core/workflows/update.md",
+   "text": "**If the arguments include `--yes` or `-y`:** the user has already confirmed. Print the warning above, do not ask, and go on to run_update.",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/update:37758c07",
+   "file": "pan-wizard-core/workflows/update.md",
+   "text": "**If patches found:** list the backed-up files (`files`). Name every file its `tracked` map marks `true` as a file git tracks that PAN just replaced: the project's working tree now differs from its commits there, so it must be merged back or committed on purpose. Then ask; do not reapply anything without an answer, even with `--yes` (that flag confirms the update, not a merge):",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/verify-phase:6396e8c8",
    "file": "pan-wizard-core/workflows/verify-phase.md",
    "text": "**Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent verifier --cue \"<phase goal; the files it touches>\" --token-budget 5000 --raw` to load the topics that match this task, within the budget; if none matches, it falls back to the topics tagged relevant for verification. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.",

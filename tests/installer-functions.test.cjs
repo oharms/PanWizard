@@ -2019,6 +2019,30 @@ describe('an install that copied no hook scripts registers none (M24)', () => {
   }
 });
 
+describe('the .gitignore line for patch backups (DD-14)', () => {
+  const M = lib.GITIGNORE_MARKER;
+  const C = '.claude/pan-local-patches/';
+  const X = '.codex/pan-local-patches/';
+  test('added once under the marker, keeping the text and its line ending', () => {
+    assert.equal(lib.addGitignoreEntry('', C), `${M}\n${C}\n`);
+    const once = lib.addGitignoreEntry('dist/', C);
+    assert.equal(once, `dist/\n\n${M}\n${C}\n`);
+    assert.equal(lib.addGitignoreEntry(once, C), null, 'idempotent');
+    assert.equal(lib.addGitignoreEntry(`${C}\n`, C), null, 'a line the user wrote counts');
+    assert.equal(lib.addGitignoreEntry('dist/\r\n', C), `dist/\r\n\r\n${M}\r\n${C}\r\n`);
+    assert.equal(lib.addGitignoreEntry(once, X), `dist/\n\n${M}\n${X}\n${C}\n`, 'a second runtime joins the block');
+  });
+
+  test('removed with its marker once the block is empty; a user line is kept', () => {
+    const two = lib.addGitignoreEntry(lib.addGitignoreEntry('dist/\n', C), X);
+    const one = lib.removeGitignoreEntry(two, X);
+    assert.equal(one, `dist/\n\n${M}\n${C}\n`);
+    assert.equal(lib.removeGitignoreEntry(one, C), 'dist/\n');
+    assert.equal(lib.removeGitignoreEntry(`dist/\n${C}\n`, C), null, 'no marker: the user\'s own line');
+    assert.equal(lib.removeGitignoreEntry('dist/\n', C), null);
+  });
+});
+
 describe('user-invoked-only Claude commands a project chooses (DD-12)', () => {
   // Claude Code keeps a command marked disable-model-invocation out of the model's
   // listing; it still runs as /pan:<name>. Since 3.41.3 none is marked by default.

@@ -199,6 +199,66 @@ function parseUserInvokedOnlyFlag(argv, flag = '--user-invoked-only') {
   return out;
 }
 
+/** The comment a local install writes above the ignore lines it adds (DD-14). */
+const GITIGNORE_MARKER = '# PAN Wizard: machine-local backups of locally edited PAN files';
+
+/**
+ * Add `line` to a .gitignore's text under PAN's marker comment, once. Keeps the
+ * existing text and its line ending. Returns null when the line is already there
+ * (in any position, with or without the marker), so the caller writes nothing.
+ * @param {string} content - current .gitignore text ('' for none)
+ * @param {string} line - e.g. '.claude/pan-local-patches/'
+ * @returns {string|null}
+ */
+function addGitignoreEntry(content, line) {
+  const text = String(content || '');
+  const lines = text.split(/\r?\n/).map((l) => l.trim());
+  if (lines.includes(line)) return null;
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  let out = text;
+  if (out && !/\r?\n$/.test(out)) out += eol;
+  if (lines.includes(GITIGNORE_MARKER)) {
+    // Our block exists (another runtime's line): add this one right under the marker.
+    const parts = out.split(/\r?\n/);
+    const at = parts.findIndex((l) => l.trim() === GITIGNORE_MARKER);
+    parts.splice(at + 1, 0, line);
+    return parts.join(eol);
+  }
+  if (out) out += eol;
+  return out + GITIGNORE_MARKER + eol + line + eol;
+}
+
+/**
+ * Remove a line a local install added under PAN's marker comment (uninstall). The
+ * marker goes too once no PAN line is left under it, with the blank line written
+ * before it. A line the user wrote elsewhere (no marker above its block) is kept.
+ * Returns null when nothing changes.
+ * @param {string} content
+ * @param {string} line
+ * @returns {string|null}
+ */
+function removeGitignoreEntry(content, line) {
+  const text = String(content || '');
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const parts = text.split(/\r?\n/);
+  const at = parts.findIndex((l) => l.trim() === GITIGNORE_MARKER);
+  if (at === -1) return null;
+  let end = at + 1;
+  while (end < parts.length && /\/pan-local-patches\/$/.test(parts[end].trim())) end++;
+  const block = parts.slice(at + 1, end);
+  const idx = block.findIndex((l) => l.trim() === line);
+  if (idx === -1) return null;
+  block.splice(idx, 1);
+  if (block.length > 0) {
+    parts.splice(at + 1, end - at - 1, ...block);
+  } else {
+    let start = at;
+    if (start > 0 && parts[start - 1].trim() === '') start--;
+    parts.splice(start, end - start);
+  }
+  return parts.join(eol);
+}
+
 /** Extract a field value from YAML frontmatter string */
 function extractFrontmatterField(frontmatter, fieldName) {
   const regex = new RegExp(`^${fieldName}:\\s*(.+)$`, 'm');
@@ -2830,6 +2890,9 @@ module.exports = {
   withClaudeUserInvokedOnly,
   readUserInvokedOnly,
   parseUserInvokedOnlyFlag,
+  GITIGNORE_MARKER,
+  addGitignoreEntry,
+  removeGitignoreEntry,
   renderCommandAlias,
   // Constants
   colorNameToHex,

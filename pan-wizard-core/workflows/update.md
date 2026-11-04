@@ -154,7 +154,9 @@ Your custom files in other locations are preserved:
 If you've modified any PAN files directly, they'll be automatically backed up to `pan-local-patches/` and can be reapplied with `/pan:patches` after the update.
 ```
 
-Use AskUserQuestion:
+**If the arguments include `--yes` or `-y`:** the user has already confirmed. Print the warning above, do not ask, and go on to run_update.
+
+**Otherwise** use AskUserQuestion:
 - Question: "Proceed with update?"
 - Options:
   - "Yes, update now"
@@ -207,11 +209,20 @@ After update completes, check if the installer detected and backed up any locall
 
 Check for pan-local-patches/backup-meta.json in the config directory.
 
-**If patches found:**
+**If patches found:** list the backed-up files (`files`). Name every file its `tracked` map marks `true` as a file git tracks that PAN just replaced: the project's working tree now differs from its commits there, so it must be merged back or committed on purpose. Then ask; do not reapply anything without an answer, even with `--yes` (that flag confirms the update, not a merge):
 
+Use AskUserQuestion:
+- Question: "Reapply your local patches now with /pan:patches?"
+- Options:
+  - "Yes, reapply now"
+  - "No, later"
+
+**If yes:** run `/pan:patches` now, in this session: follow that command's steps (the `patches` command PAN installed beside this one) to merge the backups into the new version.
+
+**If no:**
 ```
-Local patches were backed up before the update.
-Run /pan:patches to merge your modifications into the new version.
+Your modifications are saved in pan-local-patches/.
+Run /pan:patches to merge them into the new version.
 ```
 
 **If no patches:** Continue normally.
@@ -224,7 +235,8 @@ Run /pan:patches to merge your modifications into the new version.
 - [ ] Update skipped if already current
 - [ ] Changelog fetched and displayed BEFORE update
 - [ ] Clean install warning shown
-- [ ] User confirmation obtained
+- [ ] User confirmation obtained (or `--yes` passed)
+- [ ] Backed-up local patches offered for reapply via `/pan:patches`, tracked files named
 - [ ] Update executed successfully
 - [ ] Restart reminder shown
 </success_criteria>

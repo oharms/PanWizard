@@ -1758,6 +1758,10 @@ function uninstall(isGlobal, runtime = 'claude') {
   // Never a global one (~/.claude and the like are the host's own homes), and never a
   // directory that still holds anything: `.github` usually holds the project's files.
   if (!isGlobal) {
+    // The .gitignore line the install added for the patch backups (DD-14).
+    if (unignoreLocalPatchesDir(process.cwd(), dirName)) {
+      console.log(`  ${green}✓${reset} Removed ${dirName}/${PATCHES_DIR_NAME}/ from .gitignore`);
+    }
     try {
       if (fs.readdirSync(targetDir).length === 0) {
         fs.rmdirSync(targetDir);
@@ -2030,6 +2034,59 @@ function writeManifest(configDir, runtime = 'claude', isGlobal = false) {
 }
 
 /**
+ * A local install's .gitignore line for its patch backups (DD-14):
+ * `<runtime dir>/pan-local-patches/` under PAN's marker comment, added once. A
+ * project with no .gitignore gets one only when it is a git repository (`.git`
+ * directory or worktree file), since elsewhere the file would mean nothing.
+ * Journals and pause files stay committable: they are durable project state.
+ */
+function ignoreLocalPatchesDir(projectRoot, dirName) {
+  const file = path.join(projectRoot, '.gitignore');
+  try {
+    const exists = fs.existsSync(file);
+    if (!exists && !fs.existsSync(path.join(projectRoot, '.git'))) return false;
+    const next = lib.addGitignoreEntry(exists ? fs.readFileSync(file, 'utf8') : '', `${dirName}/${PATCHES_DIR_NAME}/`);
+    if (next === null) return false;
+    fs.writeFileSync(file, next);
+    console.log(`  ${green}✓${reset} Added ${dirName}/${PATCHES_DIR_NAME}/ to .gitignore (machine-local backups)`);
+    return true;
+  } catch (err) {
+    pushInstallWarning('gitignore', '.gitignore', err);
+    return false;
+  }
+}
+
+/** Uninstall: remove the .gitignore line ignoreLocalPatchesDir added. */
+function unignoreLocalPatchesDir(projectRoot, dirName) {
+  const file = path.join(projectRoot, '.gitignore');
+  try {
+    if (!fs.existsSync(file)) return false;
+    const next = lib.removeGitignoreEntry(fs.readFileSync(file, 'utf8'), `${dirName}/${PATCHES_DIR_NAME}/`);
+    if (next === null) return false;
+    fs.writeFileSync(file, next);
+    return true;
+  } catch { return false; }
+}
+
+/**
+ * Which of these files (paths relative to dir) git tracks: one `git ls-files` call
+ * for the batch. Not a repository, or no git: none.
+ * @returns {Set<string>} the tracked ones, as given
+ */
+function gitTrackedFiles(dir, relPaths) {
+  const tracked = new Set();
+  if (relPaths.length === 0) return tracked;
+  try {
+    const out = require('child_process').execFileSync('git', ['ls-files', '-z', '--', ...relPaths], {
+      cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 16 * 1024 * 1024,
+    });
+    const listed = new Set(out.split('\0').filter(Boolean).map((p) => path.resolve(dir, p)));
+    for (const rel of relPaths) if (listed.has(path.resolve(dir, rel))) tracked.add(rel);
+  } catch { /* not a repository, or git missing */ }
+  return tracked;
+}
+
+/**
  * Detect user-modified PAN files by comparing against install manifest.
  * Backs up modified files to pan-local-patches/ for reapply after update.
  */
@@ -2086,10 +2143,14 @@ function saveLocalPatches(configDir) {
   }
 
   if (modified.length > 0) {
+    // A tracked file the project changed is the project's own code: the install is
+    // about to replace it in the working tree, so the report names it (DD-15).
+    const tracked = gitTrackedFiles(configDir, modified);
     const meta = {
       backed_up_at: new Date().toISOString(),
       from_version: manifest.version,
       files: modified,
+      ...(tracked.size > 0 ? { tracked: Object.fromEntries([...tracked].map((f) => [f, true])) } : {}),
       // Files whose manifest key points outside the config dir are stored under
       // _external/ with the traversal stripped, so `files` alone would not locate
       // them. Map logical key -> path within pan-local-patches/ for the restore flow.
@@ -2133,6 +2194,14 @@ function reportLocalPatches(configDir, runtime = 'claude') {
     console.log('  Run ' + cyan + reapplyCommand + reset + ' to merge them into the new version.');
     console.log('  Or manually compare and merge the files.');
     console.log('');
+    const trackedFiles = meta.files.filter((f) => meta.tracked && meta.tracked[f] === true);
+    if (trackedFiles.length > 0) {
+      console.log('  ' + red + '⚠ WARNING: PAN replaced ' + trackedFiles.length + ' file(s) git tracks that this project had changed:' + reset);
+      for (const f of trackedFiles) console.log('     ' + red + f + reset);
+      console.log('  ' + red + 'Your working tree now differs from your commits there. Run ' + reapplyCommand + ' before you commit,' + reset);
+      console.log('  ' + red + 'or keep the new version and commit it on purpose (git diff shows what changed).' + reset);
+      console.log('');
+    }
   }
   return meta.files || [];
 }
@@ -2772,6 +2841,9 @@ function install(isGlobal, runtime = 'claude') {
       pushInstallWarning('agentsMd', 'AGENTS.md', e);
     }
   }
+
+  // The patch backups are machine-local: keep them out of the project's commits (DD-14).
+  if (!isGlobal) ignoreLocalPatchesDir(process.cwd(), dirName);
 
   // Report any backed-up local patches
   reportLocalPatches(targetDir, runtime);

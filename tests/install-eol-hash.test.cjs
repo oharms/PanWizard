@@ -110,4 +110,77 @@ describe('an upgrade over CRLF-converted files backs up only the real edit', () 
     assert.deepEqual(meta.files, [edited]);
     assert.match(upgradeOutput, /Found 1 locally modified PAN file/);
   });
+
+  test('a file git does not track is not reported as tracked', () => {
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, '.claude', 'pan-local-patches', 'backup-meta.json'), 'utf8'));
+    assert.equal(meta.tracked, undefined, 'not a git repository');
+    assert.doesNotMatch(upgradeOutput, /WARNING: PAN replaced/);
+  });
+});
+
+describe('a local install in a git repository (DD-14, DD-15)', () => {
+  const { execFileSync } = require('child_process');
+  const stripAnsi = (s) => String(s || '').replace(/\u001b\[[0-9;]*m/g, '');
+  const LINE = '.claude/pan-local-patches/';
+  let dir;
+  let upgradeOutput;
+  let ignoreAfterTwo;
+  let ignoreAfterUninstall;
+  const run = (...a) => execFileSync('git', a, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+
+  before(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-git-local-'));
+    run('init', '-q');
+    run('config', 'user.email', 't@example.com');
+    run('config', 'user.name', 't');
+    run('config', 'commit.gpgsign', 'false');
+    run('config', 'core.autocrlf', 'false');
+    fs.writeFileSync(path.join(dir, '.gitignore'), 'node_modules/\n');
+    assert.ok(installInto(dir, ['--claude', '--local']).success);
+    // The project commits its .claude/ and edits one PAN command.
+    run('add', '-A');
+    run('commit', '-qm', 'install');
+    fs.appendFileSync(path.join(dir, '.claude', 'commands', 'pan', 'help.md'), '\nOur own note.\n');
+    const second = installInto(dir, ['--claude', '--local']);
+    assert.ok(second.success, `upgrade failed: ${second.error}`);
+    upgradeOutput = stripAnsi(second.output);
+    ignoreAfterTwo = fs.readFileSync(path.join(dir, '.gitignore'), 'utf8');
+    assert.ok(installInto(dir, ['--claude', '--local', '--uninstall']).success);
+    ignoreAfterUninstall = fs.readFileSync(path.join(dir, '.gitignore'), 'utf8');
+  });
+
+  after(() => cleanup(dir));
+
+  test('the patches directory is ignored once, under the marker, keeping the existing lines', () => {
+    assert.equal(ignoreAfterTwo.split('\n').filter((l) => l.trim() === LINE).length, 1);
+    assert.match(ignoreAfterTwo, /^node_modules\/\n/);
+    assert.match(ignoreAfterTwo, /# PAN Wizard: machine-local backups of locally edited PAN files\n\.claude\/pan-local-patches\/\n/);
+  });
+
+  test('a modified file git tracks is recorded and named in the warning', () => {
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, '.claude', 'pan-local-patches', 'backup-meta.json'), 'utf8'));
+    assert.deepEqual(meta.tracked, { 'commands/pan/help.md': true });
+    assert.match(upgradeOutput, /WARNING: PAN replaced 1 file\(s\) git tracks that this project had changed:\s+commands\/pan\/help\.md/);
+  });
+
+  test('uninstall removes only the line it added', () => {
+    assert.equal(ignoreAfterUninstall, 'node_modules/\n');
+  });
+
+  test('a directory that is not a git repository and has no .gitignore gets none', () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-nogit-local-'));
+    try {
+      assert.ok(installInto(plain, ['--claude', '--local']).success);
+      assert.equal(fs.existsSync(path.join(plain, '.gitignore')), false);
+    } finally { cleanup(plain); }
+  });
+
+  test('a git repository with no .gitignore gets one holding just PAN\'s block', () => {
+    const fresh = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-git-fresh-'));
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: fresh });
+      assert.ok(installInto(fresh, ['--claude', '--local']).success);
+      assert.equal(fs.readFileSync(path.join(fresh, '.gitignore'), 'utf8'), `# PAN Wizard: machine-local backups of locally edited PAN files\n${LINE}\n`);
+    } finally { cleanup(fresh); }
+  });
 });

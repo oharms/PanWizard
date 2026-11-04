@@ -238,5 +238,13 @@
   {
     "id": "pan-wizard-core/workflows/execute-plan:0955c0d1",
     "reason": "Self-recording journal: a no-commit task is journaled with --file, and a refusal is non-fatal by design. The engine half is enforced in code (journal step refuses file_missing and illegal_transition, tests/journal.test.cjs); the tier-0 scenarios drive the engine, not this prompt line, so claiming the rule with one would let a --prompt-mutant run report it as decorative; a model-tier scenario is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/workflows/update:c8870c67",
+    "reason": "DD-15 /pan:update --yes: the confirmation is conditional on --yes/-y and the clean-install warning is still printed. Pinned as prompt text by tests/prompt-runnable.test.cjs ('/pan:update --yes and the patches offer'); no harness scenario runs /pan:update, since a live update installs from npm and spends model time; a scenario that runs it claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/update:37758c07",
+    "reason": "DD-15 patches offer after /pan:update: tracked files named, /pan:patches offered and never run unasked. The installer half (tracked flag in backup-meta, the red warning) is enforced in code and tested in tests/install-eol-hash.test.cjs; the prompt text is pinned by tests/prompt-runnable.test.cjs. No harness scenario runs /pan:update (live npm install, model time); a scenario that runs it claims this rule."
   }
 ]
