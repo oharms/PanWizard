@@ -490,9 +490,9 @@ Research is **off by default**. It runs only when asked: `--research` (or `--res
 BRIEF_SIZE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs size task --file "{idea document path}" --raw)
 ```
 
-`lean` means the document names what to build (its modules, functions or files) and how it behaves: it is the scope, and in steps 7 and 8 you keep to it (`BRIEF_PRECISE` below). A precise brief never needs research: skip it, even when asked, and say so (`the brief names what to build; research skipped — /pan:plan-phase N --research still researches a phase`). `full` means it leaves the work open: research runs only if it was asked for.
+`lean` means the document names what to build (its modules, functions or files) and how it behaves: it is the scope, and in steps 7 and 8 you keep to it (`BRIEF_PRECISE` below). A precise brief seldom needs research, but when the user asked for it (`--research`, or `research_enabled: true` in the frontmatter), research runs: the user's request wins over the sizing. `full` means it leaves the work open: research runs only if it was asked for.
 
-**If auto mode:** Do not ask. "Research open questions" when `--research` was passed or the frontmatter says `research_enabled: true` (and `BRIEF_SIZE` is not `lean`); otherwise "Skip research".
+**If auto mode:** Do not ask. "Research open questions" when `--research` was passed or the frontmatter says `research_enabled: true`, whatever `BRIEF_SIZE` says; otherwise "Skip research".
 
 **If interactive mode and `--research` was passed:** "Research open questions" without asking. Otherwise use AskUserQuestion:
 - header: "Research"

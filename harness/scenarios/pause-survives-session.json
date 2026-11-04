@@ -1,7 +1,7 @@
 {
   "id": "pause-survives-session",
   "tier": 0,
-  "description": "On a packed install, a decision pause opened on a plan's checkpoint task is, in a fresh process, the first thing `next-action` asks for. An answer outside its options is refused, one of them is recorded and journaled, and the router then moves on.",
+  "description": "On a packed install, a decision pause opened on a plan's checkpoint task is, in a fresh process, the first thing `next-action` offers. An answer in the person's own words, outside its options, is recorded as given and journaled, a second answer is refused, and the router then moves on.",
   "why": "Durable orchestration Stage D (spec D4): a checkpoint's question used to live only in the conversation, so a session that ended lost it and the answer was checked only by the model. Unit tests prove the pause against the source; this proves it against the installed engine across separate processes, and the control proves next-action's answer comes from the pause file.",
   "seed": "journal-plan",
   "install": [
@@ -47,7 +47,7 @@
         "json:action=answer_pause",
         "json:pause.id=p-decision-01-01-task-3"
       ],
-      "why": "A later session (a new process) is asked the open question before any other work."
+      "why": "A later session (a new process) is offered the open question first."
     },
     {
       "kind": "pan",
@@ -59,11 +59,12 @@
         "mongo"
       ],
       "expect": [
-        "exit:1",
-        "json:error=pause_answer_invalid",
-        "json:allowed.1=sqlite"
+        "exit:0",
+        "json:answered=true",
+        "json:pause.answer=mongo",
+        "json:pause.own_words=true"
       ],
-      "why": "An answer the pause does not take is refused by the engine, with the answers it does take."
+      "why": "An answer outside the offered options is the person's own: the engine records it as given and marks it, never refuses it (3.41.3)."
     },
     {
       "kind": "pan",
@@ -75,11 +76,10 @@
         "sqlite"
       ],
       "expect": [
-        "exit:0",
-        "json:answered=true",
-        "json:pause.answer=sqlite"
+        "exit:1",
+        "json:error=illegal_transition"
       ],
-      "why": "One of its options is recorded as the answer."
+      "why": "The first answer stands: a second one never replaces it."
     },
     {
       "kind": "pan",

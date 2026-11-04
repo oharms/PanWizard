@@ -313,7 +313,7 @@ When executor returns a checkpoint AND `AUTO_CFG` is `"true"`:
    [Checkpoint Details from agent return]
    [Awaiting section from agent return]
    ```
-5. User responds: "approved"/"done" | issue description | decision selection. **Record it:** `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs pause answer "$PAUSE" --value <approved|issues|done|option-id> [--note "<the issue as the user described it>"]`. A `pause_answer_invalid` refusal lists the allowed answers: ask the user again with them. The continuation gets the answer the pause recorded, never a guess
+5. User responds: "approved"/"done" | issue description | decision selection. **Record it:** `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs pause answer "$PAUSE" --value <approved|issues|done|option-id> [--note "<the issue as the user described it>"]`. Record the user's answer as they gave it: when it is not one of the options, pass their own words as the value (the engine keeps it, marked `own_words`). Never ask again or swap in an option they did not choose. The continuation gets the answer the pause recorded, never a guess
 6. **Spawn continuation agent (NOT resume)** with a prompt built inline from this structure:
    ```
    Continue executing plan {plan_id}. A previous agent paused at a checkpoint.

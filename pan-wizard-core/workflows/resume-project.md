@@ -61,7 +61,7 @@ cat .planning/project.md
 <step name="check_incomplete_work">
 Read the incomplete work from `open_work` in the init JSON. It is the same list the guard uses to decide whether PAN work is in flight, so resume and the guard never disagree:
 
-- `pauses`: questions a session asked a person and never got answered (`id`, `kind`, `question`, `expects`). Ask each again before any other work, with the answers its `expects` allows, and record the reply with `pan-tools pause answer <id> --value <answer>`; `next-action` returns `answer_pause` for the oldest one
+- `pauses`: questions a session asked a person and never got answered (`id`, `kind`, `question`, `expects`). Show each and offer to answer it, with the answers its `expects` suggests, and record a reply with `pan-tools pause answer <id> --value <answer>`, in the user's own words when they answer differently. When the user asked to resume something specific, do that: an open question never blocks their request; `next-action` returns `answer_pause` for the oldest one
 - `continue_here`: `.continue-here` checkpoints inside phase directories
 - `phase_plans`: phase plans with no summary (`current: true` for the phase state.md names). A plan with a step journal adds `resume_at` (the first task the journal cannot prove done), `completed_steps` (with their commits) and `unverified_steps` (recorded done, but the commit or file no longer checks out)
 - `quick`: quick tasks with a plan and no summary. `source: focus` is a focus cycle (`kind`, `run_id`); `source: quick` is a `/pan:quick` task

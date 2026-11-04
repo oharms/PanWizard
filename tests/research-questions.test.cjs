@@ -141,10 +141,12 @@ describe('the prompts: opt-in, a questions file, one researcher, the caps', () =
     assert.doesNotMatch(s, /Auto-include all table stakes/, 'auto mode never puts table stakes into v1');
     assert.match(s, /No finding moves into v1 by itself/);
   });
-  test('new-project: a precise brief never researches; an open one only when asked', () => {
+  test('new-project: research runs only when asked, and an ask wins over a precise brief', () => {
     const s = read('pan-wizard-core/workflows/new-project.md');
-    assert.match(s, /A precise brief never needs research/);
-    assert.match(s, /when `--research` was passed or the frontmatter says `research_enabled: true` \(and `BRIEF_SIZE` is not `lean`\)/);
+    assert.match(s, /A precise brief seldom needs research, but when the user asked for it/);
+    assert.match(s, /when `--research` was passed or the frontmatter says `research_enabled: true`, whatever `BRIEF_SIZE` says/);
+    // 3.41.3: "skip it, even when asked" overruled the user.
+    assert.doesNotMatch(s, /even when asked/);
   });
   test('new-project command: the argument hint and the flag', () => {
     const s = read('commands/pan/new-project.md');

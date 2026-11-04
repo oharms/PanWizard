@@ -2011,9 +2011,9 @@
    "baseline": true
   },
   {
-   "id": "pan-wizard-core/workflows/exec-phase:56bf2be2",
+   "id": "pan-wizard-core/workflows/exec-phase:ad9cc715",
    "file": "pan-wizard-core/workflows/exec-phase.md",
-   "text": "User responds: \"approved\"/\"done\" | issue description | decision selection. **Record it:** `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs pause answer \"$PAUSE\" --value <approved|issues|done|option-id> [--note \"<the issue as the user described it>\"]`. A `pause_answer_invalid` refusal lists the allowed answers: ask the user again with them. The continuation gets the answer the pause recorded, never a guess",
+   "text": "User responds: \"approved\"/\"done\" | issue description | decision selection. **Record it:** `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs pause answer \"$PAUSE\" --value <approved|issues|done|option-id> [--note \"<the issue as the user described it>\"]`. Record the user's answer as they gave it: when it is not one of the options, pass their own words as the value (the engine keeps it, marked `own_words`). Never ask again or swap in an option they did not choose. The continuation gets the answer the pause recorded, never a guess",
    "baseline": false
   },
   {
@@ -2110,6 +2110,12 @@
    "id": "pan-wizard-core/workflows/execute-plan:0955c0d1",
    "file": "pan-wizard-core/workflows/execute-plan.md",
    "text": "**6. A task that ends with nothing to commit** has no `PAN-Step` line: journal it with the file that proves it (a refusal is noted in the SUMMARY, never fatal):",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/execute-plan:7f7d6ba0",
+   "file": "pan-wizard-core/workflows/execute-plan.md",
+   "text": "Before asking, open the pause so the question outlives the session: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs pause open --kind <human-verify|decision|human-action> --run \"${PHASE}-${PLAN}\" --step \"task-${TASK_NUM}\" --question \"<what is awaited>\" [--options <option ids>] --raw` prints its id. Record the user's reply with `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs pause answer <id> --value <approved|issues|done|option-id> [--note \"<issue>\"]`. When the reply is not one of the options, pass the user's own words as the value; the engine records it as given (`own_words`). Never ask again or substitute an option the user did not choose.",
    "baseline": false
   },
   {
@@ -2539,15 +2545,9 @@
    "baseline": false
   },
   {
-   "id": "pan-wizard-core/workflows/new-project:4f8bbe11",
+   "id": "pan-wizard-core/workflows/new-project:64e7b12c",
    "file": "pan-wizard-core/workflows/new-project.md",
-   "text": "`lean` means the document names what to build (its modules, functions or files) and how it behaves: it is the scope, and in steps 7 and 8 you keep to it (`BRIEF_PRECISE` below). A precise brief never needs research: skip it, even when asked, and say so (`the brief names what to build; research skipped — /pan:plan-phase N --research still researches a phase`). `full` means it leaves the work open: research runs only if it was asked for.",
-   "baseline": false
-  },
-  {
-   "id": "pan-wizard-core/workflows/new-project:4fa8e167",
-   "file": "pan-wizard-core/workflows/new-project.md",
-   "text": "**If auto mode:** Do not ask. \"Research open questions\" when `--research` was passed or the frontmatter says `research_enabled: true` (and `BRIEF_SIZE` is not `lean`); otherwise \"Skip research\".",
+   "text": "**If auto mode:** Do not ask. \"Research open questions\" when `--research` was passed or the frontmatter says `research_enabled: true`, whatever `BRIEF_SIZE` says; otherwise \"Skip research\".",
    "baseline": false
   },
   {
@@ -2689,6 +2689,12 @@
    "baseline": false
   },
   {
+   "id": "pan-wizard-core/workflows/progress:eecae2a3",
+   "file": "pan-wizard-core/workflows/progress.md",
+   "text": "When `action` is `answer_pause`, a question asked in an earlier session is still open: `pause` holds its `id`, `question` and `expects`. Show it above the routes and offer to answer it, with the answers `expects` suggests; record a reply with `command` (`pan-tools pause answer <id> --value <answer>`), in the user's own words when they answer differently. When the user asked for something else, do that: an open question never blocks their request.",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/quick:4387c189",
    "file": "pan-wizard-core/workflows/quick.md",
    "text": "Record the task through the engine. It creates the \"### Quick Tasks Completed\" table after \"### Blockers/Concerns\" when it is missing, numbers the row, and keeps an existing table's columns. Pass `description_cell` exactly as init returned it, never `$DESCRIPTION`: init escapes `|` and folds line breaks, and a raw `|` would split the row.",
@@ -2743,9 +2749,9 @@
    "baseline": false
   },
   {
-   "id": "pan-wizard-core/workflows/resume-project:1f7ab258",
+   "id": "pan-wizard-core/workflows/resume-project:c413d83c",
    "file": "pan-wizard-core/workflows/resume-project.md",
-   "text": "`pauses`: questions a session asked a person and never got answered (`id`, `kind`, `question`, `expects`). Ask each again before any other work, with the answers its `expects` allows, and record the reply with `pan-tools pause answer <id> --value <answer>`; `next-action` returns `answer_pause` for the oldest one",
+   "text": "`pauses`: questions a session asked a person and never got answered (`id`, `kind`, `question`, `expects`). Show each and offer to answer it, with the answers its `expects` suggests, and record a reply with `pan-tools pause answer <id> --value <answer>`, in the user's own words when they answer differently. When the user asked to resume something specific, do that: an open question never blocks their request; `next-action` returns `answer_pause` for the oldest one",
    "baseline": false
   },
   {

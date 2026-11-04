@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.41.3] - 2026-11-04
+
+### Fixed
+
+- **The model can run PAN commands again on Claude Code.** Since 3.37.0 the installer marked every PAN command (and the Claude copy of each `--unified-skills` skill, and the plugin's commands) `disable-model-invocation: true`, to keep their descriptions out of the listing Claude Code sends each turn. That also stops the model invoking them, so it could not start a PAN command for a plain request ("plan phase 2") or move on to the next step, and every command had to be typed. The field is no longer written, and updating rewrites the installed command files without it. The harness scenarios `skill-listing-claude` and `skill-listing-claude-commands` now require every PAN command to be listed to the model, and their controls, which mark one command again, must turn them red.
+- **Your answer to a PAN question is recorded as you gave it.** Since 3.41.0 a checkpoint's answer had to be one of the offered options (`decision`), `approved`/`issues` (`human-verify`) or `done` (`human-action`); anything else was refused with `pause_answer_invalid` and the model was told to ask again, so an answer in your own words ("neither, use the postgres we run", "can't, skip it") was overruled. `pause answer` now records any non-empty answer as given and marks one outside the offered options `own_words: true`; only an empty or oversized answer is refused. The checkpoint prompts say to pass your words and never re-ask, and the MCP `pan_answer_pause` tool says the same. An open question from an earlier session is now offered by `/pan:progress` and `/pan:resume`, not forced ahead of what you asked for.
+- **What you decided for a phase is never dropped by the lean path.** Since 3.37.0 a phase whose requirements each named what to build was planned by the engine from `requirements.md` alone, so your `/pan:discuss-phase` answers and `--prd` decisions (`context.md`) and your `/pan:assumptions` corrections (`assumptions.md`) were silently ignored. A phase that has either file now goes to the planner (`size phase` says why).
+- **`/pan:new-project` researches when you ask it to.** It skipped research for a precise brief "even when asked"; `--research` or `research_enabled: true` now wins over the sizing.
+- **The stop guard no longer tells the model to refuse your settings change.** Its message forbade changing `workflow.auto_advance`, `workflow.stop_guard` or `mode` to get past it; it now forbids that only on the model's own initiative, and says to make the change when you ask.
+
 ## [3.41.2] - 2026-11-03
 
 ### Changed

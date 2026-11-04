@@ -84,12 +84,8 @@
     "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
   },
   {
-    "id": "pan-wizard-core/workflows/new-project:4f8bbe11",
-    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
-  },
-  {
-    "id": "pan-wizard-core/workflows/new-project:4fa8e167",
-    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+    "id": "pan-wizard-core/workflows/new-project:64e7b12c",
+    "reason": "Research opt-in and question-driven (2026-10-25), and an explicit ask wins over a precise brief (3.41.3): workflow text pinned by tests/research-questions.test.cjs and tests/sizing.test.cjs; the bound is enforced in code by `pan-tools research check`. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
   },
   {
     "id": "pan-wizard-core/workflows/new-project:6f3df0d1",
@@ -212,12 +208,20 @@
     "reason": "Focus Stage C (D5): the focus action is engine code. next-action puts an open focus cycle or a stale focus run ahead of phase routing (next-action.cjs nextStep, focus.cjs focusNextStep); tests/focus-integration.test.cjs (visibility describe) pins each reason and command and that a project without focus work routes as before."
   },
   {
-    "id": "pan-wizard-core/workflows/exec-phase:56bf2be2",
-    "reason": "Durable orchestration Stage D: the answer is checked in code (pause answer refuses pause_answer_invalid and a second answer, tests/pause.test.cjs) and next-action asks an open pause first, proven on a packed install by the tier-0 scenario pause-survives-session. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
+    "id": "pan-wizard-core/workflows/exec-phase:ad9cc715",
+    "reason": "Own-words answers (3.41.3): an answer outside a pause's options is recorded as given, marked own_words, never refused (tests/pause.test.cjs), and an open pause is offered, not forced ahead of the user's request; the engine side is proven on a packed install by the tier-0 scenario pause-survives-session. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
   },
   {
-    "id": "pan-wizard-core/workflows/resume-project:1f7ab258",
-    "reason": "Durable orchestration Stage D: the answer is checked in code (pause answer refuses pause_answer_invalid and a second answer, tests/pause.test.cjs) and next-action asks an open pause first, proven on a packed install by the tier-0 scenario pause-survives-session. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
+    "id": "pan-wizard-core/workflows/execute-plan:7f7d6ba0",
+    "reason": "Own-words answers (3.41.3): an answer outside a pause's options is recorded as given, marked own_words, never refused (tests/pause.test.cjs), and an open pause is offered, not forced ahead of the user's request; the engine side is proven on a packed install by the tier-0 scenario pause-survives-session. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/workflows/resume-project:c413d83c",
+    "reason": "Own-words answers (3.41.3): an answer outside a pause's options is recorded as given, marked own_words, never refused (tests/pause.test.cjs), and an open pause is offered, not forced ahead of the user's request; the engine side is proven on a packed install by the tier-0 scenario pause-survives-session. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/workflows/progress:eecae2a3",
+    "reason": "Own-words answers (3.41.3): an answer outside a pause's options is recorded as given, marked own_words, never refused (tests/pause.test.cjs), and an open pause is offered, not forced ahead of the user's request; the engine side is proven on a packed install by the tier-0 scenario pause-survives-session. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
   },
   {
     "id": "pan-wizard-core/workflows/transition:5459e08d",

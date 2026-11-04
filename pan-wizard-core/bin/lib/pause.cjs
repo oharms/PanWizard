@@ -23,6 +23,8 @@ const store = require('./store.cjs');
 const schema = require('./pause-schema.cjs');
 
 const PAUSES_DIR = 'pauses';
+// The longest answer or note recorded in the person's own words.
+const OWN_WORDS_MAX = 2000;
 
 // What each kind waits for, unless the opener says otherwise. `decision` and
 // `spec-conflict` take their values from --options.
@@ -152,11 +154,16 @@ function answerPause(cwd, id, o = {}) {
     }
     if (cur.expects.type === 'boolean' && typeof value === 'string') value = value === 'true' ? true : value === 'false' ? false : value;
     const bad = schema.validateAnswer(cur.expects, { value, note: o.note });
-    if (bad) {
+    // The person answering has the last word: an answer in their own words (text that is
+    // not one of the offered options, or an `issues` with no note) is recorded as given and
+    // marked, never refused. Only an empty, oversized or malformed answer is refused.
+    const ownWords = bad && typeof value === 'string' && value.trim() !== '' && value.length <= OWN_WORDS_MAX
+      && !(o.note !== undefined && o.note !== null && (typeof o.note !== 'string' || o.note.length > OWN_WORDS_MAX));
+    if (bad && !ownWords) {
       outcome = { error: 'pause_answer_invalid', id, reason: bad.problem, ...(bad.allowed ? { allowed: bad.allowed } : {}) };
       return store.abort(outcome);
     }
-    return { ...cur, status: 'answered', answer: value, note: o.note || null, answered_at: new Date().toISOString() };
+    return { ...cur, status: 'answered', answer: value, ...(ownWords ? { own_words: true } : {}), note: o.note || null, answered_at: new Date().toISOString() };
   }, { transition: 'pause' });
   if (outcome) return outcome;
   if (w.error) return { ...w, id };

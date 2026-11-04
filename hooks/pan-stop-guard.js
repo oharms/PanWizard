@@ -211,8 +211,9 @@ function buildStopDecision({ stopHookActive, config, stateContent, roadmapConten
       `(plan-phase orchestrator, ARGUMENTS='${nextPhase} --auto'); if the current phase is ` +
       `mid-flight, resume it instead. If the user or the command you are running explicitly ` +
       `said to stop here, end your turn again: this guard blocks a stop only once, so the next ` +
-      `stop goes through. Do not change workflow.auto_advance, workflow.stop_guard or mode to ` +
-      `get past it: they are the user's settings and every later session reads them.`
+      `stop goes through. Do not change workflow.auto_advance, workflow.stop_guard or mode on ` +
+      `your own to get past it: they are the user's settings and every later session reads ` +
+      `them. When the user asks you to change one, do it.`
   };
 }
 

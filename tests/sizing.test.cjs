@@ -83,6 +83,21 @@ describe('sizing a phase', () => {
     assert.equal(S.LEAN_CEILING_FACTOR, 3);
     assert.equal(S.sizePhase(seed('tasks-roadmap'), '1').path, 'lean', 'four is within the default ceiling of fifteen');
   });
+  // 3.41.3: the engine plan reads only requirements.md, so a lean phase dropped what the user
+  // decided in /pan:discuss-phase (or a --prd) and their /pan:assumptions corrections.
+  test('a phase with the user\'s decisions (context.md, assumptions.md) goes to the planner', () => {
+    for (const file of ['01-context.md', '01-assumptions.md']) {
+      const t = seed('tasks-roadmap');
+      const dir = path.join(t, '.planning', 'phases', '01-store');
+      fs.mkdirSync(dir, { recursive: true });
+      assert.equal(S.sizePhase(t, '1').path, 'lean', 'precondition: an empty phase directory changes nothing');
+      fs.writeFileSync(path.join(dir, file), '# Decisions\n\n- Store the tasks as one JSON array.\n');
+      const r = S.sizePhase(t, '1');
+      assert.equal(r.path, 'full', file);
+      assert.match(r.reasons.join(' '), new RegExp(`your decisions for this phase \\(${file}\\) need the planner`));
+      assert.equal(S.sizePhase(t, '2').path, 'lean', 'another phase\'s decisions do not move this one');
+    }
+  });
   test('the quality profile, workflow.ceremony full and --quality keep the full ceremony', () => {
     assert.equal(S.sizePhase(seed('tasks-roadmap', (c) => ({ ...c, model_profile: 'quality' })), '1').path, 'full');
     assert.equal(S.sizePhase(seed('tasks-roadmap', (c) => ({ ...c, workflow: { ...c.workflow, ceremony: 'full' } })), '1').path, 'full');
@@ -303,12 +318,12 @@ describe('new-project keeps to a precise brief (2026-10-25 brief test)', () => {
     fs.writeFileSync(path.join(t, 'IDEA.md'), 'An app that helps small shops run better.\n');
     assert.equal(cli(t, ['size', 'task', '--file', 'IDEA.md', '--raw']).stdout.trim(), 'full');
   });
-  test('new-project: a precise brief skips research, v1 is what the brief states, the roadmap is the fewest phases', () => {
+  test('new-project: research only when asked (an ask wins over a precise brief), v1 is what the brief states, the roadmap is the fewest phases', () => {
     const s = fs.readFileSync(path.join(ROOT, 'pan-wizard-core', 'workflows', 'new-project.md'), 'utf8');
     assert.match(s, /size task --file/);
-    // Research is opt-in since 2026-10-25, so auto mode no longer defaults to "Research
-    // first" unless lean; a precise brief skips research even when it was asked for.
-    assert.match(s, /A precise brief never needs research: skip it, even when asked/);
+    // Research is opt-in since 2026-10-25. Until 3.41.3 a precise brief skipped it even when
+    // the user asked for it; the ask now wins.
+    assert.match(s, /the user's request wins over the sizing/);
     assert.match(s, /Nothing the document does not ask for goes into v1/);
     assert.match(s, /the fewest phases that deliver them/);
   });

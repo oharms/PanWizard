@@ -21,7 +21,6 @@
 const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
-const lib = require('../../bin/install-lib.cjs');
 const os = require('os');
 const path = require('path');
 const { installInto, cleanup, createScenarioRunner } = require('../helpers.cjs');
@@ -47,6 +46,26 @@ function install(dir, flags) {
   return stripAnsi(r.output);
 }
 
+describe('a default Claude install leaves every command invocable by the model', () => {
+  let dir;
+  before(() => {
+    dir = freshDir('default');
+    install(dir, ['--claude', '--local', '--skip-warnings']);
+  });
+  after(() => { if (dir) cleanup(dir); });
+
+  // 3.41.3: with disable-model-invocation on PAN's commands, Claude Code would not let the
+  // model start one for a plain request or chain to the next, so every step had to be typed.
+  test('no installed command carries disable-model-invocation', () => {
+    const cmdDir = path.join(dir, '.claude', 'commands', 'pan');
+    const files = fs.readdirSync(cmdDir).filter((f) => f.endsWith('.md'));
+    assert.ok(files.includes('help.md'), 'precondition: the commands must be installed');
+    for (const f of files) {
+      assert.doesNotMatch(fs.readFileSync(path.join(cmdDir, f), 'utf8'), /^disable-model-invocation:/m, `${f}: the model must be able to invoke it`);
+    }
+  });
+});
+
 describe('a --unified-skills install gives Claude Code its own copy of every skill (R32)', () => {
   let dir;
   let output;
@@ -56,7 +75,7 @@ describe('a --unified-skills install gives Claude Code its own copy of every ski
   });
   after(() => { if (dir) cleanup(dir); });
 
-  test('every shared skill has a Claude copy, identical to it but for disable-model-invocation (M49)', () => {
+  test('every shared skill has a Claude copy, identical to it, that the model may invoke', () => {
     const shared = panDirs(path.join(dir, '.agents', 'skills'));
     const claude = panDirs(path.join(dir, '.claude', 'skills'));
     assert.ok(shared.length > 0, 'precondition: the shared tree must be populated, or the comparison below is vacuous');
@@ -64,9 +83,9 @@ describe('a --unified-skills install gives Claude Code its own copy of every ski
     for (const name of shared) {
       const a = fs.readFileSync(path.join(dir, '.agents', 'skills', name, 'SKILL.md'), 'utf8');
       const b = fs.readFileSync(path.join(dir, '.claude', 'skills', name, 'SKILL.md'), 'utf8');
-      // The Claude copy is the shared skill plus one frontmatter line (M49), nothing else.
-      assert.equal(b, lib.withClaudeUserInvokedOnly(a), `${name}: the Claude copy must be the shared skill marked user-invoked only`);
-      assert.notEqual(a, b, `${name}: the Claude copy must carry disable-model-invocation`);
+      assert.equal(b, a, `${name}: the Claude copy must be the shared skill unchanged`);
+      // 3.41.3: disable-model-invocation kept the model from starting or chaining PAN commands.
+      assert.doesNotMatch(b, /^disable-model-invocation:/m, `${name}: the model must be able to invoke the skill`);
     }
   });
 

@@ -62,19 +62,41 @@ describe('pause-schema', () => {
 });
 
 describe('open, answer, cancel', () => {
-  test('a decision pause takes its values from options, and only those answer it', () => {
+  test('a decision pause offers its options; one of them is recorded as is', () => {
     const o = P.openPause(dir, { kind: 'decision', run: '03-02', step: 'task-4', question: 'Which store?', options: ['redis', 'sqlite'] });
     assert.equal(o.opened, true);
     assert.equal(o.pause.id, 'p-decision-03-02-task-4');
     assert.equal(o.pause.status, 'open');
-    const bad = P.answerPause(dir, o.pause.id, { value: 'mongo' });
-    assert.equal(bad.error, 'pause_answer_invalid');
-    assert.deepEqual(bad.allowed, ['redis', 'sqlite']);
-    assert.equal(P.readPause(dir, o.pause.id).status, 'open', 'a refused answer leaves it open');
     const ok = P.answerPause(dir, o.pause.id, { value: 'sqlite' });
     assert.equal(ok.answered, true);
     assert.equal(ok.pause.answer, 'sqlite');
+    assert.equal(ok.pause.own_words, undefined, 'an offered option is not marked');
     assert.ok(ok.pause.answered_at);
+  });
+
+  // 3.41.3: the person answering has the last word. An answer outside the options used to be
+  // refused and the model told to ask again, so a user who answered in their own words was overruled.
+  test("an answer in the person's own words is recorded as given, marked own_words, never refused", () => {
+    const d = P.openPause(dir, { kind: 'decision', question: 'Which store?', options: ['redis', 'sqlite'] });
+    const mine = P.answerPause(dir, d.pause.id, { value: 'neither: use the postgres we already run' });
+    assert.equal(mine.answered, true);
+    assert.equal(mine.pause.answer, 'neither: use the postgres we already run');
+    assert.equal(mine.pause.own_words, true);
+    const v = P.openPause(dir, { kind: 'human-verify', question: 'Check the page' });
+    const issues = P.answerPause(dir, v.pause.id, { value: 'issues' });
+    assert.equal(issues.answered, true, "issues without a note is still the person's answer");
+    assert.equal(issues.pause.own_words, true);
+    const a = P.openPause(dir, { kind: 'human-action', question: 'Log in to the dashboard' });
+    assert.equal(P.answerPause(dir, a.pause.id, { value: 'cannot, skip it' }).pause.answer, 'cannot, skip it');
+  });
+
+  test('an empty or oversized answer is still refused, and leaves the pause open', () => {
+    const o = P.openPause(dir, { kind: 'decision', question: 'Which?', options: ['a', 'b'] });
+    const empty = P.answerPause(dir, o.pause.id, { value: '   ' });
+    assert.equal(empty.error, 'pause_answer_invalid');
+    assert.deepEqual(empty.allowed, ['a', 'b']);
+    assert.equal(P.answerPause(dir, o.pause.id, { value: 'x'.repeat(2001) }).error, 'pause_answer_invalid');
+    assert.equal(P.readPause(dir, o.pause.id).status, 'open', 'a refused answer leaves it open');
   });
 
   test('an answered pause is final: a second answer or a cancel is illegal_transition', () => {
@@ -124,13 +146,17 @@ describe('open, answer, cancel', () => {
 });
 
 describe('the CLI', () => {
-  test('pause open / answer / list with --raw answers, and an invalid answer exits 1', () => {
+  test('pause open / answer / list with --raw answers; an empty answer exits 1, an off-list one is kept', () => {
     assert.equal(tools('pause', 'open', '--kind', 'decision', '--question', 'Which?', '--options', 'a,b', '--raw').stdout, 'p-decision');
-    const bad = tools('pause', 'answer', 'p-decision', '--value', 'c');
+    const bad = tools('pause', 'answer', 'p-decision', '--value', ' ');
     assert.equal(bad.status, 1);
     assert.equal(bad.json.error, 'pause_answer_invalid');
-    assert.equal(tools('pause', 'answer', 'p-decision', '--value', 'b', '--raw').stdout, 'answered');
-    assert.equal(tools('pause', 'list', '--raw').stdout, '1');
+    const mine = tools('pause', 'answer', 'p-decision', '--value', 'c, not a or b');
+    assert.equal(mine.status, 0);
+    assert.equal(mine.json.pause.own_words, true);
+    assert.equal(tools('pause', 'open', '--kind', 'decision', '--question', 'Again?', '--options', 'a,b', '--raw').stdout, 'p-decision-2');
+    assert.equal(tools('pause', 'answer', 'p-decision-2', '--value', 'b', '--raw').stdout, 'answered');
+    assert.equal(tools('pause', 'list', '--raw').stdout, '2');
     assert.equal(tools('pause', 'nope').status, 1);
   });
 
@@ -189,16 +215,17 @@ describe('merge gate expiry', () => {
 describe('MCP pause tools', () => {
   const tool = (name) => NATIVE_TOOLS.find((t) => t.name === name);
 
-  test('pan_list_pauses is read-only; pan_answer_pause checks the answer', () => {
+  test("pan_list_pauses is read-only; pan_answer_pause keeps the person's words", () => {
     assert.equal(tool('pan_list_pauses').readOnly, true);
     assert.equal(tool('pan_answer_pause').destructive, false);
     const o = P.openPause(dir, { kind: 'decision', question: 'Which?', options: ['a', 'b'] });
     assert.equal(tool('pan_list_pauses').handler({ cwd: dir, input: { open: true } }).json.pauses.length, 1);
-    const bad = tool('pan_answer_pause').handler({ cwd: dir, input: { id: o.pause.id, value: 'z' } });
+    const bad = tool('pan_answer_pause').handler({ cwd: dir, input: { id: o.pause.id, value: '' } });
     assert.equal(bad.json.error, 'pause_answer_invalid');
     assert.equal(bad.isError, false, 'an invalid answer is a normal result to read');
-    const ok = tool('pan_answer_pause').handler({ cwd: dir, input: { id: o.pause.id, value: 'a' } });
+    const ok = tool('pan_answer_pause').handler({ cwd: dir, input: { id: o.pause.id, value: 'z, my own choice' } });
     assert.equal(ok.json.answered, true);
+    assert.equal(ok.json.pause.own_words, true);
   });
 });
 

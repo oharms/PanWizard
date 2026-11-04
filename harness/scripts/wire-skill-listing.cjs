@@ -2,13 +2,13 @@
 'use strict';
 
 /**
- * Which PAN skills did the host list to the model? (market-ideas M49, MI-132)
+ * Which PAN skills did the host list to the model?
  *
  *   node wire-skill-listing.cjs <captures-dir> <commands-dir>
  *
- * A skill whose description the host lists costs context on every turn, and lets the
- * model invoke it on its own. PAN's commands are explicit (`/pan:<name>`), so its
- * skills carry `disable-model-invocation: true`, which keeps them out of the listing.
+ * The model can invoke a skill only when the host lists it. PAN's commands must be listed:
+ * 3.37.0 to 3.41.2 marked them disable-model-invocation, and the model could then neither
+ * start one for a plain request nor chain to the next step (reverted in 3.41.3).
  * This reads the model-double captures of a double-backed step and each command's
  * `description:` from the package's SOURCE, and reports which descriptions appear
  * anywhere in a captured request body.

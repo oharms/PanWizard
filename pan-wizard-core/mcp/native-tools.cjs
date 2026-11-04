@@ -160,7 +160,7 @@ const NATIVE_TOOLS = [
   {
     name: 'pan_list_pauses',
     title: 'List pauses waiting for a person',
-    description: 'The typed pauses in .planning/pauses/: the question of each, what answer it expects, and its status (open, answered, expired, cancelled). An open pause is asked before any other work.',
+    description: 'The typed pauses in .planning/pauses/: the question of each, what answer it expects, and its status (open, answered, expired, cancelled). Offer an open pause to the person; it never blocks the work they asked for.',
     readOnly: true, destructive: false,
     inputSchema: { type: 'object', additionalProperties: false, properties: { open: { type: 'boolean', description: 'Only the open pauses.' } } },
     handler: ({ cwd, input }) => ({ json: { pauses: pauses.listPauses(cwd, { open: input.open === true }) } }),
@@ -168,7 +168,7 @@ const NATIVE_TOOLS = [
   {
     name: 'pan_answer_pause',
     title: 'Record the answer a person gave to a pause',
-    description: 'Record the answer a person gave to an open pause. The answer is checked against what the pause expects (an enum value, text, true/false, or an object) and refused with pause_answer_invalid otherwise; an answered, expired or cancelled pause is final. Pass only what the person said.',
+    description: 'Record the answer a person gave to an open pause. Pass what the person said: an answer outside what the pause expects is recorded in their own words (own_words: true), never refused; only an empty, oversized or malformed answer is refused with pause_answer_invalid. An answered, expired or cancelled pause is final.',
     readOnly: false, destructive: false,
     inputSchema: {
       type: 'object', additionalProperties: false, required: ['id'],

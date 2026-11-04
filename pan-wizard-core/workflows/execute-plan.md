@@ -293,7 +293,7 @@ Display: `CHECKPOINT: [Type]` box → Progress {X}/{Y} → Task name → type-sp
 | decision (9%) | Decision needed + context + options with pros/cons | "Select: option-id" |
 | human-action (1%) | What was automated + ONE manual step + verification plan | "done" |
 
-Before asking, open the pause so the question outlives the session: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs pause open --kind <human-verify|decision|human-action> --run "${PHASE}-${PLAN}" --step "task-${TASK_NUM}" --question "<what is awaited>" [--options <option ids>] --raw` prints its id. Record the user's reply with `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs pause answer <id> --value <approved|issues|done|option-id> [--note "<issue>"]`; a `pause_answer_invalid` refusal lists the answers it takes, so ask again with those.
+Before asking, open the pause so the question outlives the session: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs pause open --kind <human-verify|decision|human-action> --run "${PHASE}-${PLAN}" --step "task-${TASK_NUM}" --question "<what is awaited>" [--options <option ids>] --raw` prints its id. Record the user's reply with `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs pause answer <id> --value <approved|issues|done|option-id> [--note "<issue>"]`. When the reply is not one of the options, pass the user's own words as the value; the engine records it as given (`own_words`). Never ask again or substitute an option the user did not choose.
 
 After response: verify if specified. Pass → continue. Fail → inform, wait. WAIT for user — do NOT hallucinate completion.
 

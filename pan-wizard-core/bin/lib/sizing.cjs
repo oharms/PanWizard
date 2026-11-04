@@ -75,6 +75,18 @@ function sizeTask(cwd, text, opts = {}) {
     : { path: 'full', mode: m.mode, reasons: s.reasons.map((r) => `the description ${r}`) };
 }
 
+/** The files in a phase's directory that hold the user's decisions for it (context, assumptions). */
+function userDecisionFiles(cwd, phase) {
+  const found = require('./core.cjs').findPhaseInternal(cwd, String(phase));
+  if (!found || !found.directory) return [];
+  const { isContextFile } = require('./constants.cjs');
+  try {
+    return fs.readdirSync(require('path').join(cwd, found.directory))
+      .filter((f) => isContextFile(f) || f.endsWith('-assumptions.md') || f === 'assumptions.md')
+      .sort();
+  } catch { return []; }
+}
+
 /** The ceremony for a roadmap phase. */
 function sizePhase(cwd, phase, opts = {}) {
   const config = ceremonyConfig(cwd);
@@ -93,6 +105,11 @@ function sizePhase(cwd, phase, opts = {}) {
   if (m.mode === 'full') return { phase: String(phase), path: 'full', mode: m.mode, reasons: [m.why], metrics };
   if (opts.full) return { phase: String(phase), path: 'full', mode: m.mode, reasons: ['--full was passed'], metrics };
   const reasons = [];
+  // The engine plan reads only roadmap.md and requirements.md. What the user decided for this
+  // phase (discuss-phase answers or a --prd in context.md, corrections in assumptions.md) only
+  // the planner reads, so a phase that has them is never planned lean: lean would drop them (3.41.3).
+  const decided = userDecisionFiles(cwd, phase);
+  if (decided.length) reasons.push(`your decisions for this phase (${decided.join(', ')}) need the planner: the engine plan reads only requirements.md`);
   if (!reqs.length) reasons.push('the roadmap maps no requirements to this phase, so nothing pins down the work');
   if (unspecified.length) reasons.push(`not precisely specified: ${unspecified.join(', ')} (no acceptance criterion and no named artifact)`);
   // One session holds a lean phase, and one session loses the thread on too much work, which
