@@ -321,7 +321,7 @@ function cmdVerifyPhaseCompleteness(cwd, phase, raw) {
   const summaries = files.filter(f => f.match(/-SUMMARY\.md$/i));
 
   // Extract plan IDs (everything before -plan.md)
-  const planIds = new Set(plans.map(p => p.replace(/-PLAN\.md$/i, '')));
+  const planIds = new Set(plans.map(p => p.replace(/-PLAN\.md$/i, '').toLowerCase()));
   const summaryIds = new Set(summaries.map(s => s.replace(/-SUMMARY\.md$/i, '').toLowerCase()));
 
   // Plans without summaries

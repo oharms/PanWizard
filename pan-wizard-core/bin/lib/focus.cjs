@@ -977,12 +977,13 @@ function listFocusCycles(cwd) {
     try { files = fs.readdirSync(dir); } catch { continue; }
     const plan = `${m[1]}-plan.md`;
     const summary = `${m[1]}-summary.md`;
-    if (!files.includes(plan)) continue;
+    const has = (name) => files.some((f) => f.toLowerCase() === name.toLowerCase());
+    if (!has(plan)) continue;
     // A /pan:quick slug can take this shape too; only `focus open` writes `source: focus`.
     if (fmScalar(extractFrontmatter(safeReadFile(path.join(dir, plan)) || '').source) !== 'focus') continue;
     cycles.push({
       name, num: Number(m[1]), kind: m[2], dir, rel: planningRel(QUICK_DIR, name),
-      plan: path.join(dir, plan), summary: path.join(dir, summary), open: !files.includes(summary),
+      plan: path.join(dir, plan), summary: path.join(dir, summary), open: !has(summary),
     });
   }
   return cycles.sort((a, b) => a.num - b.num);

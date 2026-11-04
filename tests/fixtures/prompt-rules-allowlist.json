@@ -294,5 +294,9 @@
   {
     "id": "commands/pan/milestone-done:aa16ff9e",
     "reason": "Completion by pairing (3.42.0, PAN-02): roadmap analyze reports disk_status from countSummarizedPlans (complete only when every plan has its own summary), pinned by tests/consolidate-surfaces.test.cjs (an orphan summary does not finish a plan). The line tells the model to read that instead of looking for summary files; a model-tier milestone-done scenario is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/workflows/phase-tests:ce15b5c9",
+    "reason": "Completion by pairing (3.42.0, PAN-02): find-phase prints plans and incomplete_plans (phase.cjs cmdFindPhase), pinned by tests/phase.test.cjs. The line has phase-tests read that instead of checking for summary files; a model-tier phase-tests scenario is what can claim it."
   }
 ]

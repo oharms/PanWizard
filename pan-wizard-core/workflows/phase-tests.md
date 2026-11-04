@@ -50,9 +50,9 @@ Read the phase artifacts (in order of priority):
 2. `${phase_dir}/*-context.md` — acceptance criteria, decisions
 3. `${phase_dir}/*-verification.md` — user-verified scenarios (if UAT was done)
 
-If no summary.md exists:
+Check the phase is executed with `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase "${PHASE_ARG}"`: if `plans` is empty or `incomplete_plans` is not, stop (do not decide this from whether summary files exist):
 ```
-ERROR: No summary.md found for phase ${PHASE_ARG}
+ERROR: Phase ${PHASE_ARG} is not fully executed
 This command works on completed phases. Run /pan:exec-phase first.
 ```
 Exit.

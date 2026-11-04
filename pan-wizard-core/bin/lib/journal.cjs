@@ -92,8 +92,9 @@ function trailerIndex(cwd, opts = {}) {
     for (const line of c.body.split('\n')) {
       const m = line.match(TRAILER_RE);
       if (!m) continue;
-      const k = `${m[1]}/${m[2]}`;
-      plans.add(m[1]);
+      // Keys in lower case: the line matches in any case, and lookups come from plan file names.
+      const k = `${m[1]}/${m[2]}`.toLowerCase();
+      plans.add(m[1].toLowerCase());
       if (!steps.has(k)) steps.set(k, { sha: c.sha.slice(0, 7), time: c.time });
     }
   }
@@ -225,12 +226,12 @@ function resumePoint(cwd, planArg, opts = {}) {
   const tasks = planTasks(path.resolve(cwd, p.plan));
   const latest = latestByStep(rows);
   const idx = trailerIndex(cwd, opts);
-  const trailerOf = (step) => idx.steps.get(`${p.id}/${step}`) || null;
+  const trailerOf = (step) => idx.steps.get(`${p.id}/${step}`.toLowerCase()) || null;
   const completed = [];
   const unverified = [];
   const steps = [...latest.keys()];
   for (const t of tasks) if (!latest.has(t) && trailerOf(t)) steps.push(t);
-  if (!tasks.length) for (const k of idx.steps.keys()) if (k.startsWith(`${p.id}/`) && !steps.includes(k.slice(p.id.length + 1))) steps.push(k.slice(p.id.length + 1));
+  if (!tasks.length) for (const k of idx.steps.keys()) if (k.startsWith(`${p.id}/`.toLowerCase()) && !steps.includes(k.slice(p.id.length + 1))) steps.push(k.slice(p.id.length + 1));
   for (const step of steps) {
     const row = latest.get(step);
     const held = row && row.event === 'completed' ? artifactHolds(cwd, row.artifact, idx) : null;
@@ -284,7 +285,7 @@ function journalsIn(cwd, phaseDir) {
     const plan = path.join(phaseDir, n);
     if (names.some((x) => x.toLowerCase() === `${id}-summary.md`.toLowerCase())) continue;
     // A failed scan cannot rule a plan out: every unfinished plan carries the error.
-    if (!names.includes(`${id}${JOURNAL_SUFFIX}`) && !idx.plans.has(id) && !idx.error) continue;
+    if (!names.includes(`${id}${JOURNAL_SUFFIX}`) && !idx.plans.has(id.toLowerCase()) && !idx.error) continue;
     const rp = resumePoint(cwd, toPosix(path.relative(cwd, plan)));
     if (!rp.error) out[n] = rp;
   }

@@ -180,7 +180,7 @@ Track:
 
 **Route A: Unexecuted plan exists**
 
-Find the first plan.md without matching summary.md.
+Take the first entry of `incomplete_plans` from Step 1.
 Read its `<objective>` section.
 
 ```

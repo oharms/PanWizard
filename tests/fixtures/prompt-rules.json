@@ -2635,6 +2635,12 @@
    "baseline": true
   },
   {
+   "id": "pan-wizard-core/workflows/phase-tests:ce15b5c9",
+   "file": "pan-wizard-core/workflows/phase-tests.md",
+   "text": "Check the phase is executed with `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase \"${PHASE_ARG}\"`: if `plans` is empty or `incomplete_plans` is not, stop (do not decide this from whether summary files exist):",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/phase-tests:e209462b",
    "file": "pan-wizard-core/workflows/phase-tests.md",
    "text": "Read each file to verify classification. Don't classify based on filename alone.",

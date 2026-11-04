@@ -343,4 +343,11 @@ describe('trailer order (DD-13)', () => {
     commit('feat(03-02): a\n\n- change\n\nPAN-Step: 03-02/task-1\nPAN-Step: 03-02/task-2\nCo-Authored-By: Someone <s@example.com>');
     assert.equal(J.resumePoint(dir, '03-02').resume_at, 'task-3');
   });
+
+  // 3.42.0: the index kept the line's case, so a value written in another case than the plan id
+  // never matched it (`03A-01` against `pan-step: 03a-01/Task-1`).
+  test('a trailer value in another case than the plan id counts', () => {
+    commit('feat(03-02): a\n\n- change\n\nPAN-Step: 03-02/Task-1\nPAN-Step: 03-02/TASK-2');
+    assert.equal(J.resumePoint(dir, '03-02').resume_at, 'task-3');
+  });
 });

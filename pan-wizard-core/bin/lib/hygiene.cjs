@@ -476,7 +476,7 @@ function checkDurableState(cwd, now = Date.now()) {
       const last = rows[rows.length - 1];
       if (last) latest = { at: Date.parse(last.ts), what: `recorded ${last.event} ${last.step}` };
       for (const [k, t] of idx.steps) {
-        if (!k.startsWith(`${id}/`) || (latest && latest.at >= t.time * 1000)) continue;
+        if (!k.startsWith(`${id}/`.toLowerCase()) || (latest && latest.at >= t.time * 1000)) continue;
         latest = { at: t.time * 1000, what: `committed ${k.slice(id.length + 1)}` };
       }
       const age = latest ? now - latest.at : NaN;

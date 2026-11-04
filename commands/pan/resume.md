@@ -67,7 +67,7 @@ ELSE IF state.md exists (its Status is free text — Ready to plan, Ready to exe
   → IF state.md's `### Blockers/Concerns` lists a blocker:
     → PRESENT the blockers first
     → OFFER: debug (/pan:debug) or unblock manually
-  → FIND incomplete work: plans without summaries, phases mid-execution
+  → FIND incomplete work: `open_work.phase_plans` from `init resume` (the engine pairs plans with their own summaries), phases mid-execution
   → IF incomplete phase found:
     → PRESENT phase status + what remains
     → OFFER: continue execution (/pan:exec-phase) or verify (/pan:verify-phase)

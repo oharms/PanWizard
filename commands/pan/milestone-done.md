@@ -145,7 +145,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
 
 <critical_rules>
 
-- **Verify completion:** All phases must have summary.md files
+- **Verify completion:** every phase's `disk_status` from `pan-tools roadmap analyze` is `complete` (every plan has its own summary)
 - **User confirmation:** Wait for approval at verification gates
 - **Archive before deleting:** Always create archive files before updating/deleting originals
 - **One-line summary:** Collapsed milestone in roadmap.md should be single line with link

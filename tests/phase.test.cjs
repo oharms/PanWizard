@@ -2333,3 +2333,31 @@ describe('plan and summary ids compare in any case', () => {
     assert.equal(out.plans[0].has_summary, true);
   });
 });
+
+// Doc-audit pass 12 (3.42.0): PAN-Step keys kept the commit's case, so `pan-step: 03a-01/Task-2`
+// never matched plan 03A-01; verify phase-completeness compared ids case-sensitively; init
+// milestone-op counted a stray directory as an unfinished phase.
+describe('ids in any case: verify phase-completeness and init milestone-op', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('verify phase-completeness pairs 03A-01-PLAN.md with 03a-01-summary.md', () => {
+    const dir = path.join(tmpDir, '.planning', 'phases', '03A-letter');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '03A-01-PLAN.md'), '# p\n');
+    fs.writeFileSync(path.join(dir, '03a-01-summary.md'), '# s\n');
+    const out = JSON.parse(runPanTools('verify phase-completeness 03A', tmpDir).output);
+    assert.equal(out.complete, true, JSON.stringify(out));
+  });
+
+  test('init milestone-op ignores a stray directory under phases/', () => {
+    const phases = path.join(tmpDir, '.planning', 'phases');
+    fs.mkdirSync(path.join(phases, '01-a'), { recursive: true });
+    fs.writeFileSync(path.join(phases, '01-a', '01-01-plan.md'), '# p\n');
+    fs.writeFileSync(path.join(phases, '01-a', '01-01-summary.md'), '# s\n');
+    fs.mkdirSync(path.join(phases, 'scratch'), { recursive: true });
+    const out = JSON.parse(runPanTools('init milestone-op', tmpDir).output);
+    assert.deepStrictEqual([out.phase_count, out.completed_phases, out.all_phases_complete], [1, 1, true]);
+  });
+});

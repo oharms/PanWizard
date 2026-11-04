@@ -683,7 +683,8 @@ function buildMilestoneOpPayload(cwd) {
   const phasesDirPath = phasesPath(cwd);
   try {
     const entries = fs.readdirSync(phasesDirPath, { withFileTypes: true });
-    const dirNames = entries.filter(entry => entry.isDirectory()).map(entry => entry.name);
+    // Only directories named like a phase count; a stray folder is not an unfinished phase.
+    const dirNames = entries.filter(entry => entry.isDirectory() && require('./constants.cjs').PHASE_DIR_RE.test(entry.name)).map(entry => entry.name);
     phaseCount = dirNames.length;
 
     // Count completed phases (every plan has its own summary)

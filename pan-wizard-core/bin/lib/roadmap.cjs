@@ -466,7 +466,7 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
   // (e.g. a research summary) can no longer make completed exceed total.
   const counted = require('./state.cjs').countPlanProgress(cwd).phases.find((p) => p.dir === path.basename(phaseInfo.directory));
   const planCount = counted ? counted.plans : phaseInfo.plans.length;
-  const summaryCount = counted ? counted.completed : Math.min(phaseInfo.summaries.length, planCount);
+  const summaryCount = counted ? counted.completed : require('./utils.cjs').countSummarizedPlans([...phaseInfo.plans, ...phaseInfo.summaries]);
 
   if (planCount === 0) {
     // No error key, exit 0: a phase with no plans has nothing to sync. The roadmap

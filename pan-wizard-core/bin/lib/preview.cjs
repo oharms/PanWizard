@@ -143,7 +143,7 @@ function buildPhasePreview(cwd, phaseNum) {
     directory: toPosix(phaseInfo.directory),
     status,
     plan_count: planFiles.length,
-    summary_count: summaryFiles.length,
+    summary_count: (phaseInfo.plans || []).length - (phaseInfo.incomplete_plans || []).length,
     goal: roadmapPhase ? roadmapPhase.goal : null,
     files_mentioned,
     test_files_mentioned: testFiles,

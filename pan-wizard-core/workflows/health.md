@@ -126,13 +126,7 @@ N issues can be auto-repaired. Run: /pan:health --repair
 <step name="offer_repair">
 **If repairable issues exist and --repair was NOT used:**
 
-Ask user if they want to run repairs:
-
-```
-Would you like to run /pan:health --repair to fix N issues automatically?
-```
-
-If yes, re-run with --repair flag and display results.
+Ask about each repair class in `repairs_available` on its own, as the per-class rule above says, then repair only the classes the user accepted (`validate health --repair --only <class>,<class>`) and display the results.
 </step>
 
 <step name="verify_repairs">
