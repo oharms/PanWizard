@@ -488,6 +488,8 @@ describe('init milestone-op command', () => {
     const phasesDir = path.join(tmpDir, '.planning', 'phases');
     fs.mkdirSync(path.join(phasesDir, '01-setup'), { recursive: true });
     fs.mkdirSync(path.join(phasesDir, '02-build'), { recursive: true });
+    // A summary counts only beside its own plan (3.42.0, PAN-02).
+    fs.writeFileSync(path.join(phasesDir, '01-setup', '01-01-plan.md'), '# Plan');
     fs.writeFileSync(path.join(phasesDir, '01-setup', '01-01-summary.md'), '# Summary');
 
     const result = runPanTools('init milestone-op', tmpDir);
@@ -502,6 +504,8 @@ describe('init milestone-op command', () => {
   test('reports all complete when all phases have summaries', () => {
     const phasesDir = path.join(tmpDir, '.planning', 'phases');
     fs.mkdirSync(path.join(phasesDir, '01-setup'), { recursive: true });
+    // A summary counts only beside its own plan (3.42.0, PAN-02).
+    fs.writeFileSync(path.join(phasesDir, '01-setup', '01-01-plan.md'), '# Plan');
     fs.writeFileSync(path.join(phasesDir, '01-setup', '01-01-summary.md'), '# Summary');
 
     const result = runPanTools('init milestone-op', tmpDir);

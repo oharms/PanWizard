@@ -220,7 +220,7 @@ function collectPhaseData(cwd, phaseNumber, opts = {}) {
   const index = roadmap.findIndex(p => normNum(p.number) === normNum(rp.number));
   const total = roadmap.length;
 
-  const plansDone = Math.min(summaryFiles.length, planFiles.length);
+  const plansDone = require('./utils.cjs').countSummarizedPlans([...planFiles, ...summaryFiles]);
   const goal = extractPhaseGoal(cwd, rp.number);
 
   // per-phase requirements — DERIVED (never global scanRequirements)

@@ -686,12 +686,13 @@ function buildMilestoneOpPayload(cwd) {
     const dirNames = entries.filter(entry => entry.isDirectory()).map(entry => entry.name);
     phaseCount = dirNames.length;
 
-    // Count phases with summaries (completed)
+    // Count completed phases (every plan has its own summary)
     for (const dirName of dirNames) {
       try {
         const phaseFiles = fs.readdirSync(path.join(phasesDirPath, dirName));
-        const hasSummary = phaseFiles.some(isSummaryFile);
-        if (hasSummary) completedPhases++;
+        // PAN-02: complete when every plan has its own summary, not when any summary exists.
+        const planN = phaseFiles.filter(isPlanFile).length;
+        if (planN > 0 && require('./utils.cjs').countSummarizedPlans(phaseFiles) === planN) completedPhases++;
       } catch {
         // Phase directory unreadable -- skip
       }

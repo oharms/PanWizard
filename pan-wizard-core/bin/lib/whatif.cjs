@@ -84,7 +84,7 @@ function buildCounterfactualContext(cwd, phaseNum, scenario) {
     slug: scenarioSlug(scenario),
     plans: planTexts,
     summaries: summaryTexts,
-    has_executed: summaries.length > 0,
+    has_executed: require('./utils.cjs').countSummarizedPlans([...(phaseInfo.plans || []), ...summaries]) > 0,
   };
 }
 

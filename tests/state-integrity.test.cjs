@@ -417,3 +417,34 @@ describe('patchFrontmatter', () => {
     assert.equal(patchFrontmatter('---\na: 1\nb: 2\n---\n', { set: { c: 3 }, remove: ['a'] }), '---\nb: 2\nc: 3\n---\n');
   });
 });
+
+// Doc-audit pass 9 (3.42.0): more decisions counted summary files. Milestone audit called a
+// phase complete when any summary existed, `phase remove` refused a phase holding only a research
+// summary as "executed", and open work could not see an upper-case -PLAN.md.
+describe('PAN-02: every completion decision pairs plans with their own summary', () => {
+  test('init milestone-op does not count a phase whose only summary is an orphan', () => {
+    const before = pan('init', 'milestone-op').json.completed_phases;
+    write('phases/31-solo/31-01-plan.md', '# p\n');
+    write('phases/31-solo/31-research-summary.md', '# research\n');
+    const r = pan('init', 'milestone-op');
+    assert.equal(r.status, 0, `${r.stdout} ${r.stderr}`);
+    assert.equal(r.json.completed_phases, before, 'a research summary beside an unexecuted plan completes nothing');
+    assert.equal(r.json.all_phases_complete, false);
+  });
+
+  test('phase remove does not treat an orphan summary as an executed plan', () => {
+    gateOff(dir);
+    write('roadmap.md', ROADMAP + '\n### Phase 31: Solo\n**Goal:** g\n');
+    write('phases/31-solo/31-01-plan.md', '# p\n');
+    write('phases/31-solo/31-research-summary.md', '# research\n');
+    const r = pan('phase', 'remove', '31');
+    assert.equal(r.status, 0, `an orphan summary refused the removal: ${r.stdout} ${r.stderr}`);
+  });
+
+  test('open work sees an upper-case plan that has no summary', () => {
+    const { openWork } = require(path.join(LIB, 'open-work.cjs'));
+    const ow = openWork(dir);
+    const plans = ow.phase_plans.map((p) => String(p.plan || p.file || p.path || JSON.stringify(p)));
+    assert.ok(plans.some((p) => /29\.4-02-PLAN\.md/.test(p)), JSON.stringify(ow.phase_plans));
+  });
+});

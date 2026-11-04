@@ -145,7 +145,7 @@ once) is worth reporting as a finding of its own; `checked: false` with its `rea
 Use pan-tools to extract must_haves from each PLAN:
 
 ```bash
-for plan in "$phase_dir"/*-plan.md; do
+for plan in $(ls "$phase_dir"/* 2>/dev/null | grep -iE -- '-plan\.md$'); do
   MUST_HAVES=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs frontmatter get "$plan" --field must_haves)
   echo "=== $plan ===" && echo "$MUST_HAVES"
 done
@@ -195,7 +195,7 @@ For each truth: identify supporting artifacts → check artifact status → chec
 Use pan-tools for artifact verification against must_haves in each PLAN:
 
 ```bash
-for plan in "$phase_dir"/*-plan.md; do
+for plan in $(ls "$phase_dir"/* 2>/dev/null | grep -iE -- '-plan\.md$'); do
   ARTIFACT_RESULT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify artifacts "$plan")
   echo "=== $plan ===" && echo "$ARTIFACT_RESULT"
 done
@@ -227,7 +227,7 @@ WIRED = imported AND used. ORPHANED = exists but not imported/used.
 Use pan-tools for key link verification against must_haves in each PLAN:
 
 ```bash
-for plan in "$phase_dir"/*-plan.md; do
+for plan in $(ls "$phase_dir"/* 2>/dev/null | grep -iE -- '-plan\.md$'); do
   LINKS_RESULT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify key-links "$plan")
   echo "=== $plan ===" && echo "$LINKS_RESULT"
 done

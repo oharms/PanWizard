@@ -369,7 +369,7 @@ function partitionWave(plans) {
 
 function buildPlanIndex(phaseDir, planFiles, summaryFiles) {
   const completedPlanIds = new Set(
-    summaryFiles.map(summaryFile => summaryFile.replace('-summary.md', '').replace('summary.md', ''))
+    summaryFiles.map(summaryFile => getSummaryId(summaryFile))
   );
 
   const plans = [];

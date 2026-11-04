@@ -457,7 +457,7 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
   }
   if (!force) {
     for (const d of decimals) {
-      const executed = d.dir ? fs.readdirSync(path.join(phasesDir, d.dir)).filter(isSummaryFile).length : 0;
+      const executed = d.dir ? require('./utils.cjs').countSummarizedPlans(fs.readdirSync(path.join(phasesDir, d.dir))) : 0;
       if (executed) error(`Phase ${d.num} has ${executed} executed plan(s). Use --force to remove anyway.`);
     }
   }
@@ -466,9 +466,9 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
   if (targetDir && !force) {
     const targetPath = path.join(phasesDir, targetDir);
     const files = fs.readdirSync(targetPath);
-    const summaries = files.filter(isSummaryFile);
-    if (summaries.length > 0) {
-      error(`Phase ${targetPhase} has ${summaries.length} executed plan(s). Use --force to remove anyway.`);
+    const executed = require('./utils.cjs').countSummarizedPlans(files);
+    if (executed > 0) {
+      error(`Phase ${targetPhase} has ${executed} executed plan(s). Use --force to remove anyway.`);
     }
   }
 

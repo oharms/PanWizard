@@ -68,7 +68,7 @@ function collectWorkItems(cwd) {
 
       const planFiles = filterPlanFiles(files);
       const summaryFiles = filterSummaryFiles(files);
-      const status = classifyPhaseStatus(planFiles.length, summaryFiles.length, {});
+      const status = classifyPhaseStatus(planFiles.length, require('./utils.cjs').countSummarizedPlans(files), {});
 
       if (status === 'complete') continue;
 

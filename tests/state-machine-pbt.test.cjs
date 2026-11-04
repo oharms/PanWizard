@@ -334,6 +334,8 @@ describe('the counterexamples H7 found, pinned as examples', () => {
     const dir = project();
     try {
       pan(dir, 'phase', 'insert', '1', 'alpha');
+      // A summary counts only beside its own plan (3.42.0, PAN-02).
+      fs.writeFileSync(path.join(dir, '.planning', 'phases', '01.1-alpha', '01.1-01-plan.md'), '# plan\n');
       fs.writeFileSync(path.join(dir, '.planning', 'phases', '01.1-alpha', '01.1-01-summary.md'), '# done\n');
       const r = spawnSync(process.execPath, [TOOLS_PATH, 'phase', 'remove', '1', '--with-decimals'], { cwd: dir, encoding: 'utf8' });
       assert.notEqual(r.status, 0);

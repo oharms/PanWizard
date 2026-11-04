@@ -10,7 +10,7 @@ const { extractFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs')
 const { writeStateMd, readStateSafe } = require('./state.cjs');
 const {
   PHASES_DIR, STATE_FILE, ROADMAP_FILE, REQUIREMENTS_FILE, CONFIG_FILE, PROJECT_FILE, PATTERNS_FILE,
-  isPlanFile, isSummaryFile, isVerificationFile, PHASE_HEADER_RE, PHASE_DIR_RE, ARCHIVE_DIR_RE, FIELD_VALUE_RE,
+  isPlanFile, isSummaryFile, getPlanId, getSummaryId, isVerificationFile, PHASE_HEADER_RE, PHASE_DIR_RE, ARCHIVE_DIR_RE, FIELD_VALUE_RE,
   PLAN_SUFFIX, SUMMARY_SUFFIX, STANDARDS_FILE, STANDARDS_CATALOG, HEALTH_STATUS,
   BUILTIN_DRIFT_RULES, DRIFT_VERDICTS, BINARY_EXTENSIONS, DRIFT_MAX_FILES, DRIFT_MAX_FILE_SIZE, DRIFT_SEVERITY_WEIGHTS,
 } = require('./constants.cjs');
@@ -756,11 +756,11 @@ function checkPhaseInternalConsistency(phasesDirPath, warnings) {
         warnings.push(`Phase ${dir} directory unreadable`);
         continue;
       }
-      const plans = phaseFiles.filter(f => f.endsWith(PLAN_SUFFIX)).sort();
+      const plans = phaseFiles.filter(f => /-plan\.md$/i.test(f)).sort();
 
       // Check plan number gaps
       const planNums = plans.map(p => {
-        const planMatch = p.match(/-(\d{2})-plan\.md$/);
+        const planMatch = p.match(/-(\d{2})-plan\.md$/i);
         return planMatch ? parseInt(planMatch[1], 10) : null;
       }).filter(n => n !== null);
 
@@ -771,9 +771,9 @@ function checkPhaseInternalConsistency(phasesDirPath, warnings) {
       }
 
       // Check summaries without matching plans
-      const summaries = phaseFiles.filter(f => f.endsWith(SUMMARY_SUFFIX));
-      const planIds = new Set(plans.map(p => p.replace(PLAN_SUFFIX, '')));
-      const summaryIds = new Set(summaries.map(s => s.replace(SUMMARY_SUFFIX, '')));
+      const summaries = phaseFiles.filter(f => /-summary\.md$/i.test(f));
+      const planIds = new Set(plans.map(p => p.toLowerCase().replace(/-plan\.md$/, '')));
+      const summaryIds = new Set(summaries.map(s => s.toLowerCase().replace(/-summary\.md$/, '')));
 
       for (const sid of summaryIds) {
         if (!planIds.has(sid)) {
@@ -1148,9 +1148,9 @@ function checkPhaseContents(cwd, addIssue) {
         phaseFiles = fs.readdirSync(path.join(phasesDirPath, entry.name));
       } catch { continue; }
       const plans = phaseFiles.filter(f => isPlanFile(f));
-      const summaryBases = new Set(phaseFiles.filter(f => isSummaryFile(f)).map(s => s.replace(SUMMARY_SUFFIX, '').replace('summary.md', '')));
+      const summaryBases = new Set(phaseFiles.filter(f => isSummaryFile(f)).map(s => getSummaryId(s).toLowerCase()));
       for (const plan of plans) {
-        const planBase = plan.replace(PLAN_SUFFIX, '').replace('plan.md', '');
+        const planBase = getPlanId(plan).toLowerCase();
         if (!summaryBases.has(planBase)) addIssue('info', 'I001', `${entry.name}/${plan} has no summary.md`, 'May be in progress');
       }
     }
@@ -1315,7 +1315,7 @@ function checkVerificationGate(cwd, addIssue) {
   for (const dir of phaseDirs) {
     const dirPath = path.join(phasesDirPath, dir.name);
     const files = fs.readdirSync(dirPath);
-    const hasSummary = files.some(f => /-summary\.md$/i.test(f));
+    const hasSummary = require('./utils.cjs').countSummarizedPlans(files) > 0;
     const hasVerification = files.some(f => /-verification\.md$/i.test(f));
 
     // Only flag phases that have summaries (executed) but no verification

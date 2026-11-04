@@ -738,6 +738,8 @@ describe('checkVerificationGate in validate health', () => {
     fs.writeFileSync(path.join(planningDir, 'config.json'),
       JSON.stringify({ model_profile: 'balanced', workflow: { verifier: true } }));
     const phaseDir = path.join(planningDir, 'phases', '01-setup');
+    // A summary counts only beside its own plan (3.42.0, PAN-02).
+    if (!fs.readdirSync(phaseDir).some((f) => /^01-plan\.md$/i.test(f))) fs.writeFileSync(path.join(phaseDir, '01-plan.md'), '# Plan');
     fs.writeFileSync(path.join(phaseDir, '01-summary.md'), '# Summary\nDone.');
     const result = runPanTools('validate health', tmpDir);
     assert.ok(result.success, result.error);

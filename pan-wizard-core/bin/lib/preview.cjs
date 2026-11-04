@@ -129,7 +129,7 @@ function buildPhasePreview(cwd, phaseNum) {
   // Roadmap context: is this phase already completed?
   const roadmapPhase = getRoadmapPhaseInternal(cwd, phaseNum);
   let status;
-  if (summaryFiles.length === 0) {
+  if ((phaseInfo.plans || []).length - (phaseInfo.incomplete_plans || []).length === 0) {
     status = 'planned';
   } else if (phaseInfo.incomplete_plans && phaseInfo.incomplete_plans.length > 0) {
     status = 'in_progress';

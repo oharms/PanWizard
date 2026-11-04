@@ -29,8 +29,10 @@ function currentPhase(cwd) {
 /** Plans in a directory with no summary of the same stem. */
 function unfinishedPlans(dir) {
   const names = list(dir);
-  const done = new Set(names.filter((n) => n.endsWith('-summary.md')).map((n) => stem(n, '-summary.md')));
-  return names.filter((n) => n.endsWith('-plan.md') && !done.has(stem(n, '-plan.md')));
+  // Any case: an older layout wrote -PLAN.md / -SUMMARY.md.
+  const id = (n, re) => n.toLowerCase().replace(re, '');
+  const done = new Set(names.filter((n) => /-summary\.md$/i.test(n)).map((n) => id(n, /-summary\.md$/)));
+  return names.filter((n) => /-plan\.md$/i.test(n) && !done.has(id(n, /-plan\.md$/)));
 }
 
 /**

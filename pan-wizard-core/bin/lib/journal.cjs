@@ -282,7 +282,7 @@ function journalsIn(cwd, phaseDir) {
   for (const n of names.filter((x) => /-plan\.md$/i.test(x))) {
     const id = n.replace(/-plan\.md$/i, '');
     const plan = path.join(phaseDir, n);
-    if (names.includes(`${id}-summary.md`)) continue;
+    if (names.some((x) => x.toLowerCase() === `${id}-summary.md`.toLowerCase())) continue;
     // A failed scan cannot rule a plan out: every unfinished plan carries the error.
     if (!names.includes(`${id}${JOURNAL_SUFFIX}`) && !idx.plans.has(id) && !idx.error) continue;
     const rp = resumePoint(cwd, toPosix(path.relative(cwd, plan)));
