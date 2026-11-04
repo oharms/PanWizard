@@ -30,7 +30,7 @@ Mark current phase complete and advance to next. This is the natural point where
    ```bash
    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs(transition): phase ${current_phase} → ${next_phase} (state, progress, context)"
    ```
-   The `phase complete` call inside `update_roadmap_and_state` makes its own commit (roadmap + state position) — that one stays separate, since it must run first to compute `next_phase`.
+   The `phase complete` call inside `update_roadmap_and_state` makes its own commit (only roadmap.md, requirements.md, state.md and the phase directory) — that one stays separate, since it must run first to compute `next_phase`.
 
 Net result per transition: 2 commits instead of 5. Reduces git noise and keeps `/pan:learn` overhead metrics (commits_per_minute) honest. Substantive content of each step below is unchanged — only the **timing of the write** changes.
 

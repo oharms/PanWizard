@@ -250,5 +250,13 @@
   {
     "id": "pan-wizard-core/references/verdict-contract:52f63581",
     "reason": "Summary length (3.42.0, PAN-18): the engine keeps a finding summary up to 2,000 characters (verdict.cjs LIMITS.summary, findings.cjs REASON_MAX), pinned by tests/verdict.test.cjs and tests/findings.test.cjs (a 1,200-character summary survives into findings list). The line is judge style guidance read by every reviewer; a model-tier scenario that inspects a judge summary is what can claim it."
+  },
+  {
+    "id": "agents/pan-verifier:824da443",
+    "reason": "Key links with prose values (3.42.0, PAN-09): verify key-links reports a prose from/to as verified: null with skipped, counted in unchecked and left out of total (verify.cjs checkKeyLinks), pinned by tests/verify.test.cjs. The line tells the verifier how to read that result; a model-tier verification scenario with a prose key link is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/workflows/verify-phase:824da443",
+    "reason": "Key links with prose values (3.42.0, PAN-09): verify key-links reports a prose from/to as verified: null with skipped, counted in unchecked and left out of total (verify.cjs checkKeyLinks), pinned by tests/verify.test.cjs. The line tells the verifier how to read that result; a model-tier verification scenario with a prose key link is what can claim it."
   }
 ]

@@ -701,7 +701,7 @@ Since v2.10.0, each agent has an append-only memory log at `.planning/memory/<ag
 - `pan-tools memory budget` — what the whole store would add to an agent's prompt
 - `pan-tools memory prune [<agent>] [--apply] [--days N]` — archive the entries `memory select` leaves out (cited code gone, or unused for N days, default 60) to `.planning/memory/archive/<agent>.md`; a dry run without `--apply`
 - `pan-tools memory optimize [--apply] [--keep N]` — reconcile the always-loaded project memory
-- `pan-tools memory rebuild [--apply]` — regenerate the derived tools-memory (AGENTS.md section, CLAUDE.md bridge) and state.md's frontmatter
+- `pan-tools memory rebuild [--apply]` — regenerate the derived tools-memory (AGENTS.md section, CLAUDE.md bridge) and patch state.md's position keys in place from its body (comments and unknown keys kept)
 
 **On request:** `/pan:retro --write-memory` extracts top-N gap patterns as lessons for `pan-planner`, and writes a verifier lesson when first-try rate drops below 60% over ≥3 runs. `/pan:retro` passes the flag on to `pan-tools retro` only when you give it; no workflow passes it on its own.
 

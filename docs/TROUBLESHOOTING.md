@@ -242,14 +242,14 @@ The limit is per task: three auto-fix attempts in all, whichever of Rules 1-3 th
 **Common causes:**
 
 - Manual editing of state.md broke the `**Field:** value` format (fields must follow this exact pattern)
-- YAML frontmatter and markdown body fields are out of sync (the body is canonical: every state write re-derives the frontmatter from the `**Field:** value` lines, and a body value overwrites the frontmatter one)
+- YAML frontmatter and markdown body fields are out of sync (the body is canonical: each state write patches only the frontmatter keys it owns from the `**Field:** value` lines, so a body value overwrites that key, while other keys and comments are kept)
 - Interrupted execution left state partially updated (executor crashed between `state advance-plan` and `state update-progress`)
 - A plan was manually deleted from the phase directory but state.md still references it
 - state.md starts with two front-matter blocks: earlier releases stacked a new block on every state write to a CRLF checkout (`core.autocrlf=true`). State writes now refuse such a file with "state.md starts with more than one front-matter block" — keep the block with the right values, delete the other, and run the command again
 
 **Fix options (from least to most destructive):**
 
-1. **Auto-repair:** Run `/pan:health --repair` to fix consistency issues automatically
+1. **Auto-repair:** Run `/pan:health --repair` for config and checkbox drift. It never rewrites an existing state.md, so fix the file by hand (option 2) or rebuild it (option 3)
 2. **Manual fix:** Edit `.planning/state.md` directly -- ensure fields use `**Field:** value` format and the YAML frontmatter matches
 3. **Reconstruct from disk:** Delete state.md and run `/pan:resume`, which offers to rebuild it from project.md, roadmap.md and the phase summaries (`/pan:health --repair` writes only a minimal scaffold whose current phase reads `(determining...)`) -- `/pan:progress` does not regenerate state.md; with it missing it points you at `/pan:new-project`
 4. **Full reset:** restore `.planning/roadmap.md` from git (or recreate it with `/pan:milestone-new`), delete `.planning/state.md`, then run `/pan:resume` to rebuild state.md from the roadmap (`/pan:health --repair` writes only a minimal scaffold: the roadmap's milestone, `Current phase: (determining...)`, `Status: Resuming`). `/pan:new-project` refuses to run while `project.md` exists — delete that too only for a true from-scratch reset
@@ -337,7 +337,7 @@ The limit is per task: three auto-fix attempts in all, whichever of Rules 1-3 th
 2. Compare against roadmap.md phase listing
 3. Run `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase N --raw` to see what PAN resolves
 
-**Fix:** Do not rename phase directories manually. Use `/pan:insert-phase` and `/pan:remove-phase` to manage phase structure. If directories are already mismatched, `/pan:health --repair` never touches phase directories: what it rewrites is state.md as a minimal scaffold (after a timestamped `.bak-` backup), a missing or unparseable config.json, and requirement and roadmap plan checkboxes left unticked after state records every plan complete; fix the directory names by hand.
+**Fix:** Do not rename phase directories manually. Use `/pan:insert-phase` and `/pan:remove-phase` to manage phase structure. If directories are already mismatched, `/pan:health --repair` never touches phase directories: what it writes is a missing state.md (a minimal scaffold; an existing state.md is never rewritten), a missing or unparseable config.json, and requirement and roadmap plan checkboxes left unticked after state records every plan complete; fix the directory names by hand.
 
 ---
 
@@ -785,11 +785,11 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 
 ### A command refuses with `lock_timeout`
 
-**Symptom:** A `pan-tools` command exits 1 with `error: "lock_timeout"`, a `file` and a `lock` path.
+**Symptom:** A `pan-tools` command exits 1 with `error: "lock_timeout"`, a `file`, a `lock` path, the `holder` (`{pid, host}`), `lock_age_ms` and a `reason`.
 
 **Root cause:** Another PAN process held the file's lock for longer than the wait (about 7 s for focus runs, batch files, autodev run records, pauses and merge-gate approvals; about 1 s for planning markdown, and only under `concurrency.strict: true` does that become a refusal). A live process keeps its lock however long its command runs; a lock left by a process that has gone is taken over once it is 10 s old.
 
-**Fix:** Retry when the other command finishes. The lock file the refusal names (under `pan-locks-<user>/` in the system temp directory) holds the holder's `<pid>@<host>`: if that process is still running, let it finish; if it is gone, the next attempt after 10 s takes the lock over. Two processes that see different temp directories (a sandbox that sets its own `TMPDIR`) do not share locks.
+**Fix:** Retry when the other command finishes. The lock file the refusal names (under `pan-locks-<user>/` in the system temp directory) holds the holder's `<pid>@<host>`: if that process is still running, let it finish; if it is gone, the next attempt after 10 s takes the lock over. When the refusal says `holder_gone: true`, you can also delete the named lock file and retry; never while the holder runs. Two processes that see different temp directories (a sandbox that sets its own `TMPDIR`) do not share locks.
 
 ### A command refuses with `illegal_transition` or `unknown_state`
 
@@ -811,7 +811,7 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 
 **Symptom:** `/pan:resume` resumes an unfinished plan at task 1, or `journal resume-point` returns `resume_at: null`, though some of its tasks were committed.
 
-**Root cause:** Nothing proves those tasks: their commits' messages lack the `PAN-Step: <plan id>/task-N` line and the journal has no line for them (commits made by hand, or by an executor from before this record). Commits deeper than HEAD's newest 1000 are not read either.
+**Root cause:** Nothing proves those tasks: their commits' messages lack the `PAN-Step: <plan id>/task-N` line and the journal has no line for them (commits made by hand, or by an executor from before this record). Commits deeper than HEAD's newest 1000 are not read either. Or the commit scan failed (`trailer_scan: {error: "trailer_scan_failed"}`; `--raw` prints `trailer_scan_failed`): what is done is then unknown, not nothing.
 
 **Fix:** Record each finished task with its commit: `pan-tools journal step --plan <id> --step task-N --event completed --commit <sha>`, then resume.
 
@@ -918,7 +918,7 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 
 ### `focus close` refuses with `commit_blocked`
 
-**Symptom:** `focus close --files …` exits 1 with `error: "commit_blocked"`, a `reason` of `sensitive_file_detected` or `deleted_files_detected`, and `safety_checks`.
+**Symptom:** `focus close --files …` exits 1 with `error: "commit_blocked"`, a `reason` of `sensitive_file_detected`, `sensitive_content_detected` or `deleted_files_detected`, and `safety_checks`.
 
 **Root cause:** A named file matched `commit.sensitive_patterns` (by default a secret-store file name such as `.env`, `server.key` or `credentials.json`), a staged file contains what looks like a credential (`sensitive_content_detected`), or the commit would delete a file. Nothing was written and the cycle is still open; the paths the close staged are unstaged again.
 

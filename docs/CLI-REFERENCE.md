@@ -1038,9 +1038,9 @@ Mark a phase as done. Updates roadmap.md checkboxes and progress table, advances
 
 ```bash
 pan-tools phase complete 5 [--no-commit]
-# Auto-commits what it wrote (roadmap.md, requirements.md, state.md and the phase directory; no other planning file is staged). Anything you had already staged goes into the same commit.
-# planning file) as "docs(NN): complete phase — <name>" and reports commit_hash,
-# unless --no-commit is passed, commit_docs is false, the planning tree is gitignored, or cwd is not a git repo.
+# Auto-commits what it wrote (roadmap.md, requirements.md, state.md and the phase directory; no other planning file is staged)
+# as "docs(NN): complete phase — <name>" and reports commit_hash. Anything you had already staged goes into the same commit.
+# Skipped when --no-commit is passed, commit_docs is false, the planning tree is gitignored, or cwd is not a git repo.
 ```
 
 **JSON output:**

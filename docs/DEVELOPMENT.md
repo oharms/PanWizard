@@ -41,7 +41,7 @@ pan-wizard/
         foreign-planning.cjs  # Is this .planning/ another tool's? (gsd-core markers; planning-with-files markers make it shared, not foreign) — hygiene, health and init consult it
         milestone.cjs         # Milestone lifecycle (archive, milestones.md)
         frontmatter.cjs       # YAML-like frontmatter CRUD
-        commands.cjs          # Misc facade: history-digest, scaffold, progress, todo, commit (commitPlanning(); the safety checks block staged deletions and sensitive files); commands-learnings.cjs re-exported
+        commands.cjs          # Misc facade: history-digest, scaffold, progress, todo, commit (commitPlanning(); the safety checks block staged deletions, sensitive file names and staged credentials); commands-learnings.cjs re-exported
         template.cjs          # template select (picks a summary template) + template fill (built-in generators); reads nothing in templates/
         context-budget.cjs    # Context window utilization, cache block classification, cache.ttl recommendation
         focus.cjs             # Strategic project management: scan, plan, sync, exec, route, design, auto; focus open/close record each cycle as a quick task

@@ -274,7 +274,7 @@ Use pan-tools for key link verification against must_haves in PLAN frontmatter:
 LINKS_RESULT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify key-links "$PLAN_PATH")
 ```
 
-Parse JSON result: `{ all_verified, verified, total, links: [{from, to, via, verified, detail}] }`
+Parse JSON result: `{ all_verified, verified, total, unchecked, links: [{from, to, via, verified, detail, skipped?}] }`. A link with `verified: null` names prose, not a file: it was not checked, so verify it by reading the code, and do not report it NOT_WIRED.
 
 For each link:
 - `verified=true` → WIRED

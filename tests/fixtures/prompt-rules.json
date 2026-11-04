@@ -1177,6 +1177,12 @@
    "baseline": true
   },
   {
+   "id": "agents/pan-verifier:824da443",
+   "file": "agents/pan-verifier.md",
+   "text": "Parse JSON result: `{ all_verified, verified, total, unchecked, links: [{from, to, via, verified, detail, skipped?}] }`. A link with `verified: null` names prose, not a file: it was not checked, so verify it by reading the code, and do not report it NOT_WIRED.",
+   "baseline": false
+  },
+  {
    "id": "agents/pan-verifier:d7c1f684",
    "file": "agents/pan-verifier.md",
    "text": "If requirements.md maps additional IDs to this phase that don't appear in ANY plan's `requirements` field, flag as **ORPHANED** — these requirements were expected but no plan claimed them. ORPHANED requirements MUST appear in the verification report.",
@@ -2101,9 +2107,9 @@
    "baseline": true
   },
   {
-   "id": "pan-wizard-core/workflows/execute-plan:65fe3017",
+   "id": "pan-wizard-core/workflows/execute-plan:282e8848",
    "file": "pan-wizard-core/workflows/execute-plan.md",
-   "text": "**4. Format:** `{type}({phase}-{plan}): {description}` with bullet points for key changes, and the message ends with `PAN-Step: ${PHASE}-${PLAN}/task-${TASK_NUM}` on its own line. The commit is the task's record: a crashed run resumes after it. Only the commit that finishes a task carries the line (a TDD RED commit does not); a coalesced commit carries one line per task. Start the final trailer block with the `PAN-Step` line(s); put `Co-Authored-By` and any other trailers after them, with no blank line between. PAN finds the line anywhere in the message, so do not amend a commit only to move it.",
+   "text": "**4. Format:** `{type}({phase}-{plan}): {description}` with bullet points for key changes, and the final trailer block starts with `PAN-Step: ${PHASE}-${PLAN}/task-${TASK_NUM}` on its own line. The commit is the task's record: a crashed run resumes after it. Only the commit that finishes a task carries the line (a TDD RED commit does not); a coalesced commit carries one line per task. Start the final trailer block with the `PAN-Step` line(s); put `Co-Authored-By` and any other trailers after them, with no blank line between. PAN finds the line anywhere in the message, so do not amend a commit only to move it.",
    "baseline": false
   },
   {
@@ -2878,6 +2884,12 @@
    "id": "pan-wizard-core/workflows/verify-phase:3e716d57",
    "file": "pan-wizard-core/workflows/verify-phase.md",
    "text": "gap: in `report` mode it never changes the status. In `gate` mode (`workflow.mutation_gate: gate`) the result carries `gate`: when `gate.failed` is true (the score is below `workflow.mutation_floor`), set the status to `gaps_found` and list each survivor as a gap; `verify reconcile` refuses a passed verification over a failed gate. `aborted: flaky` (the unmutated suite passed once and failed",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/verify-phase:824da443",
+   "file": "pan-wizard-core/workflows/verify-phase.md",
+   "text": "Parse JSON result: `{ all_verified, verified, total, unchecked, links: [{from, to, via, verified, detail, skipped?}] }`. A link with `verified: null` names prose, not a file: it was not checked, so verify it by reading the code, and do not report it NOT_WIRED.",
    "baseline": false
   },
   {

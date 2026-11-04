@@ -18,15 +18,15 @@ Root causes, from four investigations against the code (each reproduced in a scr
 ## 1. Decisions
 
 - **DD-1 Frontmatter is patched in place.** A new `patchFrontmatter(text, {set, remove})` edits only the named keys (including one level of nesting, `progress.percent`), line by line inside the `---` block. It never re-serialises: comments, quoting, order and unknown keys survive byte for byte. Each `state *` command owns a fixed set of keys:
-  - `update` / `patch` / `advance-plan`: `current_phase`, `current_plan`, `status`, `last_activity` (only moving forward), `last_updated`;
-  - `add-decision` / `add-blocker` / `resolve-blocker` / `record-metric` / `record-session`: `last_updated`;
+  - `update` / `patch` / `advance-plan` / `apply` / `init`: `current_phase`, `current_phase_name`, `current_plan`, `status`, `last_activity` (only moving forward), `last_updated`;
+  - `add-decision` / `add-blocker` / `resolve-blocker` / `record-metric` / `record-session` / `section` / `quick-task`: `last_updated`;
   - `update-progress` and `phase complete`: those plus the `progress.*` keys that already exist;
   - `milestone complete` / `new`: `milestone`, `milestone_name`.
   Progress keys that are absent are not added (`--write-counts` adds them). Writers go through `store.updateText`, so 3.41's lock applies.
 - **DD-2 One count.** `countPlanProgress(cwd, {scope})` pairs each plan with its summary by plan id (case-insensitive suffixes, `PHASE_DIR_RE` directories only, archives under `scope: 'all'`, which no command passes yet). A phase is complete only when every plan has a summary. Completed can never exceed total. `state update-progress`, `phase complete` and the frontmatter all use it.
 - **DD-3 The recorded milestone wins over a guess.** Headings that start with `Phase N` are not milestone headings. `state.md`'s `milestone:` is kept unless the roadmap marks another milestone current. Generic state writes do not write `milestone`.
 - **DD-4 Health never rewrites an existing state.md.** Only a missing `state.md` (E004) is regenerated. A phase mentioned in `state.md` counts as present when it is under `phases/` or a milestone archive, compared with `normalizePhaseName`.
-- **DD-5 Local dates.** `localDay()` in `utils.cjs` replaces `toISOString().split('T')[0]` wherever PAN records a day.
+- **DD-5 Local dates.** `localDay()` in `utils.cjs` replaces the UTC day where PAN writes a day into state, roadmap, requirements, plans and summaries (`current-timestamp date`), milestones, todos, focus batches and learnings. Agent-memory and pattern-memory dates, and day stamps compared with UTC timestamps (cost budgets, archive file names), stay UTC.
 - **DD-6 `phase complete` stages only what it wrote** (roadmap.md, requirements.md, state.md, plus the phase directory it closed) and writes the Progress row's status from the counts.
 - **DD-7 Sensitive files by name, secrets by content.** The default patterns match a file's basename (`.env*` except examples, `*.pem|key|p12|pfx`, `id_(rsa|ed25519|ecdsa|dsa)` (the `.pub` halves are public and commit), `credentials.*`, `.npmrc|.netrc|.pypirc`, `secrets.(ya?ml|json|env)`); the staged content is scanned with `redact.cjs`'s rules. One constant replaces the three copies.
 - **DD-8 Decimal insertion is a sibling.** Inserting after 29.4 gives the next free sibling (29.5) when there is one, else nests (29.4.1, reported). Insert and add write a Progress row, no `.gitkeep`, and depend on the phase immediately before the new one.

@@ -345,7 +345,7 @@ git add src/types/user.ts
 | `refactor` | Code cleanup, no behavior change                |
 | `chore`    | Config, tooling, dependencies                   |
 
-**4. Commit**, ending the message with the task's `PAN-Step` line: the commit is the task's record, so a crashed run resumes after it (`{phase}-{plan}` is the plan's id, `N` the task's position in the plan):
+**4. Commit**, starting the final trailer block with the task's `PAN-Step` line: the commit is the task's record, so a crashed run resumes after it (`{phase}-{plan}` is the plan's id, `N` the task's position in the plan):
 ```bash
 git commit -m "{type}({phase}-{plan}): {concise task description}
 
@@ -483,7 +483,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs requirements mark-complete ${RE
 
 **State command behaviors:**
 - `state advance-plan`: Increments Current Plan, detects last-plan edge case, sets status
-- `state update-progress`: Recalculates progress bar from summary.md counts on disk
+- `state update-progress`: Recalculates the progress bar from plans paired with their summaries, and updates progress keys only where state.md already has them (`--write-counts` adds them)
 - `state record-metric`: Appends a per-plan row to the Performance Metrics table
 - `state add-decision`: Adds to Decisions section, removes placeholders
 - `state record-session`: Updates Last session timestamp and Stopped At fields

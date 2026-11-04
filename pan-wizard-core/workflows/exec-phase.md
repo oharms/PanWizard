@@ -713,7 +713,7 @@ Set `GATE_OK` to `gate.ok` from `COMPLETION` (`false` when the gate refused).
 
 The CLI handles:
 - Marking phase checkbox `[x]` with completion date
-- Updating Progress table (Status → Complete, date)
+- Updating Progress table (Status → Complete with the date, or In Progress while a plan has no summary)
 - Updating plan count to final
 - Advancing state.md to next phase
 - Updating requirements.md traceability
