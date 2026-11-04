@@ -172,34 +172,40 @@ function tierForModel(model) {
 const SESSION_STALE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Last write to a session — its event log, else the moment it started, else null.
+ * When a session started: session.json's `started_at`, else (a session.json without
+ * one, written before started_at was recorded) its event log's last write, else null.
  * Best-effort; never throws.
+ *
+ * The age is taken from started_at, NOT from trace.jsonl's mtime (PAN-20, DD-10):
+ * every append refreshes the mtime, and `findings record` appends a trace event, so any
+ * writer kept an explicit session "alive" for as long as the project was used.
  */
-function sessionLastActivityMs(dir) {
+function sessionStartedMs(dir, meta) {
+  const t = meta && meta.started_at ? new Date(meta.started_at).getTime() : NaN;
+  if (Number.isFinite(t)) return t;
   try {
     return fs.statSync(path.join(dir, 'trace.jsonl')).mtimeMs;
-  } catch { /* no events yet */ }
-  try {
-    const meta = JSON.parse(fs.readFileSync(path.join(dir, 'session.json'), 'utf-8'));
-    const t = new Date(meta.started_at).getTime();
-    return Number.isFinite(t) ? t : null;
   } catch {
     return null;
   }
 }
 
-/** Finished, or too old to be the session running now. */
-function isSessionStale(dir, meta, now = Date.now()) {
+/**
+ * Finished, started more than SESSION_STALE_MS ago, or (when the host's session id is
+ * known and the session recorded one) started under another host session.
+ */
+function isSessionStale(dir, meta, now = Date.now(), hostSessionId = null) {
   if (meta && meta.ended_at) return true;
-  const last = sessionLastActivityMs(dir);
-  return last === null || now - last > SESSION_STALE_MS;
+  if (hostSessionId && meta && meta.host_session_id && meta.host_session_id !== hostSessionId) return true;
+  const started = sessionStartedMs(dir, meta);
+  return started === null || now - started > SESSION_STALE_MS;
 }
 
 // Best-effort read of the active trace session's command/phase so hook rows can
 // be attributed to the command that spawned them. current-session →
 // traces/<sid>/session.json (both written by the trace logger / optimize.cjs).
 // Never throws — returns {} on any miss.
-function readActiveSessionMeta(cwd) {
+function readActiveSessionMeta(cwd, hostSessionId = null) {
   try {
     const optDir = planningPath(cwd, 'optimization');
     const sid = fs.readFileSync(path.join(optDir, 'current-session'), 'utf-8').trim();
@@ -209,7 +215,9 @@ function readActiveSessionMeta(cwd) {
     if (!meta || typeof meta !== 'object') return {};
     // A pointer at a finished or long-dead session describes nothing that is running
     // now; its command/phase must not be copied onto this row.
-    if (isSessionStale(dir, meta)) return {};
+    // A session started under another host session (recorded by the trace logger) is
+    // not this one either (PAN-20).
+    if (isSessionStale(dir, meta, Date.now(), hostSessionId)) return {};
     return meta;
   } catch {
     return {};
@@ -879,7 +887,7 @@ function buildCostRecord(data, cwd) {
 
   // Backfill command/phase from the active trace session when the payload omits
   // them (real SubagentStop payloads carry neither); tier is derived from the model.
-  const sessionMeta = readActiveSessionMeta(cwd);
+  const sessionMeta = readActiveSessionMeta(cwd, typeof data.session_id === 'string' ? data.session_id : null);
   // The trace logger's day-scoped auto-session names no command (only a session opened
   // by `optimize trace init` or focus mode does), so the parent transcript is the
   // fallback that makes command attribution work in ordinary use — see

@@ -118,6 +118,20 @@ describe('pan-cost-logger — a dead trace session backfills nothing', () => {
     writeSession('sess_done', { started_at: new Date().toISOString(), command: 'army', ended_at: new Date().toISOString() });
     assert.equal(rowFor(transcriptNaming('/pan:verify-phase')).command, 'verify-phase');
   });
+
+  // PAN-20: the age was trace.jsonl's mtime, which every append (findings record
+  // included) refreshes, so an explicit session in daily use never went stale.
+  test('an explicit session started 2 days ago is stale though trace.jsonl was written just now', () => {
+    const dir = writeSession('sess_20260101T090000', { started_at: new Date(Date.now() - 2 * 86400000).toISOString(), command: 'army', ended_at: null });
+    fs.writeFileSync(path.join(dir, 'trace.jsonl'), '{"type":"decision"}\n');
+    assert.equal(isSessionStale(dir, JSON.parse(fs.readFileSync(path.join(dir, 'session.json'), 'utf-8'))), true);
+    assert.equal(rowFor(transcriptNaming('/pan:plan-phase')).command, 'plan-phase');
+  });
+
+  test('a session recorded under another host session supplies nothing', () => {
+    writeSession('sess_20260101T090001', { started_at: new Date().toISOString(), command: 'army', ended_at: null, host_session_id: 'other-host' });
+    assert.equal(rowFor(transcriptNaming('/pan:plan-phase')).command, 'plan-phase', 'payload session_id s1 differs');
+  });
 });
 
 describe('pan-cost-logger — readCommandFromTranscript', () => {
