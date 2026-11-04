@@ -842,7 +842,7 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 **Recovery:**
 
 1. Close all but one session
-2. Run `/pan:health --repair` to fix any state inconsistencies
+2. Run `/pan:health` to list inconsistencies; `--repair` fixes config and checkbox drift but never rewrites an existing state.md, so correct that file by hand
 3. Check `git log` for duplicate or conflicting commits
 4. Manually resolve any git conflicts
 

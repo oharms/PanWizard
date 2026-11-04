@@ -461,8 +461,12 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
     error(`Phase ${phaseNum} not found`);
   }
 
-  const planCount = phaseInfo.plans.length;
-  const summaryCount = phaseInfo.summaries.length;
+  // PAN-02: the same count as state.md (countPlanProgress): a summary counts only when it
+  // belongs to one of the phase's plans, upper-case -PLAN.md files included, so an orphan
+  // (e.g. a research summary) can no longer make completed exceed total.
+  const counted = require('./state.cjs').countPlanProgress(cwd).phases.find((p) => p.dir === path.basename(phaseInfo.directory));
+  const planCount = counted ? counted.plans : phaseInfo.plans.length;
+  const summaryCount = counted ? counted.completed : Math.min(phaseInfo.summaries.length, planCount);
 
   if (planCount === 0) {
     // No error key, exit 0: a phase with no plans has nothing to sync. The roadmap

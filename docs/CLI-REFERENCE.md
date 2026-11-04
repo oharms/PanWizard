@@ -1421,7 +1421,7 @@ pan-tools milestone complete v1.0 --name "Core Platform" --archive-phases
 }
 ```
 
-**Side effects:** Creates `milestones/` directory, copies roadmap.md and requirements.md there with a version prefix (the requirements copy gets an archive header), optionally moves phase dirs, moves `<version>-milestone-audit.md` into the archive when present (`archived.audit`), sets state.md's `Status` to `<version> milestone complete` and updates `Last Activity` and `Last Activity Description` (nothing else in the body changes; the YAML front matter is re-derived from the body, and written if missing, as on every state.md write); archive failures are reported in `archive_warnings[]`.
+**Side effects:** Creates `milestones/` directory, copies roadmap.md and requirements.md there with a version prefix (the requirements copy gets an archive header), optionally moves phase dirs, moves `<version>-milestone-audit.md` into the archive when present (`archived.audit`), sets state.md's `Status` to `<version> milestone complete` and updates `Last Activity` and `Last Activity Description` (nothing else in the body changes; the front matter's position keys and `milestone`/`milestone_name` are patched in place (comments and unknown keys kept), and a front matter is written only if missing); archive failures are reported in `archive_warnings[]`.
 
 ---
 
@@ -3455,7 +3455,7 @@ pan-tools focus close --dir <dir|name|number> [--status verified|partial|failed]
 
 **JSON output:** `{ closed, dir, summary, status, reported_status, derived_status, derived_from?, commit, commit_skipped?, items_done, items_failed, items_not_reported, tests_before, tests_after, regressions, preexisting_failures, batch_results, todos_completed, state, state_row, state_warnings?, record_commit }`
 
-**Refusals (exit 1), nothing written:** `invalid_status`, `not_a_focus_cycle` (no such cycle, or a plan without `source: focus`), `cycle_closed`, `unknown_items` (an id not in the cycle's plan), `conflicting_items` (an id both done and failed), `commit_conflict` (`--files` with `--commit`), `nothing_done` (`--files` with no item done), `commit_unknown` (`--commit` names no commit reachable from HEAD), `commit_blocked` (the safety checks refused `--files`: a sensitive path or a deletion, with `safety_checks` and the paths it unstaged again; fix the cause, or commit the paths yourself and close with `--commit <sha>`), `commit_failed`, `not_a_git_repo`. `state_failed`: state.md could not be updated; the cycle stays open (the batch results and todo moves already made are safe to repeat).
+**Refusals (exit 1), nothing written:** `invalid_status`, `not_a_focus_cycle` (no such cycle, or a plan without `source: focus`), `cycle_closed`, `unknown_items` (an id not in the cycle's plan), `conflicting_items` (an id both done and failed), `commit_conflict` (`--files` with `--commit`), `nothing_done` (`--files` with no item done), `commit_unknown` (`--commit` names no commit reachable from HEAD), `commit_blocked` (the safety checks refused `--files`: a sensitive file name, a staged credential (`sensitive_content_detected`) or a deletion, with `safety_checks` and the paths it unstaged again; fix the cause, or commit the paths yourself and close with `--commit <sha>`), `commit_failed`, `not_a_git_repo`. `state_failed`: state.md could not be updated; the cycle stays open (the batch results and todo moves already made are safe to repeat).
 
 **`--raw` output:** The recorded status.
 
@@ -4097,7 +4097,7 @@ pan-tools memory optimize --apply --keep 20
 
 ### `memory rebuild [--apply] [--only agents-md]`
 
-Regenerate PAN's *derived* tools-memory as an idempotent projection from source: the marker-fenced PAN section in `AGENTS.md` (read natively by Codex, OpenCode and Copilot CLI; Claude Code reads it through the `CLAUDE.md` bridge below; Gemini CLI through the `context.fileName` entry a Gemini install adds), written in the routing mode `instructions.routing` names (`off`: no table; `advisory`, the default: a short table of which PAN command a plain request belongs to; `exclusive`: the table, and a line saying the project does that work only through PAN), PAN's block in `CLAUDE.md` (when a Claude install is visible: in the project, or a global one in the Claude user directory, which writes nothing into projects itself): the `@AGENTS.md` import and a `# Compact instructions` section that tells Claude Code's compaction summary what PAN work needs to resume. An older block holding only the import is brought up to date in place. It also re-derives state.md's YAML frontmatter from the body, keeping recorded values the body does not restate; a state.md with more than one front-matter block is reported as `action: "refused"` and left as it is. User content outside PAN's markers is never touched. Refuses to run inside the PAN source repository.
+Regenerate PAN's *derived* tools-memory as an idempotent projection from source: the marker-fenced PAN section in `AGENTS.md` (read natively by Codex, OpenCode and Copilot CLI; Claude Code reads it through the `CLAUDE.md` bridge below; Gemini CLI through the `context.fileName` entry a Gemini install adds), written in the routing mode `instructions.routing` names (`off`: no table; `advisory`, the default: a short table of which PAN command a plain request belongs to; `exclusive`: the table, and a line saying the project does that work only through PAN), PAN's block in `CLAUDE.md` (when a Claude install is visible: in the project, or a global one in the Claude user directory, which writes nothing into projects itself): the `@AGENTS.md` import and a `# Compact instructions` section that tells Claude Code's compaction summary what PAN work needs to resume. An older block holding only the import is brought up to date in place. It also patches state.md's position keys in place from the body; comments, quoting and keys PAN does not know are kept; a state.md with more than one front-matter block is reported as `action: "refused"` and left as it is. User content outside PAN's markers is never touched. Refuses to run inside the PAN source repository.
 
 Dry-run by default; pass `--apply` to write. A second run changes nothing. `--only agents-md` rebuilds `AGENTS.md` and the bridge and leaves state.md alone (what `/pan:new-project` and `/pan:settings` run); any other `--only` value is refused with `error: "bad_only"`. A PAN section the project edited is kept and reported as `action: "kept_edited"`.
 
@@ -4696,7 +4696,7 @@ A CRLF file is written back CRLF. The status is `reverted`, `partial`, `refused`
 
 ### `git <commit|branch|push|status|log|stash|diff|rollback|tag|sync> [...]`
 
-**Module:** `git.cjs` — phase-aware git workflow; `commit` reuses `runCommitSafetyChecks` (deleted-file and sensitive-file gates). Works in any git repo, with or without `.planning/`.
+**Module:** `git.cjs` — phase-aware git workflow; `commit` reuses `runCommitSafetyChecks` (deleted-file, sensitive-file-name and staged-content gates). Works in any git repo, with or without `.planning/`.
 
 ```bash
 pan-tools git commit --message "..." [--type feat] [--all] [--amend] [--force] [<file>...]

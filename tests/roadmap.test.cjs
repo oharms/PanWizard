@@ -468,6 +468,25 @@ describe('roadmap commands handle missing roadmap.md', () => {
     assert.strictEqual(output.updated, false);
     assert.ok(output.reason.includes('roadmap.md'), 'reason should mention roadmap.md');
   });
+
+  // PAN-02: summaries were counted as files, so an orphan (a research summary) made the
+  // Progress row read 2/2 Complete with one of two plans done.
+  test('roadmap update-plan-progress counts only summaries that belong to a plan', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '29.4-decimal');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    for (const f of ['29.4-01-plan.md', '29.4-02-PLAN.md', '29.4-01-summary.md', '29.4-research-summary.md']) fs.writeFileSync(path.join(phaseDir, f), '# x\n');
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), [
+      '# Roadmap', '', '- [ ] **Phase 29.4: Decimal**', '', '### Phase 29.4: Decimal', '**Goal:** g', '**Plans:** 0/2 plans', '',
+      '## Progress', '', '| Phase | Plans Complete | Status | Completed |', '|---|---|---|---|', '| 29.4. Decimal | 0/2 | Not started | - |', '',
+    ].join('\n'));
+    const result = runPanTools('roadmap update-plan-progress 29.4', tmpDir);
+    assert.equal(result.success, true, result.output);
+    const out = JSON.parse(result.output);
+    assert.equal(out.summary_count, 1, JSON.stringify(out));
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), 'utf8');
+    assert.match(roadmap, /\| 29\.4\. Decimal \| 1\/2 \| In Progress \|/);
+    assert.doesNotMatch(roadmap, /2\/2 \| Complete/);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
