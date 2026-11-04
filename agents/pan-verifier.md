@@ -93,8 +93,7 @@ Proceed to Step 1.
 ## Step 1: Load Context (Initial Mode Only)
 
 ```bash
-ls "$PHASE_DIR"/*-plan.md 2>/dev/null
-ls "$PHASE_DIR"/*-summary.md 2>/dev/null
+ls "$PHASE_DIR" 2>/dev/null | grep -iE -- '-(plan|summary)\.md$'   # any case: an older layout wrote -PLAN.md
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$PHASE_NUM"
 grep -E "^\|[^|]*\| *Phase +0*${PHASE_NUM#0} " .planning/requirements.md 2>/dev/null
 ```

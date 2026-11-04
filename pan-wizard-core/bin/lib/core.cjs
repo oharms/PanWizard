@@ -735,10 +735,10 @@ function searchPhaseInDir(baseDir, relBase, normalized) {
     const hasVerification = phaseFiles.some(isVerificationFile);
 
     const completedPlanIds = new Set(
-      summaries.map(s => getSummaryId(s))
+      summaries.map(s => getSummaryId(s).toLowerCase())
     );
     const incompletePlans = plans.filter(p => {
-      return !completedPlanIds.has(getPlanId(p));
+      return !completedPlanIds.has(getPlanId(p).toLowerCase());
     });
 
     return {

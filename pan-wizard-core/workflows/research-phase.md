@@ -27,7 +27,7 @@ Normalize phase input in step 1 before any directory lookups.
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init phase-op "$ARGUMENTS")
 ```
 
-Extract from init JSON: `phase_dir`, `padded_phase`, `phase_slug`, `phase_number`, `phase_name`, `phase_found`, `commit_docs`, `has_research`, `state_path`, `requirements_path`, `context_path`, `research_path`. `phase_dir` is null when the phase is in the roadmap but has no directory yet: create it (`mkdir -p ".planning/phases/${padded_phase}-${phase_slug}"`) and use that path as `phase_dir`, as discuss-phase does.
+Extract from init JSON: `phase_dir`, `padded_phase`, `phase_slug`, `phase_number`, `phase_name`, `phase_found`, `commit_docs`, `has_research`, `state_path`, `requirements_path`, `context_path`, `research_path`. `phase_dir` is null when the phase is in the roadmap but has no directory yet: create it with `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs scaffold phase-dir --phase "${phase_number}" --name "${phase_name}" --raw` and use the printed path as `phase_dir`, as discuss-phase does (never `mkdir` it yourself: the scaffold honours the planning root).
 
 Resolve researcher model:
 ```bash

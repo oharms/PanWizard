@@ -1250,6 +1250,7 @@
   "utils.cjs": [
     "classifyPhaseStatus:function",
     "countPlanTasks:function",
+    "countSummarizedPlans:function",
     "detectPlanningModel:function",
     "extractField:function",
     "extractListField:function",

@@ -52,7 +52,7 @@ Then load phase details, write the phase's roadmap slice, and list plans/summari
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "${phase_number}"
 SLICE_PATH=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice "${phase_number}" --write --raw)
 grep -E "^\|[^|]*\| *Phase +0*${phase_number#0} " .planning/requirements.md 2>/dev/null
-ls "$phase_dir"/*-summary.md "$phase_dir"/*-plan.md 2>/dev/null
+ls "$phase_dir" 2>/dev/null | grep -iE -- '-(plan|summary)\.md$'   # any case: an older layout wrote -PLAN.md
 ```
 
 Extract the **phase goal** and success criteria from `get-phase` (the outcome to verify, not tasks), and the phase's **requirements** from `$SLICE_PATH` (its `## Its requirements` lines). Do not read roadmap.md or requirements.md whole: on a long project they are the largest files in `.planning/`, and the slice carries what verification needs from them. If `SLICE_PATH` is empty, grep requirements.md for the phase's IDs instead.

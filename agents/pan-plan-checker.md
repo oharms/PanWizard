@@ -567,7 +567,7 @@ Extract from init JSON: `phase_dir`, `phase_number`, `has_plans`, `plan_count`. 
 Orchestrator provides context.md content in the verification prompt. If provided, parse for locked decisions, discretion areas, deferred ideas.
 
 ```bash
-ls "$PHASE_DIR"/*-plan.md 2>/dev/null
+ls "$PHASE_DIR" 2>/dev/null | grep -iE -- '-plan\.md$'   # any case: an older layout wrote -PLAN.md
 # Read research for Nyquist validation data
 cat "$PHASE_DIR"/*-research.md 2>/dev/null
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$PHASE"

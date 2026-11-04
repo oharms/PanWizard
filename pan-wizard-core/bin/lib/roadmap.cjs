@@ -160,7 +160,7 @@ function enrichPhaseWithDiskStatus(cwd, phase) {
     if (dirMatch) {
       const phaseFiles = fs.readdirSync(path.join(phasesDirPath, dirMatch));
       planCount = filterPlanFiles(phaseFiles).length;
-      summaryCount = filterSummaryFiles(phaseFiles).length;
+      summaryCount = require('./utils.cjs').countSummarizedPlans(phaseFiles);
       hasContext = phaseFiles.some(isContextFile);
       hasResearch = phaseFiles.some(isResearchFile);
 

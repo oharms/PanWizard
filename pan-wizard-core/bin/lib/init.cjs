@@ -874,10 +874,10 @@ function scanAllPhases(cwd) {
       try { phaseFiles = fs.readdirSync(phaseFullPath); } catch { continue; }
 
       const plans = phaseFiles.filter(isPlanFile);
-      const summaries = phaseFiles.filter(isSummaryFile);
       const hasResearch = phaseFiles.some(isResearchFile);
 
-      const rawStatus = classifyPhaseStatus(plans.length, summaries.length, { hasResearch });
+      const summarized = require('./utils.cjs').countSummarizedPlans(phaseFiles);
+      const rawStatus = classifyPhaseStatus(plans.length, summarized, { hasResearch });
       const status = rawStatus === 'partial' || rawStatus === 'planned' ? 'in_progress' :
                      rawStatus === 'discussed' || rawStatus === 'empty' ? 'pending' :
                      rawStatus;
@@ -888,7 +888,7 @@ function scanAllPhases(cwd) {
         directory: planningRel(PHASES_DIR, dirName),
         status,
         plan_count: plans.length,
-        summary_count: summaries.length,
+        summary_count: summarized,
         has_research: hasResearch,
       };
 

@@ -334,7 +334,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs(phase-${PHASE}): a
 ## 6. Check Existing Plans
 
 ```bash
-ls "${PHASE_DIR}"/*-plan.md 2>/dev/null
+ls "${PHASE_DIR}" 2>/dev/null | grep -iE -- '-plan\.md$'   # any case: an older layout wrote -PLAN.md
 ```
 
 **If exists:** Offer: 1) Add more plans, 2) View existing, 3) Replan from scratch.

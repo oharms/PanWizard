@@ -13,6 +13,8 @@ const {
   MILESTONES_DIR,
   isPlanFile,
   isSummaryFile,
+  getPlanId,
+  getSummaryId,
   PHASE_DIR_RE,
 } = require('./constants.cjs');
 const { planningRootRel, planningRootAbs } = require('./planning-root.cjs');
@@ -143,6 +145,18 @@ function filterPlanFiles(files) {
  */
 function filterSummaryFiles(files) {
   return files.filter(isSummaryFile).sort();
+}
+
+/**
+ * How many of a phase directory's plans have a summary of their own (PAN-02). A summary
+ * with no plan (a research summary) counts for nothing, so the result never exceeds the
+ * plan count: the number every completion decision takes, never the raw summary-file count.
+ * @param {string[]} files - The phase directory's file names
+ * @returns {number}
+ */
+function countSummarizedPlans(files) {
+  const summarized = new Set(files.filter(isSummaryFile).map((f) => getSummaryId(f).toLowerCase()));
+  return files.filter(isPlanFile).filter((f) => summarized.has(getPlanId(f).toLowerCase())).length;
 }
 
 /**
@@ -417,6 +431,7 @@ module.exports = {
   listPhaseDirs,
   filterPlanFiles,
   filterSummaryFiles,
+  countSummarizedPlans,
   parsePhaseDir,
   classifyPhaseStatus,
   fileAccessible,

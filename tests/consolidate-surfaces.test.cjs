@@ -207,4 +207,24 @@ describe('next-action through the CLI (L7)', () => {
       assert.equal(spawnSync(process.execPath, [tools, 'next-action', '--raw'], { cwd: dir, encoding: 'utf8' }).stdout, '/pan:exec-phase 1');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
+
+  // PAN-02 (3.42.0): the router compared summary-file counts with plan counts, so a research
+  // summary beside one unexecuted plan routed the phase as done.
+  test('an orphan summary does not finish a plan: the route is still execute', () => {
+    const { spawnSync } = require('child_process');
+    const tools = path.join(ROOT, 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-next-orphan-'));
+    try {
+      const p = path.join(dir, '.planning');
+      fs.mkdirSync(path.join(p, 'phases', '01-a'), { recursive: true });
+      fs.writeFileSync(path.join(p, 'requirements.md'), '# R\n');
+      fs.writeFileSync(path.join(p, 'roadmap.md'), '# Roadmap\n\n- [ ] **Phase 1: A**\n\n### Phase 1: A\n**Goal:** g\n');
+      fs.writeFileSync(path.join(p, 'phases', '01-a', '01-01-plan.md'), 'x');
+      fs.writeFileSync(path.join(p, 'phases', '01-a', '01-research-summary.md'), 'research, not a plan summary');
+      const json = JSON.parse(spawnSync(process.execPath, [tools, 'next-action'], { cwd: dir, encoding: 'utf8' }).stdout);
+      assert.equal(json.action, 'execute', JSON.stringify(json));
+      const analyze = JSON.parse(spawnSync(process.execPath, [tools, 'roadmap', 'analyze'], { cwd: dir, encoding: 'utf8' }).stdout);
+      assert.equal(analyze.phases[0].summary_count, 0, 'roadmap analyze counts plans with a summary of their own');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
 });

@@ -2761,6 +2761,12 @@
    "baseline": true
   },
   {
+   "id": "pan-wizard-core/workflows/research-phase:a141c231",
+   "file": "pan-wizard-core/workflows/research-phase.md",
+   "text": "Extract from init JSON: `phase_dir`, `padded_phase`, `phase_slug`, `phase_number`, `phase_name`, `phase_found`, `commit_docs`, `has_research`, `state_path`, `requirements_path`, `context_path`, `research_path`. `phase_dir` is null when the phase is in the roadmap but has no directory yet: create it with `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs scaffold phase-dir --phase \"${phase_number}\" --name \"${phase_name}\" --raw` and use the printed path as `phase_dir`, as discuss-phase does (never `mkdir` it yourself: the scaffold honours the planning root).",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/research-phase:178dd7d9",
    "file": "pan-wizard-core/workflows/research-phase.md",
    "text": "Write this phase's roadmap slice (its section, its dependencies' goals and its requirement lines), then use paths from INIT (do not inline file contents in orchestrator context):",

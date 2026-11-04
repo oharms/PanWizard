@@ -764,7 +764,7 @@ function cmdProgressRender(cwd, format, raw) {
         continue;
       }
       const planCount = phaseFiles.filter(filename => isPlanFile(filename)).length;
-      const summaryCount = phaseFiles.filter(filename => isSummaryFile(filename)).length;
+      const summaryCount = require('./utils.cjs').countSummarizedPlans(phaseFiles);
 
       totalPlans += planCount;
       totalSummaries += summaryCount;

@@ -140,11 +140,11 @@ When `action` is `answer_pause`, a question asked in an earlier session is still
 
 When `action` is `focus`, focus work comes first: a focus cycle is open or a focus run went stale. `reason` says which (`focus_cycle_in_progress`, `focus_cycle_open`, `focus_run_stale`), `detail` says what to do, `focus` names the run and the cycle, and `command` carries it out. Show it above the phase position, and offer its `command` before any phase route.
 
-Its `action` picks the route below: `execute` → **Route A**, `plan` → **Route B**, `plan_gaps` → **Route E**, `verify` → offer `/pan:verify-phase {phase}`, `complete_phase` → run `command`, then **Route C**, `audit_milestone` → **Route D** (audit before `/pan:milestone-done`), `new_milestone` → **Route F**. The counts below are what the router read; use them to explain the route, not to pick a different one.
+Its `action` picks the route below: `execute` → **Route A**, `plan` → **Route B**, `plan_gaps` → **Route E**, `verify` → offer `/pan:verify-phase {phase}`, `complete_phase` → run `command`, then **Route C**, `audit_milestone` → **Route D** (audit before `/pan:milestone-done`), `new_milestone` → **Route F**. The `action` is the router's, and it pairs each plan with its own summary; the plan lists in Step 1 come from `find-phase`. Use them to explain the route, not to pick a different one.
 
 **Determine next action based on verified counts.**
 
-**Step 1: Count plans, summaries, and issues in current phase**
+**Step 1: Read the phase's plans, unfinished plans and UAT files**
 
 List files in the current phase directory:
 

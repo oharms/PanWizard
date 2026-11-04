@@ -85,18 +85,18 @@ function scanPhases(cwd) {
     let files = [];
     try { files = fs.readdirSync(path.join(phasesPath(cwd), dir)); } catch { /* gone */ }
     const plans = filterPlanFiles(files);
-    const summaries = filterSummaryFiles(files);
     const hasResearch = files.some(f => f.endsWith('-research.md') || f === 'research.md');
     const hasContext = files.some(f => f.endsWith('-context.md') || f === 'context.md');
-    const status = classifyPhaseStatus(plans.length, summaries.length, { hasResearch, hasContext });
+    const done = require('./utils.cjs').countSummarizedPlans(files);
+    const status = classifyPhaseStatus(plans.length, done, { hasResearch, hasContext });
     plansTotal += plans.length;
-    plansDone += Math.min(summaries.length, plans.length);
+    plansDone += done;
     phases.push({
       number,
       name: name ? name.replace(/-/g, ' ') : null,
       status,
       plans: plans.length,
-      summaries: summaries.length,
+      summaries: done,
     });
   }
   const completed = phases.filter(p => p.status === 'complete').length;

@@ -286,5 +286,9 @@
   {
     "id": "pan-wizard-core/workflows/transition:20ae468f",
     "reason": "State writes through the CLI (3.42.0, DD-1): state update writes the body under state.md's lock and patches only its owned frontmatter keys (no stopped_at mirror), pinned by tests/state-integrity.test.cjs. A model-tier transition scenario is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/workflows/research-phase:a141c231",
+    "reason": "Phase directories through the engine (3.42.0): scaffold phase-dir creates the directory under the planning root (commands.cjs cmdScaffold), pinned by tests/commands*.test.cjs; the line tells research-phase to use it instead of mkdir, as discuss-phase does. A model-tier research scenario is what can claim it."
   }
 ]
