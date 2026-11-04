@@ -763,7 +763,7 @@ claude --dangerously-skip-permissions
 /pan:resume                 # Full context restoration from last session
 ```
 
-If a session ended in the middle of a plan, `/pan:resume` says which tasks are done and where the plan resumes. The executor ends each task's commit message with a `PAN-Step: <plan>/task-N` line, so the commit itself records the task, and a task counts as done only while its commit is still in the branch's history and not reverted: a commit lost in the crash is redone rather than skipped, and a rebase does not lose the record.
+If a session ended in the middle of a plan, `/pan:resume` says which tasks are done and where the plan resumes. The executor starts the trailer block of each task's commit message with a `PAN-Step: <plan>/task-N` line (other trailers such as `Co-Authored-By` follow it), so the commit itself records the task, and a task counts as done only while its commit is still in the branch's history and not reverted: a commit lost in the crash is redone rather than skipped, and a rebase does not lose the record.
 
 A question PAN asked you and never got answered (a checkpoint, a decision, an autodev run that stopped for a person) is kept too. `/pan:progress` and `/pan:resume` ask it again before anything else, and accept only the answers it allows.
 

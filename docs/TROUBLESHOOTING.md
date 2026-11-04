@@ -785,7 +785,7 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 
 ### A command refuses with `lock_timeout`
 
-**Symptom:** A `pan-tools` command exits 1 with `error: "lock_timeout"`, a `file`, a `lock` path, the `holder` (`{pid, host}`), `lock_age_ms` and a `reason`.
+**Symptom:** A `pan-tools` command exits 1 with `error: "lock_timeout"`, a `file`, a `lock` path and a `reason`; while the lock is still held it also names the `holder` (`{pid, host}`, or `null` if the lock file is unreadable), `lock_age_ms`, `holder_alive` and `holder_gone` (a lock released meanwhile reports `holder: null` and says to retry now).
 
 **Root cause:** Another PAN process held the file's lock for longer than the wait (about 7 s for focus runs, batch files, autodev run records, pauses and merge-gate approvals; about 1 s for planning markdown, and only under `concurrency.strict: true` does that become a refusal). A live process keeps its lock however long its command runs; a lock left by a process that has gone is taken over once it is 10 s old.
 
