@@ -189,7 +189,11 @@ describe('phase complete — the gate decides', () => {
     assert.equal(out.gate.ok, false);
     assert.equal(out.gate.mode, 'warn');
     assert.deepEqual(out.gate.reasons.map((x) => x.code), ['missing_summary']);
-    assert.ok(roadmapTicked());
+    // 3.42 DD-6 changed this: the phase still completes under warn, but with a plan
+    // short of a summary the roadmap row says In Progress and the checkbox stays
+    // unticked. It used to be ticked and written "0/1 | Complete" (PAN-04).
+    assert.equal(roadmapTicked(), false);
+    assert.equal(out.roadmap_status, 'In Progress');
   });
 
   test('enforce: refuses with exit 1 and leaves the roadmap alone', () => {

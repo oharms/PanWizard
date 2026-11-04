@@ -41,6 +41,18 @@ function removeQuotes(str) {
   return str.replace(/^["']|["']$/g, '');
 }
 
+/**
+ * Today (or d) as YYYY-MM-DD on the local clock. `toISOString()` gives the UTC
+ * day, which is still yesterday just after midnight east of Greenwich, so a phase
+ * finished at 00:30 in Johannesburg was recorded as done the day before (PAN-06).
+ * @param {Date} [d] - The moment (default: now)
+ * @returns {string} e.g. "2026-11-05"
+ */
+function localDay(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 // ─── Phase directory utilities ───────────────────────────────────────────────
 
 /**
@@ -393,6 +405,7 @@ function isPathLike(v) {
 
 module.exports = {
   countPlanTasks,
+  localDay,
   readJsonFile,
   removeQuotes,
   planningPath,

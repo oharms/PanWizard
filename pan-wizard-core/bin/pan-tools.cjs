@@ -140,7 +140,7 @@
  *   state record-metric --phase N      Record execution metrics
  *     --plan M --duration Xmin
  *     [--tasks N] [--files N]
- *   state update-progress              Recalculate progress bar
+ *   state update-progress [--write-counts]  Recalculate progress bar
  *   state add-decision --summary "..."  Add decision to state.md
  *     [--phase N] [--rationale "..."]
  *     [--summary-file path] [--rationale-file path]
@@ -486,7 +486,7 @@ async function main() {
           files: getArgValue(args, '--files'),
         }, raw);
       } else if (subcommand === 'update-progress') {
-        state.cmdStateUpdateProgress(cwd, raw);
+        state.cmdStateUpdateProgress(cwd, raw, { writeCounts: args.includes('--write-counts') });
       } else if (subcommand === 'add-decision') {
         state.cmdStateAddDecision(cwd, {
           phase: getArgValue(args, '--phase'),

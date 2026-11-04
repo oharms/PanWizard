@@ -72,7 +72,7 @@ Status: HEALTHY | DEGRADED | BROKEN
 Errors: N | Warnings: N | Info: N
 ```
 
-**Ask per repair class before repairing.** With `--repair`, run `validate health` without it first and read `repairs_available` (for example `resetConfig`, `regenerateState`, `syncRequirements`, `syncRoadmap`). Ask about each class on its own, saying what it rewrites (state.md is backed up before regeneration; config.json is reset to defaults). Then repair only the classes the user accepted:
+**Ask per repair class before repairing.** With `--repair`, run `validate health` without it first and read `repairs_available` (for example `resetConfig`, `regenerateState`, `syncRequirements`, `syncRoadmap`). Ask about each class on its own, saying what it rewrites (state.md is created only when it is missing; config.json is reset to defaults). Then repair only the classes the user accepted:
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs validate health --repair --only <class>,<class>
 ```
@@ -102,7 +102,7 @@ A class the user declines is not touched.
 ## Warnings
 
 - [W002] state.md references phase 5, but only phases 01, 02, 03 exist
-  Fix: Run /pan:health --repair to regenerate
+  Fix: Check the phase number in state.md, or create the phase directory
 
 - [W005] Phase directory "1-setup" doesn't follow NN-name format
   Fix: Rename to match pattern (e.g., 01-setup)
@@ -160,7 +160,7 @@ Report final status.
 | E005 | error | config.json parse error | Yes |
 | E006 | error | `.planning/` belongs to another tool (gsd-core markers found); PAN stops before E002-E005 and `--repair` writes nothing | No |
 | W001 | warning | project.md missing required section | No |
-| W002 | warning | state.md references invalid phase | Yes |
+| W002 | warning | state.md references a phase in neither phases/ nor a milestone archive | No |
 | W003 | warning | config.json not found | Yes |
 | W004 | warning | config.json invalid field value | No |
 | W005 | warning | Phase directory naming mismatch | No |
@@ -202,7 +202,7 @@ or behind the current position warns.
 |--------|--------|------|
 | createConfig | Create config.json with defaults | None |
 | resetConfig | Delete + recreate config.json | Loses custom settings |
-| regenerateState | Back up state.md to `state.md.bak-<timestamp>`, then create state.md from ROADMAP structure | Session history only in the backup |
+| regenerateState | Create a missing state.md from ROADMAP structure; an existing state.md is never rewritten | None |
 | syncRequirements | Tick requirements.md boxes when state.md says every plan is done (STATE_REQ_DRIFT) | Edits requirements.md checkboxes |
 | syncRoadmap | Tick roadmap.md plan boxes when state.md says every plan is done (STATE_ROADMAP_DRIFT) | Edits roadmap.md checkboxes |
 

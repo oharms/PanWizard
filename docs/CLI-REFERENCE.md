@@ -577,6 +577,8 @@ pan-tools state                   # bare `state` is an alias for `state load`
 
 Output state.md frontmatter as JSON. Returns the YAML frontmatter block parsed into a JSON object. If no frontmatter exists, it is built from the markdown body.
 
+**How writers keep the frontmatter.** Every `state` writer patches only the keys it owns, line by line; comments, quoting, order and keys PAN does not know stay byte for byte. `update`, `patch`, `advance-plan`, `apply` and `init` own `current_phase`, `current_phase_name`, `current_plan`, `status`, `last_activity` and `last_updated`; `add-decision`, `add-blocker`, `resolve-blocker`, `record-metric`, `record-session`, `section` and `quick-task` own `last_updated` only; `update-progress` and `phase complete` own the first set plus the `progress.*` keys already present; `milestone complete` and `init` (milestone new) also own `milestone` and `milestone_name`. `last_activity` never moves backwards, and a recorded `milestone` is replaced only when the roadmap marks another milestone current.
+
 ```bash
 pan-tools state json [--raw]
 ```
@@ -733,7 +735,7 @@ pan-tools state compact --keep-days 90
 
 **What never moves:**
 - headings PAN reads or writes (matched as heading prefixes: Decisions, Accumulated…, Blockers, Concerns, Session, Next Action, Phase Progress, Project Reference, Source Authority, Toolchain, Metrics, Current…, Status) — `state get <section>` can read any heading by name
-- any section carrying a field the frontmatter is rebuilt from (`**Status:**`, `**Current Phase:**`, `**Progress:**`, …), because `syncStateFrontmatter` regenerates frontmatter from the **first** such match in the body
+- any section carrying a field the frontmatter is rebuilt from (`**Status:**`, `**Current Phase:**`, `**Progress:**`, …), because `syncStateFrontmatter` patches the frontmatter from the **first** such match in the body
 - anything unrecognised — the classifier declines rather than guesses
 - everything, when archiving would not actually shrink the file (on a small `state.md` the pointer costs more than the section)
 
@@ -787,10 +789,10 @@ pan-tools state record-metric --phase 5 --plan 1 --duration 12min --tasks 4 --fi
 
 ### `state update-progress`
 
-Recalculate and update the progress bar in state.md based on SUMMARY/PLAN counts across all phases.
+Recalculate and update the progress bar in state.md from the plans under `phases/`. Each plan is paired with its own summary by plan id (`05-02-plan.md` with `05-02-summary.md`, suffixes in any case), so a summary with no plan, such as `29.4-research-summary.md`, counts for nothing and `completed` never exceeds `total`; only directories named like a phase count, and a phase is complete only when every plan in it has a summary. The frontmatter `progress.*` keys that state.md already has (`total_phases`, `completed_phases`, `total_plans`, `completed_plans`, `percent`) are updated; missing ones are added only with `--write-counts`.
 
 ```bash
-pan-tools state update-progress [--raw]
+pan-tools state update-progress [--write-counts] [--raw]
 ```
 
 **JSON output:**
@@ -800,7 +802,10 @@ pan-tools state update-progress [--raw]
   "percent": 60,
   "completed": 18,
   "total": 30,
-  "bar": "[██████░░░░] 60%"
+  "completed_phases": 4,
+  "total_phases": 12,
+  "bar": "[██████░░░░] 60%",
+  "counts_written": false
 }
 ```
 
@@ -1022,13 +1027,14 @@ Whether a phase may be marked complete (program V1). It prints `{phase, mode, ok
 
 ### `phase complete <phase> [--no-commit] [--force --reason "<why>"]`
 
-Mark a phase as done. Updates roadmap.md checkboxes and progress table, advances state.md to the next phase, and updates requirements.md traceability.
+Mark a phase as done. Updates roadmap.md checkboxes and progress table, advances state.md to the next phase (recounting its `**Progress:**` bar and the frontmatter `progress.*` keys it has), and updates requirements.md traceability. The plan count pairs each plan with its own summary; the progress row says `Complete` and the checkbox is ticked only when every plan has a summary, otherwise the row says `In Progress` (`roadmap_status` in the output), as it can after `--force` or a gate in `warn` mode.
 
 **The phase gate runs first.** Under `workflow.phase_gate: enforce` (the default; a config without the key, or with any other value, reads as `enforce`) a refusal exits 1 with `{error: "phase_gate_refused", reason, gate}` and changes nothing. Under `warn` the phase is marked complete and the output carries `gate: {ok, mode, reasons, not_checked}`. `--force --reason "<why>"` completes past a refusal and records a `decision` disposition for every open finding the gate counted (output: `gate_override`); `--force` without `--reason` is refused in either mode.
 
 ```bash
 pan-tools phase complete 5 [--no-commit]
-# Auto-commits .planning/ ("docs(NN): complete phase — <name>") and reports commit_hash,
+# Auto-commits what it wrote (roadmap.md, requirements.md, state.md and the phase directory; no other
+# planning file) as "docs(NN): complete phase — <name>" and reports commit_hash,
 # unless --no-commit is passed, commit_docs is false, the planning tree is gitignored, or cwd is not a git repo.
 ```
 
@@ -1048,7 +1054,7 @@ pan-tools phase complete 5 [--no-commit]
 }
 ```
 
-`commit_hash`, `gate_override` (`{reason, refused_by[], disposed[]}`: the `--reason` text, the refusal codes it overrode, and the findings it recorded a `decision` for), `roadmap_warning` and `requirements_warning` are added when they apply. `gate` is `{error}` when the gate itself could not run.
+`roadmap_status` (`Complete` or `In Progress`), `commit_hash`, `gate_override` (`{reason, refused_by[], disposed[]}`: the `--reason` text, the refusal codes it overrode, and the findings it recorded a `decision` for), `roadmap_warning` and `requirements_warning` are added when they apply. `gate` is `{error}` when the gate itself could not run.
 
 **Side effects:** Checks off the phase checkbox in roadmap.md, updates the progress table row, advances `Current Phase` in state.md, and marks the requirements on the phase's own `**Requirements:**` line complete in requirements.md (checkbox and traceability row), reading the phase's section or, in an older roadmap, the line under its checklist entry. Both padded and unpadded phase spellings tick the same lines (`phase complete 01` and `phase complete 1` are equivalent).
 
@@ -1459,7 +1465,7 @@ pan-tools validate health --links
 ```
 
 **Flags:**
-- `--repair` — Attempt automatic repairs: create/reset config.json, regenerate state.md (a timestamped `state.md.bak-<ts>` backup is written first and reported as `backupState`), and tick requirement/plan checkboxes for `STATE_REQ_DRIFT`/`STATE_ROADMAP_DRIFT` (`syncRequirements`/`syncRoadmap`). The `status`, the issue lists and the exit code describe the tree as it was before the repairs ran; run `validate health` again to see the result.
+- `--repair` — Attempt automatic repairs: create/reset config.json, regenerate a **missing** state.md (E004; an existing state.md is never rewritten, and `regenerateState` on one is reported `skipped`), and tick requirement/plan checkboxes for `STATE_REQ_DRIFT`/`STATE_ROADMAP_DRIFT` (`syncRequirements`/`syncRoadmap`). The `status`, the issue lists and the exit code describe the tree as it was before the repairs ran; run `validate health` again to see the result.
 - `--standards` — Include standards compliance check (reads standards.md, reports per-standard coverage)
 - `--full` — Run tests and build checks (slower, includes test_status and build_status)
 - `--drift` — Run convention drift analysis (includes drift_status with score and violations)
@@ -1502,7 +1508,7 @@ pan-tools validate health --links
 | E005 | error | `config.json` JSON parse error | Yes |
 | E006 | error | `.planning/` belongs to another tool (gsd-core markers found); PAN stops before E002–E005 and `--repair` writes nothing. A tool that shares the tree instead reports I004 | No |
 | W001 | warning | `project.md` missing required section | No |
-| W002 | warning | `state.md` references non-existent phase | Yes |
+| W002 | warning | `state.md` references a phase found neither under `phases/` nor in a milestone archive (`milestones/v*-phases/`); phase numbers compare normalized (`05.1` = `5.1`) | No |
 | W003 | warning | `config.json` not found | Yes |
 | W004 | warning | `config.json` invalid `model_profile` value | No |
 | W005 | warning | Phase directory naming doesn't match `NN-name` format | No |

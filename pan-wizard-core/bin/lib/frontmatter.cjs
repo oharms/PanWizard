@@ -207,6 +207,139 @@ function quoteIfNeeded(value) {
   return str;
 }
 
+// --- In-place patching ----------------------------------------------------------
+
+/** One front-matter block at the top: BOM-tolerant, LF or CRLF. */
+const PATCH_BLOCK_RE = /^(﻿?---[ \t]*\r?\n)([\s\S]*?)(\r?\n---[ \t]*(?:\r?\n|$))/;
+/** A `key: value  # comment` line: indent, key, the gap after the colon, the value, the trailing comment. */
+const PATCH_LINE_RE = /^([ \t]*)([A-Za-z0-9_-]+):([ \t]*)("(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|.*?)([ \t]+#.*)?[ \t]*$/;
+
+/** The scalar a written value reads as: quotes off, the way extractFrontmatter reads it. */
+function patchScalar(written) {
+  const v = written.trim();
+  if (/^".*"$/.test(v) || /^'.*'$/.test(v)) return v.slice(1, -1);
+  return v;
+}
+
+/** A new value in the style of the one it replaces: the same quote, or quoted only when YAML needs it. */
+function patchRender(value, old) {
+  const str = String(value);
+  const o = (old || '').trim();
+  if (o.startsWith('"')) return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  if (o.startsWith("'")) return `'${str.replace(/'/g, "''")}'`;
+  return quoteIfNeeded(str);
+}
+
+/**
+ * Edit named keys of the front matter in place (DD-1). Only the lines of the keys
+ * named change; comments, quoting, order, blank lines, unknown keys and the body
+ * stay byte for byte. Re-serialising a parsed object (reconstructFrontmatter) lost
+ * every comment, turned `'1.0'` into `1.0` and replaced a nested map whole.
+ *
+ * A key is `name` (top level) or `parent.child` (one level of nesting). A set key
+ * that is missing is added: at the end of its parent's block, or of the front
+ * matter (a missing parent is added with it). With no front matter at all, one is
+ * added holding the set keys. A value equal to what the file already says leaves
+ * its line untouched.
+ *
+ * @param {string} text - The whole file
+ * @param {{set?: Object<string, string|number|boolean>, remove?: string[]}} patch
+ * @returns {string} The file with the keys patched
+ */
+function patchFrontmatter(text, patch = {}) {
+  const src = String(text == null ? '' : text);
+  const set = Object.entries(patch.set || {}).filter(([, v]) => v !== undefined && v !== null);
+  const remove = new Set(patch.remove || []);
+  if (set.length === 0 && remove.size === 0) return src;
+  const eol = /\r\n/.test(src) ? '\r\n' : '\n';
+  const m = src.match(PATCH_BLOCK_RE);
+  if (!m) {
+    if (set.length === 0) return src;
+    const lines = [];
+    const nested = {};
+    for (const [key, value] of set) {
+      const [parent, child] = key.split('.');
+      if (child) (nested[parent] = nested[parent] || []).push([child, value]);
+      else lines.push(`${key}: ${quoteIfNeeded(value)}`);
+    }
+    for (const [parent, kids] of Object.entries(nested)) {
+      lines.push(`${parent}:`);
+      for (const [child, value] of kids) lines.push(`  ${child}: ${quoteIfNeeded(value)}`);
+    }
+    const bom = src.startsWith('﻿') ? '﻿' : '';
+    return `${bom}---${eol}${lines.join(eol)}${eol}---${eol}${eol}${src.replace(/^﻿/, '')}`;
+  }
+
+  const lines = m[2].split(/\r?\n/);
+  // Where each key lives: top-level keys by name, children by `parent.child`, and
+  // for a parent the last line of its block and its children's indent.
+  const index = () => {
+    const at = new Map();
+    const blocks = new Map();
+    let parent = null;
+    lines.forEach((line, i) => {
+      if (line.trim() === '' || /^\s*#/.test(line)) return;
+      const lm = line.match(PATCH_LINE_RE);
+      const indent = (line.match(/^[ \t]*/) || [''])[0];
+      if (indent === '') {
+        parent = null;
+        if (!lm) return;
+        at.set(lm[2], { i, lm });
+        if (lm[4].trim() === '') { parent = lm[2]; blocks.set(parent, { end: i, indent: null }); }
+        return;
+      }
+      if (!parent) return;
+      const b = blocks.get(parent);
+      b.end = i;
+      if (lm && (b.indent === null || indent === b.indent)) {
+        if (b.indent === null) b.indent = indent;
+        at.set(`${parent}.${lm[2]}`, { i, lm });
+      }
+    });
+    return { at, blocks };
+  };
+
+  for (const key of remove) {
+    const { at, blocks } = index();
+    const hit = at.get(key);
+    if (!hit) continue;
+    const end = !key.includes('.') && blocks.has(key) ? blocks.get(key).end : hit.i;
+    lines.splice(hit.i, end - hit.i + 1);
+  }
+
+  for (const [key, value] of set) {
+    const { at, blocks } = index();
+    const hit = at.get(key);
+    if (hit) {
+      const [, ind, k, gap, old, comment] = hit.lm;
+      if (patchScalar(old) === String(value)) continue;
+      lines[hit.i] = `${ind}${k}:${gap || ' '}${patchRender(value, old)}${comment || ''}`;
+      continue;
+    }
+    const [parent, child] = key.split('.');
+    if (!child) {
+      // After the last top-level entry (and its block), before any trailing blank lines.
+      let last = lines.length - 1;
+      while (last >= 0 && lines[last].trim() === '') last--;
+      lines.splice(last + 1, 0, `${key}: ${quoteIfNeeded(value)}`);
+    } else if (blocks.has(parent)) {
+      const b = blocks.get(parent);
+      // The block's last child line, not a trailing comment or blank under it.
+      let end = b.end;
+      while (end > at.get(parent).i && (lines[end].trim() === '' || /^\s*#/.test(lines[end]))) end--;
+      lines.splice(end + 1, 0, `${b.indent || '  '}${child}: ${quoteIfNeeded(value)}`);
+    } else if (!at.has(parent)) {
+      let last = lines.length - 1;
+      while (last >= 0 && lines[last].trim() === '') last--;
+      lines.splice(last + 1, 0, `${parent}:`, `  ${child}: ${quoteIfNeeded(value)}`);
+    }
+    // A parent that holds a scalar is left alone: adding a child would change its meaning.
+  }
+
+  const blockEol = /\r\n/.test(m[1] + m[2] + m[3]) ? '\r\n' : eol;
+  return m[1] + lines.join(blockEol) + m[3] + src.slice(m[0].length);
+}
+
 /**
  * Replace or insert frontmatter in markdown content with a new object.
  * @param {string} content - Original markdown content
@@ -544,6 +677,7 @@ function cmdFrontmatterValidate(cwd, filePath, schemaName, raw) {
 module.exports = {
   extractFrontmatter,
   reconstructFrontmatter,
+  patchFrontmatter,
   spliceFrontmatter,
   parseMustHavesBlock,
   extractPriorityEffort,

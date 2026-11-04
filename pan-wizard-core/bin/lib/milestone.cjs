@@ -260,7 +260,9 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
     stateContent = stateContent.replace(/(\*\*Status:\*\*\s*).*/, `$1${version} milestone complete`);
     stateContent = stateContent.replace(/(\*\*Last Activity:\*\*\s*).*/, `$1${today}`);
     stateContent = stateContent.replace(/(\*\*Last Activity Description:\*\*\s*).*/, `$1${version} milestone completed and archived`);
-    writeStateMd(statePath, stateContent, cwd);
+    // The one writer that records the milestone (DD-3): generic state writes leave it alone.
+    const { FM_KEYS } = require('./state.cjs');
+    writeStateMd(statePath, stateContent, cwd, { owns: [...FM_KEYS.position, ...FM_KEYS.milestone], set: { milestone: version, milestone_name: milestoneName } });
   } catch { /* best-effort */ }
 
   // Archive phase directories if explicitly requested
