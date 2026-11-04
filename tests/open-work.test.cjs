@@ -108,3 +108,38 @@ describe('openWork lists what resume shows', () => {
     assert.doesNotMatch(prompt, /for plan in \.planning\/phases/);
   });
 });
+
+// 3.42.0: plan and summary names in any case. The guard, open work and hygiene matched
+// lower-case `-plan.md` only, so an older layout's `-PLAN.md` was never in flight and the
+// guard's unrouted-write rule fired during real PAN work.
+describe('an upper-case -PLAN.md is in flight for open work, the guard and hygiene', () => {
+  let dir;
+  beforeEach(() => { dir = createTempProject(); });
+  afterEach(() => { cleanup(dir); });
+
+  test('a phase plan', () => {
+    write(dir, '.planning/state.md', STATE);
+    write(dir, '.planning/phases/02-api/02-01-PLAN.md', '---\nfiles_modified: [src/api.js]\n---\n# plan\n');
+    assert.equal(openWork(dir).in_flight, true);
+    assert.equal(G.workInFlight(dir, '.planning'), true);
+    write(dir, '.planning/phases/02-api/02-01-SUMMARY.md', '# done\n');
+    assert.equal(openWork(dir).in_flight, false, 'its own summary, in either case, finishes it');
+    assert.equal(G.workInFlight(dir, '.planning'), false);
+  });
+
+  test('a quick task', () => {
+    write(dir, '.planning/quick/1-fix/1-PLAN.md', '# plan\n');
+    assert.equal(openWork(dir).in_flight, true);
+    assert.equal(G.workInFlight(dir, '.planning'), true);
+  });
+
+  test('hygiene reports a stale upper-case quick plan', () => {
+    const plan = path.join(dir, '.planning', 'quick', '1-fix', '1-PLAN.md');
+    write(dir, '.planning/quick/1-fix/1-PLAN.md', '# plan\n');
+    const old = new Date(Date.now() - 3 * 86400000);
+    fs.utimesSync(plan, old, old);
+    const r = runPanTools('hygiene scan', dir);
+    const findings = JSON.parse(r.output).findings.filter((f) => f.check === 'open-task-stale');
+    assert.equal(findings.length, 1, r.output);
+  });
+});

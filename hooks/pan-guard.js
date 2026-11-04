@@ -170,11 +170,12 @@ function declaredFiles(projectDir, planningRel) {
   if (!dir) return null;
   const full = path.join(phasesDir, dir);
   const names = fs.readdirSync(full);
-  const done = new Set(names.filter((n) => n.endsWith('-summary.md')).map((n) => n.replace(/-summary\.md$/, '')));
+  // Any case: an older layout wrote -PLAN.md / -SUMMARY.md.
+  const done = new Set(names.filter((n) => /-summary\.md$/i.test(n)).map((n) => n.toLowerCase().replace(/-summary\.md$/, '')));
   const out = new Set();
   let plans = 0;
-  for (const n of names.filter((x) => x.endsWith('-plan.md'))) {
-    if (done.has(n.replace(/-plan\.md$/, ''))) continue;
+  for (const n of names.filter((x) => /-plan\.md$/i.test(x))) {
+    if (done.has(n.toLowerCase().replace(/-plan\.md$/, ''))) continue;
     plans++;
     const text = fs.readFileSync(path.join(full, n), 'utf8').replace(/\r\n/g, '\n');
     const fm = text.match(/^---\n([\s\S]*?)\n---/);
@@ -213,8 +214,8 @@ function workInFlight(projectDir, planningRel) {
   for (const task of list(quick)) {
     let names;
     try { names = fs.readdirSync(path.join(quick, task)); } catch (e) { if (e.code === 'ENOTDIR') continue; throw e; }
-    const done = new Set(names.filter((n) => n.endsWith('-summary.md')).map((n) => n.replace(/-summary\.md$/, '')));
-    if (names.some((n) => n.endsWith('-plan.md') && !done.has(n.replace(/-plan\.md$/, '')))) return true;
+    const done = new Set(names.filter((n) => /-summary\.md$/i.test(n)).map((n) => n.toLowerCase().replace(/-summary\.md$/, '')));
+    if (names.some((n) => /-plan\.md$/i.test(n) && !done.has(n.toLowerCase().replace(/-plan\.md$/, '')))) return true;
   }
   return list(path.join(projectDir, planningRel, 'debug')).some((n) => n.endsWith('.md'));
 }

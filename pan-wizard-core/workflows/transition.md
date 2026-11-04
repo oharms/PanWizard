@@ -351,7 +351,7 @@ After (if database indexing was addressed in Phase 2):
 
 Update Session Continuity section in state.md to reflect transition completion.
 
-**Use `pan-tools state update` for "Stopped at"** (never a raw Edit of state.md): it writes the body under state.md's lock and patches only the frontmatter keys it owns. The frontmatter has no live `stopped_at` mirror. The other two lines (Last session, Resume file) can be edited directly.
+**Use `pan-tools state update` for "Stopped at"** (never a raw Edit of state.md): it writes the body under state.md's lock and patches only the frontmatter keys it owns. The frontmatter has no live `stopped_at` mirror. Record the other two lines (Last session, Resume file) through the batched `state apply` call at the end of the workflow; never Write or Edit state.md directly.
 
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state update "Stopped at" "Phase ${current_phase} complete, ready to plan Phase ${next_phase}"

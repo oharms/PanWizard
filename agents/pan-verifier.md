@@ -148,7 +148,7 @@ In re-verification mode, must-haves come from Step 0.
 **Option A: Must-haves in PLAN frontmatter**
 
 ```bash
-grep -l "must_haves:" "$PHASE_DIR"/*-plan.md 2>/dev/null
+grep -l "must_haves:" $(ls "$PHASE_DIR"/* 2>/dev/null | grep -iE -- '-plan\.md$') 2>/dev/null
 ```
 
 If found, extract and use:
@@ -323,7 +323,7 @@ Status: WIRED (state displayed) | NOT_WIRED (state exists, not rendered)
 **Load the Test Tier Strategy from the phase plan:**
 
 ```bash
-grep -A 30 "### Test Tier Strategy" "$PHASE_DIR"/*-plan.md 2>/dev/null
+grep -A 30 "### Test Tier Strategy" $(ls "$PHASE_DIR"/* 2>/dev/null | grep -iE -- '-plan\.md$') 2>/dev/null
 ```
 
 Extract the tier table rows (T1/T2/T3/T4) and their expected coverage areas.
@@ -351,7 +351,7 @@ Record results in verification.md under `## Test Coverage Alignment`.
 **6a. Extract requirement IDs from PLAN frontmatter:**
 
 ```bash
-grep -A5 "^requirements:" "$PHASE_DIR"/*-plan.md 2>/dev/null
+grep -A5 "^requirements:" $(ls "$PHASE_DIR"/* 2>/dev/null | grep -iE -- '-plan\.md$') 2>/dev/null
 ```
 
 Collect ALL requirement IDs declared across plans for this phase.
@@ -380,16 +380,16 @@ Identify files modified in this phase from summary.md key-files section, or extr
 
 ```bash
 # Option 1: Extract from SUMMARY frontmatter
-SUMMARY_FILES=$(for s in "$PHASE_DIR"/*-summary.md; do node ~/.claude/pan-wizard-core/bin/pan-tools.cjs summary-extract "$s" --fields key_files; done)
+SUMMARY_FILES=$(for s in $(ls "$PHASE_DIR"/* 2>/dev/null | grep -iE -- '-summary\.md$'); do node ~/.claude/pan-wizard-core/bin/pan-tools.cjs summary-extract "$s" --fields key_files; done)
 
 # Option 2: Verify commits exist (if commit hashes documented)
-COMMIT_HASHES=$(grep -ohE "[a-f0-9]{7,40}" "$PHASE_DIR"/*-summary.md | head -10)
+COMMIT_HASHES=$(grep -ohE "[a-f0-9]{7,40}" $(ls "$PHASE_DIR"/* 2>/dev/null | grep -iE -- '-summary\.md$') | head -10)
 if [ -n "$COMMIT_HASHES" ]; then
   COMMITS_VALID=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify commits $COMMIT_HASHES)
 fi
 
 # Fallback: grep for files
-grep -E "^\- \`" "$PHASE_DIR"/*-summary.md | sed 's/.*`\([^`]*\)`.*/\1/' | sort -u
+grep -E "^\- \`" $(ls "$PHASE_DIR"/* 2>/dev/null | grep -iE -- '-summary\.md$') | sed 's/.*`\([^`]*\)`.*/\1/' | sort -u
 ```
 
 Run anti-pattern detection on each file:

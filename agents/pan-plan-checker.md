@@ -583,7 +583,7 @@ Do not print the whole requirements.md or roadmap.md: the roadmap slice and `roa
 Use pan-tools to validate plan structure:
 
 ```bash
-for plan in "$PHASE_DIR"/*-plan.md; do
+for plan in $(ls "$PHASE_DIR"/* 2>/dev/null | grep -iE -- '-plan\.md$'); do
   echo "=== $plan ==="
   PLAN_STRUCTURE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-structure "$plan")
   echo "$PLAN_STRUCTURE"
@@ -673,13 +673,13 @@ The `tasks` array in the result shows each task's completeness:
 
 **For manual validation of specificity** (pan-tools checks structure, not content quality):
 ```bash
-grep -B5 "</task>" "$PHASE_DIR"/*-plan.md | grep -v "<verify>"
+grep -B5 "</task>" $(ls "$PHASE_DIR"/* 2>/dev/null | grep -iE -- '-plan\.md$') | grep -v "<verify>"
 ```
 
 ## Step 6: Verify Dependency Graph
 
 ```bash
-for plan in "$PHASE_DIR"/*-plan.md; do
+for plan in $(ls "$PHASE_DIR"/* 2>/dev/null | grep -iE -- '-plan\.md$'); do
   grep "depends_on:" "$plan"
 done
 ```
@@ -699,7 +699,7 @@ Missing: No mention of fetch/API call → Issue: Key link not planned
 ## Step 8: Assess Scope
 
 ```bash
-for plan in "$PHASE_DIR"/*-plan.md; do
+for plan in $(ls "$PHASE_DIR"/* 2>/dev/null | grep -iE -- '-plan\.md$'); do
   grep -cE "<task[ >]" "$plan"   # "<task" alone also counts the <tasks> wrapper; Step 2's task_count is the same number
   grep "files_modified:" "$plan"
 done

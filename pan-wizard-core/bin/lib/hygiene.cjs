@@ -417,8 +417,9 @@ function checkFocusStale(cwd, now = Date.now()) {
   for (const task of tasks) {
     let names;
     try { names = fs.readdirSync(path.join(quickDir, task)); } catch { continue; }
-    const done = new Set(names.filter((n) => n.endsWith('-summary.md')).map((n) => n.slice(0, -'-summary.md'.length)));
-    for (const plan of names.filter((n) => n.endsWith('-plan.md') && !done.has(n.slice(0, -'-plan.md'.length)))) {
+    // Any case: an older layout wrote -PLAN.md / -SUMMARY.md.
+    const done = new Set(names.filter((n) => /-summary\.md$/i.test(n)).map((n) => n.toLowerCase().replace(/-summary\.md$/, '')));
+    for (const plan of names.filter((n) => /-plan\.md$/i.test(n) && !done.has(n.toLowerCase().replace(/-plan\.md$/, '')))) {
       let st;
       try { st = fs.statSync(path.join(quickDir, task, plan)); } catch { continue; }
       if (now - st.mtimeMs < OPEN_TASK_STALE_MS) continue;
@@ -457,9 +458,9 @@ function checkDurableState(cwd, now = Date.now()) {
   for (const ph of phases) {
     let names;
     try { names = fs.readdirSync(planningPath(cwd, 'phases', ph)); } catch { continue; }
-    for (const planName of names.filter((n) => n.endsWith('-plan.md'))) {
-      const id = planName.slice(0, -'-plan.md'.length);
-      if (names.includes(`${id}-summary.md`)) continue;
+    for (const planName of names.filter((n) => /-plan\.md$/i.test(n))) {
+      const id = planName.replace(/-plan\.md$/i, '');
+      if (names.some((n) => n.toLowerCase() === `${id}-summary.md`.toLowerCase())) continue;
       const j = `${id}${J.JOURNAL_SUFFIX}`;
       const rows = names.includes(j) ? J.readJournal(planningPath(cwd, 'phases', ph, j)) : [];
       // A task commit's PAN-Step trailer is evidence too: the plan's latest

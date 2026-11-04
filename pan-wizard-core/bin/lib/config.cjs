@@ -729,7 +729,7 @@ function cmdStandardsPhaseTrack(cwd, phaseNum, raw) {
     error('Cannot read phase directory: ' + phase.directory);
   }
 
-  const planFiles = files.filter(f => f.endsWith('-plan.md') || f === 'plan.md');
+  const planFiles = files.filter(f => /(^|-)plan\.md$/i.test(f));
   let combinedContent = '';
   for (const pf of planFiles) {
     const content = safeReadFile(path.join(phaseDir, pf));

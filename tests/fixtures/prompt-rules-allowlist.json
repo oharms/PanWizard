@@ -284,7 +284,7 @@
     "reason": "Completion by pairing (3.42.0, PAN-02): find-phase and init report incomplete_plans (plans with no summary of their own, any case), pinned by tests/state-integrity.test.cjs, tests/roadmap.test.cjs and tests/core.test.cjs. The line tells the model to take that instead of pairing files; a model-tier scenario with an orphan research summary is what can claim it."
   },
   {
-    "id": "pan-wizard-core/workflows/transition:20ae468f",
+    "id": "pan-wizard-core/workflows/transition:1fc50845",
     "reason": "State writes through the CLI (3.42.0, DD-1): state update writes the body under state.md's lock and patches only its owned frontmatter keys (no stopped_at mirror), pinned by tests/state-integrity.test.cjs. A model-tier transition scenario is what can claim it."
   },
   {

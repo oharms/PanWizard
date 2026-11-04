@@ -13,7 +13,7 @@ Find current phase directory from most recently modified files:
 
 ```bash
 # Find most recent phase directory with work
-ls -lt .planning/phases/*/*-plan.md 2>/dev/null | head -1 | sed -n 's#.*phases/\([^/]*\)/.*#\1#p'
+ls -lt .planning/phases/*/* 2>/dev/null | grep -iE -- '-plan\.md$' | head -1 | sed -n 's#.*phases/\([^/]*\)/.*#\1#p'
 ```
 
 If no active phase detected, ask user which phase they're pausing work on.

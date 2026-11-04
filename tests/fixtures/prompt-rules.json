@@ -2833,9 +2833,9 @@
    "baseline": true
   },
   {
-   "id": "pan-wizard-core/workflows/transition:20ae468f",
+   "id": "pan-wizard-core/workflows/transition:1fc50845",
    "file": "pan-wizard-core/workflows/transition.md",
-   "text": "**Use `pan-tools state update` for \"Stopped at\"** (never a raw Edit of state.md): it writes the body under state.md's lock and patches only the frontmatter keys it owns. The frontmatter has no live `stopped_at` mirror. The other two lines (Last session, Resume file) can be edited directly.",
+   "text": "**Use `pan-tools state update` for \"Stopped at\"** (never a raw Edit of state.md): it writes the body under state.md's lock and patches only the frontmatter keys it owns. The frontmatter has no live `stopped_at` mirror. Record the other two lines (Last session, Resume file) through the batched `state apply` call at the end of the workflow; never Write or Edit state.md directly.",
    "baseline": false
   },
   {
