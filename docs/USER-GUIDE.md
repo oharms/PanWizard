@@ -638,6 +638,12 @@ Disable these to speed up phases in familiar domains or when conserving tokens.
 | `execution.rollback_snapshots` | `true`, `false` | `true` | Reserved — written by the defaults but not read; no workflow creates rollback tags, so run `pan-tools rollback-snapshot <phase>` yourself before a risky phase |
 | `execution.error_pattern_learning` | `true`, `false` | `true` | Tool-failure capture: the trace hook records the failed tool calls in each subagent's own transcript (redacted) as `error/tool_error` events for `/pan:learn`. `false` turns the capture off (see [The evidence loop](#the-evidence-loop)) |
 
+### Claude Code Settings
+
+| Setting | Options | Default | What it Controls |
+|---------|---------|---------|------------------|
+| `claude.user_invoked_only` | array of command names, e.g. `["health", "update"]` | none (not written) | Claude Code commands the model may not start: the installer marks each named `/pan:<name>` command (or `pan-<name>` skill after `--unified-skills`) `disable-model-invocation: true`, so it runs only when you type it. Read by a local install and by every `/pan:update` of it; a global install takes the `--user-invoked-only a,b` flag instead (a local install merges the flag with this list). Names are `a-z`, `0-9` and `-`; anything else is ignored. Other runtimes are not affected |
+
 ### Git Branching
 
 | Setting | Options | Default | What it Controls |

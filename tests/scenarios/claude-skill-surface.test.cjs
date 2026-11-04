@@ -66,6 +66,68 @@ describe('a default Claude install leaves every command invocable by the model',
   });
 });
 
+describe('a project keeps chosen commands user-invoked only (DD-12)', () => {
+  const MARK = /^disable-model-invocation: true$/m;
+  const marked = (cmdDir) => fs.readdirSync(cmdDir).filter((f) => f.endsWith('.md') && MARK.test(fs.readFileSync(path.join(cmdDir, f), 'utf8'))).sort();
+  const withConfig = (label, cfg) => {
+    const dir = freshDir(label);
+    fs.mkdirSync(path.join(dir, '.planning'), { recursive: true });
+    if (cfg !== undefined) fs.writeFileSync(path.join(dir, '.planning', 'config.json'), typeof cfg === 'string' ? cfg : JSON.stringify(cfg));
+    return dir;
+  };
+  const dirs = [];
+  after(() => { for (const d of dirs) cleanup(d); });
+
+  test('config ["health"] marks only health.md, and a reinstall gives the same bytes', () => {
+    const dir = withConfig('uio-config', { claude: { user_invoked_only: ['health'] } });
+    dirs.push(dir);
+    install(dir, ['--claude', '--local', '--skip-warnings']);
+    const cmdDir = path.join(dir, '.claude', 'commands', 'pan');
+    assert.deepEqual(marked(cmdDir), ['health.md']);
+    const first = fs.readFileSync(path.join(cmdDir, 'health.md'));
+    install(dir, ['--claude', '--local', '--skip-warnings']);
+    assert.deepEqual(fs.readFileSync(path.join(cmdDir, 'health.md')), first, 'a reinstall (update) writes the same bytes');
+    assert.deepEqual(marked(cmdDir), ['health.md']);
+  });
+
+  test('the --unified-skills Claude mirror marks only pan-health; the shared tree keeps it plain', () => {
+    const dir = withConfig('uio-unified', { claude: { user_invoked_only: ['health'] } });
+    dirs.push(dir);
+    install(dir, ['--claude', '--local', '--unified-skills', '--skip-warnings']);
+    const skills = path.join(dir, '.claude', 'skills');
+    const markedSkills = panDirs(skills).filter((n) => MARK.test(fs.readFileSync(path.join(skills, n, 'SKILL.md'), 'utf8')));
+    assert.deepEqual(markedSkills, ['pan-health']);
+    assert.doesNotMatch(fs.readFileSync(path.join(dir, '.agents', 'skills', 'pan-health', 'SKILL.md'), 'utf8'), MARK);
+  });
+
+  for (const [label, cfg] of [['missing', undefined], ['bad-json', '{ not json'], ['not-a-list', { claude: { user_invoked_only: 'health' } }], ['bad-name', { claude: { user_invoked_only: ['../health', 'Health'] } }]]) {
+    test(`a ${label} config marks nothing`, () => {
+      const dir = withConfig(`uio-${label}`, cfg);
+      dirs.push(dir);
+      install(dir, ['--claude', '--local', '--skip-warnings']);
+      assert.deepEqual(marked(path.join(dir, '.claude', 'commands', 'pan')), []);
+    });
+  }
+
+  test('the --user-invoked-only flag works without a config, merged with one', () => {
+    const dir = withConfig('uio-flag', undefined);
+    dirs.push(dir);
+    install(dir, ['--claude', '--local', '--skip-warnings', '--user-invoked-only', 'health,cost']);
+    assert.deepEqual(marked(path.join(dir, '.claude', 'commands', 'pan')), ['cost.md', 'health.md']);
+    fs.writeFileSync(path.join(dir, '.planning', 'config.json'), JSON.stringify({ claude: { user_invoked_only: ['progress'] } }));
+    install(dir, ['--claude', '--local', '--skip-warnings', '--user-invoked-only=health']);
+    assert.deepEqual(marked(path.join(dir, '.claude', 'commands', 'pan')), ['health.md', 'progress.md']);
+  });
+
+  test('a flag value that is not a command name is refused', () => {
+    const dir = freshDir('uio-badflag');
+    dirs.push(dir);
+    const r = installInto(dir, ['--claude', '--local', '--skip-warnings', '--user-invoked-only', 'He alth']);
+    assert.equal(r.success, false);
+    assert.match(stripAnsi(r.output + (r.error || '')), /--user-invoked-only takes a comma-separated list/);
+  });
+});
+
 describe('a --unified-skills install gives Claude Code its own copy of every skill (R32)', () => {
   let dir;
   let output;

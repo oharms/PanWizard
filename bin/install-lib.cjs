@@ -130,6 +130,75 @@ function extractFrontmatterAndBody(content) {
   };
 }
 
+/**
+ * Mark a Claude Code command or skill as user-invoked only: add
+ * `disable-model-invocation: true` to its frontmatter. Claude Code then keeps it out
+ * of the listing it sends the model and the model cannot start it; it still runs as
+ * /pan:<name>. Since 3.41.3 no command is marked by default (it kept the model from
+ * starting or chaining PAN's commands); a project names the ones it wants
+ * (`claude.user_invoked_only`, `--user-invoked-only`, DD-12). Claude only. Idempotent,
+ * keeps the line ending; content without frontmatter is returned unchanged.
+ * @param {string} content
+ * @returns {string}
+ */
+function withClaudeUserInvokedOnly(content) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+  if (!m || /^disable-model-invocation:/m.test(m[1])) return content;
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const end = m.index + m[0].length - 3; // the closing ---
+  return content.slice(0, end) + 'disable-model-invocation: true' + eol + content.slice(end);
+}
+
+/** A command name a project may keep user-invoked only (the `<name>` of /pan:<name>). */
+const USER_INVOKED_NAME = /^[a-z0-9-]+$/;
+
+/**
+ * The commands a project keeps user-invoked only on Claude Code:
+ * `.planning/config.json` → `claude.user_invoked_only` (string[]). Read-only; names
+ * that are not `[a-z0-9-]+` are dropped, and any error (no file, bad JSON, not a list)
+ * gives [].
+ * @param {string} projectRoot
+ * @returns {string[]}
+ */
+function readUserInvokedOnly(projectRoot) {
+  try {
+    const cfg = JSON.parse(require('fs').readFileSync(path.join(projectRoot, '.planning', 'config.json'), 'utf8'));
+    const list = cfg && cfg.claude && cfg.claude.user_invoked_only;
+    if (!Array.isArray(list)) return [];
+    return [...new Set(list.filter((n) => typeof n === 'string' && USER_INVOKED_NAME.test(n)))];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The names given by `--user-invoked-only a,b` (or `--user-invoked-only=a,b`).
+ * @param {string[]} argv
+ * @param {string} [flag]
+ * @returns {{names: string[], invalid: string[], missing: boolean}}
+ */
+function parseUserInvokedOnlyFlag(argv, flag = '--user-invoked-only') {
+  const out = { names: [], invalid: [], missing: false };
+  for (let i = 0; i < argv.length; i++) {
+    let value = null;
+    if (argv[i] === flag) {
+      value = argv[i + 1];
+      if (!value || value.startsWith('-')) { out.missing = true; continue; }
+      i++;
+    } else if (argv[i].startsWith(`${flag}=`)) {
+      value = argv[i].slice(flag.length + 1);
+      if (!value) { out.missing = true; continue; }
+    } else {
+      continue;
+    }
+    for (const n of value.split(',').map((s) => s.trim()).filter(Boolean)) {
+      (USER_INVOKED_NAME.test(n) ? out.names : out.invalid).push(n);
+    }
+  }
+  out.names = [...new Set(out.names)];
+  return out;
+}
+
 /** Extract a field value from YAML frontmatter string */
 function extractFrontmatterField(frontmatter, fieldName) {
   const regex = new RegExp(`^${fieldName}:\\s*(.+)$`, 'm');
@@ -2758,6 +2827,9 @@ const {
 // ─── Exports ────────────────────────────────────────────────────────────────
 
 module.exports = {
+  withClaudeUserInvokedOnly,
+  readUserInvokedOnly,
+  parseUserInvokedOnlyFlag,
   renderCommandAlias,
   // Constants
   colorNameToHex,

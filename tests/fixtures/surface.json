@@ -410,7 +410,8 @@
     "--opencode",
     "--skip-warnings",
     "--unified-skills",
-    "--uninstall"
+    "--uninstall",
+    "--user-invoked-only"
   ],
   "hooks": [
     {

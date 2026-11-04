@@ -2018,3 +2018,50 @@ describe('an install that copied no hook scripts registers none (M24)', () => {
     });
   }
 });
+
+describe('user-invoked-only Claude commands a project chooses (DD-12)', () => {
+  // Claude Code keeps a command marked disable-model-invocation out of the model's
+  // listing; it still runs as /pan:<name>. Since 3.41.3 none is marked by default.
+  test('withClaudeUserInvokedOnly adds the field once, keeping the line ending', () => {
+    const md = '---\nname: pan:help\ndescription: Show help\n---\nBody\n';
+    const out = lib.withClaudeUserInvokedOnly(md);
+    assert.equal(out, '---\nname: pan:help\ndescription: Show help\ndisable-model-invocation: true\n---\nBody\n');
+    assert.equal(lib.withClaudeUserInvokedOnly(out), out, 'idempotent');
+    assert.match(lib.withClaudeUserInvokedOnly(md.replace(/\n/g, '\r\n')), /description: Show help\r\ndisable-model-invocation: true\r\n---/);
+  });
+
+  test('content without frontmatter, or already marked, is unchanged', () => {
+    assert.equal(lib.withClaudeUserInvokedOnly('plain body\n'), 'plain body\n');
+    const marked = '---\nname: x\ndisable-model-invocation: false\n---\nB\n';
+    assert.equal(lib.withClaudeUserInvokedOnly(marked), marked, 'an explicit value is the author\'s');
+  });
+
+  test('readUserInvokedOnly reads claude.user_invoked_only, and [] on any error', () => {
+    const fs = require('fs');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-uio-'));
+    try {
+      assert.deepEqual(lib.readUserInvokedOnly(dir), [], 'no config');
+      fs.mkdirSync(path.join(dir, '.planning'));
+      const cfg = (v) => fs.writeFileSync(path.join(dir, '.planning', 'config.json'), typeof v === 'string' ? v : JSON.stringify(v));
+      cfg('{ bad');
+      assert.deepEqual(lib.readUserInvokedOnly(dir), [], 'bad JSON');
+      cfg({ claude: { user_invoked_only: 'health' } });
+      assert.deepEqual(lib.readUserInvokedOnly(dir), [], 'not a list');
+      cfg({ claude: { user_invoked_only: ['health', 'health', '../x', 'Cost', 7, 'phase-budget'] } });
+      assert.deepEqual(lib.readUserInvokedOnly(dir), ['health', 'phase-budget']);
+    } finally { cleanup(dir); }
+    // config-set and health know the key, so neither warns that PAN does not read it.
+    const { isKnownConfigPath } = require('../pan-wizard-core/bin/lib/config.cjs');
+    assert.equal(isKnownConfigPath('claude.user_invoked_only'), true);
+    assert.equal(isKnownConfigPath('claude.user_invoked'), false);
+  });
+
+  test('parseUserInvokedOnlyFlag takes both forms and reports bad names', () => {
+    assert.deepEqual(lib.parseUserInvokedOnlyFlag(['--claude']), { names: [], invalid: [], missing: false });
+    assert.deepEqual(lib.parseUserInvokedOnlyFlag(['--user-invoked-only', 'health, cost', '--local']).names, ['health', 'cost']);
+    assert.deepEqual(lib.parseUserInvokedOnlyFlag(['--user-invoked-only=health']).names, ['health']);
+    assert.equal(lib.parseUserInvokedOnlyFlag(['--user-invoked-only']).missing, true);
+    assert.equal(lib.parseUserInvokedOnlyFlag(['--user-invoked-only', '--local']).missing, true);
+    assert.deepEqual(lib.parseUserInvokedOnlyFlag(['--user-invoked-only', 'He alth']).invalid, ['He alth']);
+  });
+});
