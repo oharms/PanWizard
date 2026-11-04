@@ -100,11 +100,14 @@ describe('a blocked commit does not leave files staged', () => {
   });
 
   test('the default .planning/ path is restored too, not just explicit --files', () => {
-    // The realistic trigger: DEFAULT_SENSITIVE_PATTERNS contains bare unanchored
-    // words, so a phase directory named for its topic matches with no secret in it.
+    // Before 3.42 the trigger was a phase directory named for its topic
+    // (03-secrets-design) matching the bare word "secret"; the defaults are now basename
+    // rules (PAN-11), so that alone commits. A credentials file inside the planning tree
+    // still blocks, and the directory expansion must still be unstaged.
     const dir = path.join(repo, '.planning', 'phases', '03-secrets-design');
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, '03-01-plan.md'), 'design notes, no secrets\n');
+    fs.writeFileSync(path.join(dir, 'credentials.json'), '{}\n');
 
     const { code, out } = pan(['commit', 'docs: planning']);
 
@@ -112,8 +115,8 @@ describe('a blocked commit does not leave files staged', () => {
     assert.match(out, /sensitive_file_detected/);
     assert.deepEqual(staged(), [], 'a directory expansion must be unstaged as well');
     // The block must not claim a secret was found in the file's contents.
-    assert.match(out, /filename\/path, not content/,
-      'the hint must say this matched a path and can be a false positive');
+    assert.match(out, /Matched on the file name/,
+      'the hint must say this matched a file name, not content');
   });
 
   test('a clean commit still works and reports the hash', () => {

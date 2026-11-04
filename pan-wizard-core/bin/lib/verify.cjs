@@ -1003,6 +1003,12 @@ function checkConfigFile(cwd, addIssue, repairs) {
       addIssue('info', 'I006', `${CONFIG_FILE}: PAN does not read ${unknown.length === 1 ? 'this key' : 'these keys'}: ${unknown.join(', ')}`,
         `Check the spelling (${hints.join('; ')}), or remove the key. pan-tools config-set names an unknown key when you set it.`);
     }
+    // I007 (PAN-11): the pre-3.42 sensitive-pattern defaults, stored by an older install.
+    // PAN already reads them as today's basename defaults; this says so.
+    if (parsed.commit && require('./core.cjs').isLegacySensitivePatterns(parsed.commit.sensitive_patterns)) {
+      addIssue('info', 'I007', `${CONFIG_FILE}: commit.sensitive_patterns is the pre-3.42 default list (bare words such as "secret" and "token" anywhere in a path); PAN reads it as the current basename defaults`,
+        'Remove commit.sensitive_patterns from config.json (or replace it with your own list) to make that explicit');
+    }
   } catch (err) {
     // JSON parse failed -- config is corrupt and should be reset
     addIssue('error', 'E005', `${CONFIG_FILE}: JSON parse error - ${err.message}`, 'Run /pan:health --repair to reset to defaults', true);

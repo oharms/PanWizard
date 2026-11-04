@@ -21,6 +21,8 @@ const {
   isVerificationFile,
   getPlanId,
   getSummaryId,
+  DEFAULT_SENSITIVE_PATTERNS,
+  LEGACY_SENSITIVE_PATTERNS,
 } = require('./constants.cjs');
 const { planningPath, planningRel } = require('./utils.cjs');
 
@@ -430,6 +432,24 @@ function withEol(text, eol) {
 }
 
 /**
+ * A config's `commit` section with a pre-3.42 default pattern list (stored verbatim by
+ * an older install) read as today's default (DD-7, PAN-11). A list the user changed is
+ * theirs and is returned untouched. `validate health` reports the stale list.
+ * @param {Object|undefined} commit - config.json's `commit` section
+ * @returns {Object|undefined}
+ */
+function withCurrentSensitivePatterns(commit) {
+  if (!commit || !isLegacySensitivePatterns(commit.sensitive_patterns)) return commit;
+  return { ...commit, sensitive_patterns: [...DEFAULT_SENSITIVE_PATTERNS] };
+}
+
+/** True when `patterns` is exactly the pre-3.42 default list (in any order). */
+function isLegacySensitivePatterns(patterns) {
+  return Array.isArray(patterns) && patterns.length === LEGACY_SENSITIVE_PATTERNS.length
+    && LEGACY_SENSITIVE_PATTERNS.every((x) => patterns.includes(x));
+}
+
+/**
  * Load project config from .planning/config.json, merging with defaults.
  * Handles nested config sections (planning.*, workflow.*, git.*) and flat keys.
  * @param {string} cwd - Project root directory
@@ -493,7 +513,7 @@ function loadConfig(cwd) {
       parallelization,
       brave_search: get('brave_search') ?? defaults.brave_search,
       budget: parsed.budget || { default_points: 50, micro_threshold_tasks: 3, micro_threshold_files: 2, enforce: false },
-      commit: parsed.commit || { safety_checks: true, conventional_types: true, sensitive_patterns: ['\\.env$', '\\.pem$', '\\.key$', 'credentials', 'secret', 'password', 'token'] },
+      commit: withCurrentSensitivePatterns(parsed.commit) || { safety_checks: true, conventional_types: true, sensitive_patterns: [...DEFAULT_SENSITIVE_PATTERNS] },
       execution: parsed.execution || { default_mode: 'wave_order', rollback_snapshots: true, error_pattern_learning: true },
       focus: parsed.focus || { auto_commit: true },
       model_overrides: parsed.model_overrides || {},
@@ -517,7 +537,7 @@ function loadConfig(cwd) {
     return {
       ...defaults,
       budget: { default_points: 50, micro_threshold_tasks: 3, micro_threshold_files: 2 },
-      commit: { safety_checks: true, conventional_types: true, sensitive_patterns: ['\\.env$', '\\.pem$', '\\.key$', 'credentials', 'secret', 'password', 'token'] },
+      commit: { safety_checks: true, conventional_types: true, sensitive_patterns: [...DEFAULT_SENSITIVE_PATTERNS] },
       execution: { default_mode: 'wave_order', rollback_snapshots: true, error_pattern_learning: true },
       focus: { auto_commit: true },
       model_overrides: {},
@@ -1516,6 +1536,7 @@ function scanSourceTodos(cwd) {
 }
 
 module.exports = {
+  isLegacySensitivePatterns,
   MODEL_PROFILES,
   AGENT_BASE_EFFORT,
   EFFORT_ORDER,

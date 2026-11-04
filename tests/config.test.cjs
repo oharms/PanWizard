@@ -112,9 +112,13 @@ describe('config-ensure-section command', () => {
     assert.strictEqual(config.commit.safety_checks, true, 'commit safety_checks should be true');
     assert.strictEqual(config.commit.conventional_types, true, 'commit conventional_types should be true');
     assert.ok(Array.isArray(config.commit.sensitive_patterns), 'sensitive_patterns should be an array');
-    assert.ok(config.commit.sensitive_patterns.length >= 7, 'should have at least 7 sensitive patterns');
-    assert.ok(config.commit.sensitive_patterns.includes('\\.env$'), 'should include .env pattern');
-    assert.ok(config.commit.sensitive_patterns.includes('credentials'), 'should include credentials pattern');
+    // 3.42 (PAN-11): the defaults are basename rules (DEFAULT_SENSITIVE_PATTERNS), not the
+    // old seven bare words that matched `secret`/`token` anywhere in a path.
+    const { DEFAULT_SENSITIVE_PATTERNS } = require('../pan-wizard-core/bin/lib/constants.cjs');
+    assert.deepStrictEqual(config.commit.sensitive_patterns, DEFAULT_SENSITIVE_PATTERNS);
+    const matches = (name) => config.commit.sensitive_patterns.some((p) => new RegExp(p, 'i').test(name));
+    assert.ok(matches('.env') && matches('credentials.json'), '.env and credentials files are covered');
+    assert.ok(!matches('secret-rotation.md'), 'a file merely named for a secret is not');
   });
 
   test('config contains execution section with defaults', () => {
@@ -1023,5 +1027,19 @@ describe('config-set and health name unknown keys (M26)', () => {
     assert.ok(i006, JSON.stringify(h.info));
     assert.match(i006.message, /worfklow/);
     assert.match(i006.fix, /worfklow → workflow\?/);
+  });
+
+  // PAN-11: a config.json written before 3.42 stored the old bare-word pattern list.
+  test('validate health reports the pre-3.42 sensitive_patterns list as I007 info; the new defaults raise none', () => {
+    const p = path.join(tmpDir, '.planning', 'config.json');
+    const clean = JSON.parse(runPanTools('validate health', tmpDir).output);
+    assert.ok(!(clean.info || []).some((i) => i.code === 'I007'), 'the current defaults raise no I007');
+    const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+    cfg.commit = { safety_checks: true, sensitive_patterns: ['\\.env$', '\\.pem$', '\\.key$', 'credentials', 'secret', 'password', 'token'] };
+    fs.writeFileSync(p, JSON.stringify(cfg));
+    const h = JSON.parse(runPanTools('validate health', tmpDir).output);
+    const i007 = (h.info || []).find((i) => i.code === 'I007');
+    assert.ok(i007, JSON.stringify(h.info));
+    assert.match(i007.fix, /Remove commit\.sensitive_patterns/);
   });
 });

@@ -172,6 +172,7 @@ Report final status.
 | I004 | info | planning-with-files shares the tree — PAN leaves its files alone | No |
 | I005 | info | The planning tree is gitignored while commit_docs is true — planning commits commit nothing | No |
 | I006 | info | config.json holds keys PAN's code does not read (usually a typo); the fix names the nearest known key. It also lists `gates` and `safety` from templates/config.json: the `custom`-mode conditions in transition.md and execute-plan.md read `gates`; nothing reads `safety` (transition.md asks before skipping plans in every mode) | No |
+| I007 | info | config.json stores the pre-3.42 default `commit.sensitive_patterns`; PAN already reads it as the current basename defaults, so this only says so. Fix: remove the key or set your own list | No |
 | STATE_REQ_DRIFT | warning | state.md complete but requirements.md has unchecked boxes | Yes |
 | STATE_ROADMAP_DRIFT | warning | state.md complete but roadmap.md has unchecked plan boxes | Yes |
 | VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record | No |
