@@ -27,7 +27,7 @@ Example: /pan:insert-phase 72 Fix critical auth bug
 
 Exit.
 
-Validate the first argument is a phase number (digits, optionally `.`-separated decimals).
+Validate the first argument is a phase number (digits, an optional letter, optionally `.`-separated decimals: `12`, `12A`, `29.4`).
 </step>
 
 <step name="init_context">

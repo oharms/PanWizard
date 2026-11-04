@@ -4422,7 +4422,7 @@ Core planning files are resolved in-workflow (`init milestone-op`) and loaded on
 **Planning tree:** the project may hold several. `init milestone-op` reports the `planning_root` it resolved; use that root for every glob below rather than assuming `.planning/`. Pass `--track <name>` to audit a specific tree, or run `init milestone-op --all-tracks` first to see every tree's milestone state.
 
 **Completed Work:** (relative to the resolved `planning_root`)
-Glob: {planning_root}/phases/*/*-summary.md
+Glob: {planning_root}/phases/*/*-summary.md (also `*-SUMMARY.md`: an older layout wrote upper-case names)
 Glob: {planning_root}/phases/*/*-verification.md
 </context>
 
@@ -4538,7 +4538,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
 
 1. **Verify readiness:**
 
-   - Check all phases in milestone have completed plans (summary.md exists)
+   - Check all phases in milestone have completed plans: `pan-tools roadmap analyze` gives each phase's `disk_status` (`complete` only when every plan has its own summary); never decide it by looking for summary files yourself
    - Present milestone scope and stats
    - Wait for confirmation
 

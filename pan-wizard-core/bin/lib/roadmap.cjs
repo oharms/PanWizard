@@ -515,10 +515,10 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
   }
 
   // Check individual plan checkboxes for plans that have matching summaries
-  const completedPlanIds = new Set(phaseInfo.summaries.map(s => getSummaryId(s)));
+  const completedPlanIds = new Set(phaseInfo.summaries.map(s => getSummaryId(s).toLowerCase()));
   for (const plan of phaseInfo.plans) {
     const planId = getPlanId(plan);
-    if (completedPlanIds.has(planId)) {
+    if (completedPlanIds.has(planId.toLowerCase())) {
       const planEscaped = escapeRegex(plan);
       const planCheckbox = new RegExp(
         `(-\\s*\\[) (\\]\\s*${planEscaped})`,

@@ -369,7 +369,7 @@ function partitionWave(plans) {
 
 function buildPlanIndex(phaseDir, planFiles, summaryFiles) {
   const completedPlanIds = new Set(
-    summaryFiles.map(summaryFile => getSummaryId(summaryFile))
+    summaryFiles.map(summaryFile => getSummaryId(summaryFile).toLowerCase())
   );
 
   const plans = [];
@@ -410,7 +410,7 @@ function buildPlanIndex(phaseDir, planFiles, summaryFiles) {
       if (objMatch) objective = objMatch[1].split('\n')[0].trim();
     }
 
-    const hasSummary = completedPlanIds.has(planId);
+    const hasSummary = completedPlanIds.has(planId.toLowerCase());
     if (!hasSummary) incomplete.push(planId);
 
     const rawDeps = frontmatter.depends_on || frontmatter['depends-on'];

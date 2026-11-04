@@ -444,7 +444,7 @@ Route on `incomplete_plans` (the plans with no summary of their own), never on a
 
 | Condition | Route | Action |
 |-----------|-------|--------|
-| `incomplete_plans` not empty | **A: More plans** | Find next PLAN without SUMMARY. Yolo: auto-continue. Interactive: show next plan, suggest `/pan:exec-phase {phase}` + `/pan:verify-phase`. STOP here. |
+| `incomplete_plans` not empty | **A: More plans** | Take the first entry of `incomplete_plans`. Yolo: auto-continue. Interactive: show next plan, suggest `/pan:exec-phase {phase}` + `/pan:verify-phase`. STOP here. |
 | `incomplete_plans` empty, current < highest phase | **B: Phase done** | Show completion, suggest `/pan:plan-phase {Z+1}` + `/pan:verify-phase {Z}` + `/pan:discuss-phase {Z+1}` |
 | `incomplete_plans` empty, current = highest phase | **C: Milestone done** | Show banner, suggest `/pan:milestone-done` + `/pan:verify-phase` + `/pan:add-phase` |
 

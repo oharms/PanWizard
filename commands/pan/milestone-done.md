@@ -71,7 +71,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
 
 1. **Verify readiness:**
 
-   - Check all phases in milestone have completed plans (summary.md exists)
+   - Check all phases in milestone have completed plans: `pan-tools roadmap analyze` gives each phase's `disk_status` (`complete` only when every plan has its own summary); never decide it by looking for summary files yourself
    - Present milestone scope and stats
    - Wait for confirmation
 

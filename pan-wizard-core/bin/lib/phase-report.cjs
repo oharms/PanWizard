@@ -181,7 +181,7 @@ function collectPhaseData(cwd, phaseNumber, opts = {}) {
   const uatFile = files.find(f => f.endsWith('-uat.md') || f === 'uat.md');
   const recordFile = files.find(f => f.endsWith('-record.md') || f === 'record.md');
 
-  const summaryIds = new Set(summaryFiles.map(getSummaryId));
+  const summaryIds = new Set(summaryFiles.map((f) => getSummaryId(f).toLowerCase()));
   const plans = planFiles.map(f => {
     const fm = extractFrontmatter(safeReadFile(path.join(rp.dir, f)) || '');
     const id = getPlanId(f);
@@ -192,7 +192,7 @@ function collectPhaseData(cwd, phaseNumber, opts = {}) {
       must_haves: asArray(pick(fm, 'must_haves', 'must-haves')),
       requirements: asArray(pick(fm, 'requirements')),
       autonomous: pick(fm, 'autonomous') ?? null,
-      hasSummary: summaryIds.has(id),
+      hasSummary: summaryIds.has(id.toLowerCase()),
     };
   });
   const summaries = summaryFiles.map(f => {

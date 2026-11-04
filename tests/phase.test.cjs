@@ -2314,3 +2314,22 @@ describe('find-phase sees upper-case plans and pairs them with their own summari
     assert.deepStrictEqual(out.incomplete_plans, ['05-02-PLAN.md']);
   });
 });
+
+// Doc-audit pass 11 (3.42.0): ids were compared case-sensitively in the plan index, so a plan
+// whose summary differed only in case (`03A-01-PLAN.md`, `03a-01-summary.md`) stayed incomplete
+// there while the counts called it done.
+describe('plan and summary ids compare in any case', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('phase-plan-index marks a plan done when its summary differs only in case', () => {
+    const dir = path.join(tmpDir, '.planning', 'phases', '03A-letter');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '03A-01-PLAN.md'), '---\nwave: 1\n---\n# p\n');
+    fs.writeFileSync(path.join(dir, '03a-01-summary.md'), '# s\n');
+    const out = JSON.parse(runPanTools('phase-plan-index 03A', tmpDir).output);
+    assert.deepStrictEqual(out.incomplete, [], JSON.stringify(out));
+    assert.equal(out.plans[0].has_summary, true);
+  });
+});

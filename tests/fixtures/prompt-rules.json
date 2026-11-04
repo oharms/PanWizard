@@ -1765,6 +1765,12 @@
    "baseline": true
   },
   {
+   "id": "commands/pan/milestone-done:aa16ff9e",
+   "file": "commands/pan/milestone-done.md",
+   "text": "Check all phases in milestone have completed plans: `pan-tools roadmap analyze` gives each phase's `disk_status` (`complete` only when every plan has its own summary); never decide it by looking for summary files yourself",
+   "baseline": false
+  },
+  {
    "id": "commands/pan/milestone-done:350ded9b",
    "file": "commands/pan/milestone-done.md",
    "text": "**Archive before deleting:** Always create archive files before updating/deleting originals",

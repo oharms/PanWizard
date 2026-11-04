@@ -290,5 +290,9 @@
   {
     "id": "pan-wizard-core/workflows/research-phase:a141c231",
     "reason": "Phase directories through the engine (3.42.0): scaffold phase-dir creates the directory under the planning root (commands.cjs cmdScaffold), pinned by tests/commands*.test.cjs; the line tells research-phase to use it instead of mkdir, as discuss-phase does. A model-tier research scenario is what can claim it."
+  },
+  {
+    "id": "commands/pan/milestone-done:aa16ff9e",
+    "reason": "Completion by pairing (3.42.0, PAN-02): roadmap analyze reports disk_status from countSummarizedPlans (complete only when every plan has its own summary), pinned by tests/consolidate-surfaces.test.cjs (an orphan summary does not finish a plan). The line tells the model to read that instead of looking for summary files; a model-tier milestone-done scenario is what can claim it."
   }
 ]

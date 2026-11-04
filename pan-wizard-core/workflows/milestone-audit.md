@@ -144,7 +144,7 @@ For each phase's verification.md, extract the expanded requirements table:
 
 For each phase's summary.md, extract `requirements-completed` from YAML frontmatter:
 ```bash
-for summary in "$PLANNING_ROOT"/phases/*-*/*-summary.md; do
+for summary in $(ls "$PLANNING_ROOT"/phases/*-*/* 2>/dev/null | grep -iE -- '-summary\.md$'); do   # any case
   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs frontmatter get "$summary" --field requirements-completed --raw
 done
 ```

@@ -322,10 +322,10 @@ function cmdVerifyPhaseCompleteness(cwd, phase, raw) {
 
   // Extract plan IDs (everything before -plan.md)
   const planIds = new Set(plans.map(p => p.replace(/-PLAN\.md$/i, '')));
-  const summaryIds = new Set(summaries.map(s => s.replace(/-SUMMARY\.md$/i, '')));
+  const summaryIds = new Set(summaries.map(s => s.replace(/-SUMMARY\.md$/i, '').toLowerCase()));
 
   // Plans without summaries
-  const incompletePlans = [...planIds].filter(id => !summaryIds.has(id));
+  const incompletePlans = [...planIds].filter(id => !summaryIds.has(id.toLowerCase()));
   if (incompletePlans.length > 0) {
     errors.push(`Plans without summaries: ${incompletePlans.join(', ')}`);
   }
