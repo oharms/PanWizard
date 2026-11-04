@@ -736,7 +736,9 @@
     "validateAll:function"
   ],
   "lock.cjs": [
+    "DEFAULT_STALE_MS:number",
     "acquireLock:function",
+    "describeLock:function",
     "holdLock:function",
     "holderGone:function",
     "isHeld:function",
