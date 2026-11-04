@@ -443,15 +443,16 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "" --files .planning/cod
 If `USER_SETUP_CREATED=true`: display `⚠️ USER SETUP REQUIRED` with path + env/config tasks at TOP.
 
 ```bash
-ls -1 .planning/phases/[current-phase-dir]/*-plan.md 2>/dev/null | wc -l
-ls -1 .planning/phases/[current-phase-dir]/*-summary.md 2>/dev/null | wc -l
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase "${PHASE}"
 ```
+
+Route on `incomplete_plans` (the plans with no summary of their own), never on a count of files: a summary with no plan, such as a research summary, does not finish a plan.
 
 | Condition | Route | Action |
 |-----------|-------|--------|
-| summaries < plans | **A: More plans** | Find next PLAN without SUMMARY. Yolo: auto-continue. Interactive: show next plan, suggest `/pan:exec-phase {phase}` + `/pan:verify-phase`. STOP here. |
-| summaries = plans, current < highest phase | **B: Phase done** | Show completion, suggest `/pan:plan-phase {Z+1}` + `/pan:verify-phase {Z}` + `/pan:discuss-phase {Z+1}` |
-| summaries = plans, current = highest phase | **C: Milestone done** | Show banner, suggest `/pan:milestone-done` + `/pan:verify-phase` + `/pan:add-phase` |
+| `incomplete_plans` not empty | **A: More plans** | Find next PLAN without SUMMARY. Yolo: auto-continue. Interactive: show next plan, suggest `/pan:exec-phase {phase}` + `/pan:verify-phase`. STOP here. |
+| `incomplete_plans` empty, current < highest phase | **B: Phase done** | Show completion, suggest `/pan:plan-phase {Z+1}` + `/pan:verify-phase {Z}` + `/pan:discuss-phase {Z+1}` |
+| `incomplete_plans` empty, current = highest phase | **C: Milestone done** | Show banner, suggest `/pan:milestone-done` + `/pan:verify-phase` + `/pan:add-phase` |
 
 All routes: `/clear` first for fresh context.
 </step>

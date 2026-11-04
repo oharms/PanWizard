@@ -44,21 +44,23 @@ DECIMAL_PHASE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase next-deci
 
 ## Examples
 
-| Existing Phases | Next Phase |
-|-----------------|------------|
-| 06 only | 06.1 |
-| 06, 06.1 | 06.2 |
-| 06, 06.1, 06.2 | 06.3 |
-| 06, 06.1, 06.3 (gap) | 06.4 |
+| Existing Phases | After | Next Phase |
+|-----------------|-------|------------|
+| 06 only | 06 | 06.1 |
+| 06, 06.1 | 06 | 06.2 |
+| 06, 06.1, 06.2 | 06 | 06.3 |
+| 06, 06.1, 06.3 (gap) | 06 | 06.4 |
+| 29, 29.4 | 29.4 | 29.5 (the next sibling) |
+| 29, 29.4, 29.5 | 29.4 | 29.4.1 (`nested: true`: 29.5 is taken) |
 
-## Directory Naming
+Numbers already used by a phase directory or by a `### Phase N` heading in roadmap.md are never handed out again.
 
-Decimal phase directories use the full decimal number:
+## Inserting the phase
+
+Insert with `phase insert`, not by creating the directory yourself. It picks the same number `next-decimal` reports, creates `.planning/phases/<number>-<slug>/`, and writes the roadmap's detail section, checklist entry and Progress row, with the phase depending on the one before it:
 
 ```bash
-SLUG=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs generate-slug "$DESCRIPTION" --raw)
-PHASE_DIR=".planning/phases/${DECIMAL_PHASE}-${SLUG}"
-mkdir -p "$PHASE_DIR"
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase insert "${AFTER_PHASE}" "$DESCRIPTION"
 ```
 
-Example: `.planning/phases/06.1-fix-critical-auth-bug/`
+Example: `.planning/phases/06.1-fix-critical-auth-bug/`. Do not create phase directories by hand: a directory with no roadmap section, Progress row or dependency is a phase the rest of PAN cannot see.

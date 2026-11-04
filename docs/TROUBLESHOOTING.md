@@ -250,7 +250,7 @@ The limit is per task: three auto-fix attempts in all, whichever of Rules 1-3 th
 **Fix options (from least to most destructive):**
 
 1. **Auto-repair:** Run `/pan:health --repair` for config and checkbox drift. It never rewrites an existing state.md, so fix the file by hand (option 2) or rebuild it (option 3)
-2. **Manual fix:** Edit `.planning/state.md` directly -- ensure fields use `**Field:** value` format and the YAML frontmatter matches
+2. **Manual fix:** Edit the `**Field:** value` lines in the body of `.planning/state.md`, then run `pan-tools memory rebuild --apply`, which patches the position keys of the frontmatter in place from them
 3. **Reconstruct from disk:** Delete state.md and run `/pan:resume`, which offers to rebuild it from project.md, roadmap.md and the phase summaries (`/pan:health --repair` writes only a minimal scaffold whose current phase reads `(determining...)`) -- `/pan:progress` does not regenerate state.md; with it missing it points you at `/pan:new-project`
 4. **Full reset:** restore `.planning/roadmap.md` from git (or recreate it with `/pan:milestone-new`), delete `.planning/state.md`, then run `/pan:resume` to rebuild state.md from the roadmap (`/pan:health --repair` writes only a minimal scaffold: the roadmap's milestone, `Current phase: (determining...)`, `Status: Resuming`). `/pan:new-project` refuses to run while `project.md` exists — delete that too only for a true from-scratch reset
 

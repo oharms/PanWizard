@@ -2131,6 +2131,12 @@
    "baseline": true
   },
   {
+   "id": "pan-wizard-core/workflows/execute-plan:6f941b93",
+   "file": "pan-wizard-core/workflows/execute-plan.md",
+   "text": "Route on `incomplete_plans` (the plans with no summary of their own), never on a count of files: a summary with no plan, such as a research summary, does not finish a plan.",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/focus-doc-audit:bc89865f",
    "file": "pan-wizard-core/workflows/focus-doc-audit.md",
    "text": "**NEVER audit, modify, or report issues in these PAN directories:**",
@@ -2701,6 +2707,12 @@
    "baseline": false
   },
   {
+   "id": "pan-wizard-core/workflows/progress:d6411237",
+   "file": "pan-wizard-core/workflows/progress.md",
+   "text": "`plans` lists the phase's plans and `incomplete_plans` the ones with no summary of their own; never count summary files, since a summary with no plan (a research summary) finishes nothing. State: \"This phase has {X} plans, {Z} without a summary.\"",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/quick:4387c189",
    "file": "pan-wizard-core/workflows/quick.md",
    "text": "Record the task through the engine. It creates the \"### Quick Tasks Completed\" table after \"### Blockers/Concerns\" when it is missing, numbers the row, and keeps an existing table's columns. Pass `description_cell` exactly as init returned it, never `$DESCRIPTION`: init escapes `|` and folds line breaks, and a raw `|` would split the row.",
@@ -2821,9 +2833,9 @@
    "baseline": false
   },
   {
-   "id": "pan-wizard-core/workflows/transition:2a94d650",
+   "id": "pan-wizard-core/workflows/transition:8e989b0b",
    "file": "pan-wizard-core/workflows/transition.md",
-   "text": "If it returns `answer_pause`, a question asked earlier is still open (`pause` holds its `question` and the answers its `expects` allows). Stop the transition there and show the user that question; do not answer it yourself. If it returns `focus`, focus work comes first: show its `detail` and `command`. Ask the router again once either is dealt with.",
+   "text": "If it returns `answer_pause`, a question asked earlier is still open (`pause` holds its `question` and the answers its `expects` suggests). Show it and offer to answer it; record a reply in the user's own words when it is not one of the options, and do not answer it yourself. It never blocks what the user asked for. If it returns `focus`, focus work comes first: show its `detail` and `command`. Ask the router again once either is dealt with.",
    "baseline": false
   },
   {
@@ -2963,6 +2975,18 @@
    "file": "pan-wizard-core/references/continuation-format.md",
    "text": "**`/clear` explanation** — always include, keeps it concise but explains why",
    "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/decimal-phase-calculation:f29b411d",
+   "file": "pan-wizard-core/references/decimal-phase-calculation.md",
+   "text": "Numbers already used by a phase directory or by a `### Phase N` heading in roadmap.md are never handed out again.",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/references/decimal-phase-calculation:bbedaed9",
+   "file": "pan-wizard-core/references/decimal-phase-calculation.md",
+   "text": "Example: `.planning/phases/06.1-fix-critical-auth-bug/`. Do not create phase directories by hand: a directory with no roadmap section, Progress row or dependency is a phase the rest of PAN cannot see.",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/references/design-methodology:4090055a",

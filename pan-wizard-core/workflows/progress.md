@@ -149,12 +149,11 @@ Its `action` picks the route below: `execute` → **Route A**, `plan` → **Rout
 List files in the current phase directory:
 
 ```bash
-ls -1 .planning/phases/[current-phase-dir]/*-plan.md 2>/dev/null | wc -l
-ls -1 .planning/phases/[current-phase-dir]/*-summary.md 2>/dev/null | wc -l
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase "{current phase}"
 ls -1 .planning/phases/[current-phase-dir]/*-uat.md 2>/dev/null | wc -l
 ```
 
-State: "This phase has {X} plans, {Y} summaries."
+`plans` lists the phase's plans and `incomplete_plans` the ones with no summary of their own; never count summary files, since a summary with no plan (a research summary) finishes nothing. State: "This phase has {X} plans, {Z} without a summary."
 
 **Step 1.5: Check for unaddressed UAT gaps**
 
@@ -173,8 +172,8 @@ Track:
 | Condition | Meaning | Action |
 |-----------|---------|--------|
 | uat_with_gaps > 0 | UAT gaps need fix plans | Go to **Route E** |
-| summaries < plans | Unexecuted plans exist | Go to **Route A** |
-| summaries = plans AND plans > 0 | Phase complete | Go to Step 3 |
+| `incomplete_plans` not empty | Unexecuted plans exist | Go to **Route A** |
+| `incomplete_plans` empty AND plans > 0 | Phase complete | Go to Step 3 |
 | plans = 0 | Phase not yet planned | Go to **Route B** |
 
 ---

@@ -914,7 +914,7 @@ Commands for managing phase lifecycle — adding, inserting, removing, and compl
 
 ### `phase next-decimal <phase>`
 
-Calculate the next available decimal phase number for inserting a sub-phase.
+Calculate the number `phase insert` would give a phase inserted after `<phase>`. After an integer phase it is the next child (`5.1`, `5.2`, …); after a decimal such as `29.4` it is the next sibling (`29.5`), and `29.4.1` with `nested: true` only when `29.5` is taken. Numbers used by a phase directory or a roadmap heading are never reused.
 
 ```bash
 pan-tools phase next-decimal 5 [--raw]
@@ -926,6 +926,7 @@ pan-tools phase next-decimal 5 [--raw]
   "found": true,
   "base_phase": "05",
   "next": "05.1",
+  "nested": false,
   "existing": []
 }
 ```

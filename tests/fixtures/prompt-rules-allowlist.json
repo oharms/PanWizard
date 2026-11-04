@@ -228,8 +228,8 @@
     "reason": "Focus Stage C (D5): the focus action is engine code. next-action puts an open focus cycle or a stale focus run ahead of phase routing (next-action.cjs nextStep, focus.cjs focusNextStep); tests/focus-integration.test.cjs (visibility describe) pins each reason and command and that a project without focus work routes as before."
   },
   {
-    "id": "pan-wizard-core/workflows/transition:2a94d650",
-    "reason": "Durable orchestration Stage D: the answer is checked in code (pause answer refuses pause_answer_invalid and a second answer, tests/pause.test.cjs) and next-action asks an open pause first, proven on a packed install by the tier-0 scenario pause-survives-session. That scenario drives the engine, not this prompt line, so claiming the rule with it would let a --prompt-mutant run report the rule as decorative; a model-tier scenario is what can claim it."
+    "id": "pan-wizard-core/workflows/transition:8e989b0b",
+    "reason": "Own-words answers (3.42.0): an open pause is offered, never forced ahead of the user's request, and an answer outside its options is recorded as given (own_words), pinned by tests/pause.test.cjs and the tier-0 scenario pause-survives-session. That scenario drives the engine, not this prompt line; a model-tier transition scenario is what can claim it."
   },
   {
     "id": "agents/pan-executor:1731f039",
@@ -258,5 +258,21 @@
   {
     "id": "pan-wizard-core/workflows/verify-phase:824da443",
     "reason": "Key links with prose values (3.42.0, PAN-09): verify key-links reports a prose from/to as verified: null with skipped, counted in unchecked and left out of total (verify.cjs checkKeyLinks), pinned by tests/verify.test.cjs. The line tells the verifier how to read that result; a model-tier verification scenario with a prose key link is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/workflows/execute-plan:6f941b93",
+    "reason": "Completion by pairing (3.42.0, PAN-02): the engine reports incomplete_plans (plans with no summary of their own) through find-phase, and countPlanProgress pairs plans with summaries, pinned by tests/state-integrity.test.cjs and tests/roadmap.test.cjs. The line tells the model to route on that instead of counting files; a model-tier scenario with an orphan research summary is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/workflows/progress:d6411237",
+    "reason": "Completion by pairing (3.42.0, PAN-02): the engine reports incomplete_plans (plans with no summary of their own) through find-phase, and countPlanProgress pairs plans with summaries, pinned by tests/state-integrity.test.cjs and tests/roadmap.test.cjs. The line tells the model to route on that instead of counting files; a model-tier scenario with an orphan research summary is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/references/decimal-phase-calculation:f29b411d",
+    "reason": "Decimal insertion (3.42.0, PAN-23): phase next-decimal and phase insert share nextInsertNumber (29.4 then 29.5, nested only when taken; roadmap headings count as taken), pinned by tests/phase.test.cjs. The reference tells the model to insert with phase insert rather than mkdir; a model-tier insert-phase scenario is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/references/decimal-phase-calculation:bbedaed9",
+    "reason": "Decimal insertion (3.42.0, PAN-23): phase next-decimal and phase insert share nextInsertNumber (29.4 then 29.5, nested only when taken; roadmap headings count as taken), pinned by tests/phase.test.cjs. The reference tells the model to insert with phase insert rather than mkdir; a model-tier insert-phase scenario is what can claim it."
   }
 ]

@@ -2261,3 +2261,38 @@ describe('insertProgressTableRow (pure)', () => {
     assert.strictEqual(insertProgressTableRow(text, '3', '3.1', 'x').updated, false);
   });
 });
+
+// Doc-audit pass 6 (3.42.0): `phase next-decimal` nested under a decimal argument (29.4 → 29.4.1)
+// while `phase insert` gave the sibling 29.5, and `phase complete` wrote the Progress row by
+// column position, so the milestone template's table got `N/M` in its Milestone column.
+describe('next-decimal agrees with insert; phase complete finds the table columns by header', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('next-decimal after 29.4 is 29.5, and 29.4.1 (nested) once 29.5 exists', () => {
+    const phases = path.join(tmpDir, '.planning', 'phases');
+    fs.mkdirSync(path.join(phases, '29.4-decimal'), { recursive: true });
+    let out = JSON.parse(runPanTools('phase next-decimal 29.4', tmpDir).output);
+    assert.deepStrictEqual([out.next, out.nested], ['29.5', false]);
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), '# Roadmap\n\n### Phase 29.4: A\n**Goal:** a\n\n### Phase 29.5: B\n**Goal:** b\n');
+    out = JSON.parse(runPanTools('phase next-decimal 29.4', tmpDir).output);
+    assert.deepStrictEqual([out.next, out.nested], ['29.4.1', true], 'a 29.5 the roadmap names is taken even without a directory');
+  });
+
+  test('phase complete writes Plans, Status and Completed into their own columns', () => {
+    const dir = path.join(tmpDir, '.planning', 'phases', '03-auth');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '03-01-plan.md'), '# p\n');
+    fs.writeFileSync(path.join(dir, '03-01-summary.md'), '# s\n');
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), JSON.stringify({ workflow: { phase_gate: 'warn' } }));
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), [
+      '# Roadmap', '', '- [ ] **Phase 3: Auth**', '', '### Phase 3: Auth', '**Goal:** g', '**Plans:** 0/1 plans', '',
+      '## Progress', '', '| Phase | Milestone | Plans Complete | Status | Completed |', '|---|---|---|---|---|', '| 3. Auth | v1.0 | 0/1 | Not started | - |', '',
+    ].join('\n'));
+    const r = runPanTools('phase complete 3 --no-commit', tmpDir);
+    assert.ok(r.success, r.output || r.error);
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), 'utf8');
+    assert.match(roadmap, /\| 3\. Auth \| v1\.0 \| 1\/1 \| Complete \| \d{4}-\d{2}-\d{2} \|/);
+  });
+});

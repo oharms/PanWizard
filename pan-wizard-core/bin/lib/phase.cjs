@@ -154,21 +154,18 @@ function cmdPhaseNextDecimal(cwd, basePhase, raw) {
     // Sort numerically
     existingDecimals.sort((left, right) => comparePhaseNum(left, right));
 
-    // Calculate next decimal
-    let nextDecimal;
-    if (existingDecimals.length === 0) {
-      nextDecimal = `${normalized}.1`;
-    } else {
-      const lastDecimal = existingDecimals[existingDecimals.length - 1];
-      const lastNum = parseInt(lastDecimal.split('.')[1], 10);
-      nextDecimal = `${normalized}.${lastNum + 1}`;
-    }
+    // The same number `phase insert` would give (PAN-23): after a decimal such as 29.4,
+    // the next sibling (29.5) unless taken; it used to nest under its argument (29.4.1).
+    let roadmap = '';
+    try { roadmap = fs.readFileSync(path.join(planningPath(cwd), ROADMAP_FILE), 'utf-8'); } catch { /* no roadmap yet */ }
+    const { number: nextDecimal, nested } = nextInsertNumber(roadmap, phasesDir, normalized);
 
     output(
       {
         found: baseExists,
         base_phase: normalized,
         next: nextDecimal,
+        nested,
         existing: existingDecimals,
       },
       raw,
@@ -514,6 +511,29 @@ function childPhaseNumbers(content, phasesDir, parent) {
 }
 
 /**
+ * The number a phase inserted after `after` gets (PAN-23), shared by `phase insert` and
+ * `phase next-decimal`. After an integer phase N: N.(highest child + 1). After a decimal
+ * such as 29.4: the next sibling, 29.5, when no phase has that number; else it nests
+ * (29.4.1, `nested: true`). Numbers come from the phase directories and the roadmap headings.
+ * @param {string} content - roadmap.md content ('' when there is none)
+ * @param {string} phasesDir
+ * @param {string} after - the normalized after-phase
+ * @returns {{number: string, nested: boolean}}
+ */
+function nextInsertNumber(content, phasesDir, after) {
+  const segments = after.split('.');
+  const childOf = (base) => {
+    const children = childPhaseNumbers(content, phasesDir, base);
+    return `${base}.${children.length ? Math.max(...children) + 1 : 1}`;
+  };
+  if (segments.length === 1) return { number: childOf(after), nested: false };
+  const parent = segments.slice(0, -1).join('.');
+  const nextSibling = parseInt(segments[segments.length - 1], 10) + 1;
+  if (!childPhaseNumbers(content, phasesDir, parent).includes(nextSibling)) return { number: `${parent}.${nextSibling}`, nested: false };
+  return { number: childOf(after), nested: true };
+}
+
+/**
  * The highest phase number among the roadmap's phase headings, unpadded (5.2 when 5
  * and 5.2 exist), or null when there is none.
  * @param {string} content - Full roadmap.md content
@@ -662,23 +682,7 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
   // are taken from the phase directories AND the roadmap's headings, so a decimal
   // the roadmap names but no directory holds yet is never handed out twice.
   const phasesDir = phasesPath(cwd);
-  const segments = normalizedAfter.split('.');
-  let decimalPhase;
-  let nested = false;
-  if (segments.length === 1) {
-    const children = childPhaseNumbers(content, phasesDir, normalizedAfter);
-    decimalPhase = `${normalizedAfter}.${children.length ? Math.max(...children) + 1 : 1}`;
-  } else {
-    const parent = segments.slice(0, -1).join('.');
-    const nextSibling = parseInt(segments[segments.length - 1], 10) + 1;
-    if (!childPhaseNumbers(content, phasesDir, parent).includes(nextSibling)) {
-      decimalPhase = `${parent}.${nextSibling}`;
-    } else {
-      const children = childPhaseNumbers(content, phasesDir, normalizedAfter);
-      decimalPhase = `${normalizedAfter}.${children.length ? Math.max(...children) + 1 : 1}`;
-      nested = true;
-    }
-  }
+  const { number: decimalPhase, nested } = nextInsertNumber(content, phasesDir, normalizedAfter);
   const dirName = `${decimalPhase}-${slug}`;
   const dirPath = path.join(phasesDir, dirName);
 
@@ -795,17 +799,13 @@ function markPhaseCompleteInRoadmap(cwd, phaseNum, _phaseName, planCount, summar
   );
   if (done) roadmapContent = roadmapContent.replace(checkboxPattern, `$1x$2 (completed ${today})`);
 
-  // Progress table: update Plans Complete, Status, and Date columns
-  const tablePattern = new RegExp(
-    `(\\|\\s*${numPat}\\.?\\s[^|]*\\|)\\s*[^|]*(\\|)\\s*[^|]*(\\|)\\s*[^|]*(\\|)`,
-    'i'
-  );
-  roadmapContent = roadmapContent.replace(
-    tablePattern,
-    done
-      ? `$1 ${summaryCount}/${planCount} $2 Complete    $3 ${today} $4`
-      : `$1 ${summaryCount}/${planCount} $2 In Progress $3 - $4`
-  );
+  // Progress table: the Plans, Status and Completed cells, found by their headers (a
+  // positional regex wrote `N/M` into the Milestone column of the milestone template's table).
+  roadmapContent = require('./roadmap.cjs').updateProgressTableRow(roadmapContent, phaseNum, {
+    plans: `${summaryCount}/${planCount}`,
+    status: done ? 'Complete' : 'In Progress',
+    completed: done ? today : '-',
+  }).content;
 
   // Update plan count in phase section
   const planCountPattern = new RegExp(
