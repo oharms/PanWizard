@@ -343,6 +343,21 @@ describe('findings — debt for a milestone audit', () => {
   });
 });
 
+describe('findings — long summaries (PAN-18)', () => {
+  test('a 1,200-character summary and disposition reason survive into findings list', () => {
+    // The cap was 300: the part of a finding that said what to fix was cut off.
+    const long = 'The handler reads the session token before checking expiry. '.repeat(20).slice(0, 1199) + '.';
+    assert.equal(long.length, 1200);
+    const r = F.recordVerdict(dir, { phase: '03', text: review('NEEDS_FIXES', 'fail', [{ class: 'defect', severity: 'medium', where: 'src/a.ts', summary: long }]) });
+    assert.ok(r.recorded);
+    assert.ok(!(r.warnings || []).some((w) => w.startsWith('summary_truncated')), JSON.stringify(r.warnings));
+    const [f] = F.listFindings(dir, { phase: '3' }).findings;
+    assert.equal(f.summary, long);
+    F.disposeFindings(dir, { ids: [f.id], as: 'deferred', reason: long });
+    assert.equal(F.listFindings(dir, { phase: '3' }).findings[0].reason, long);
+  });
+});
+
 describe('findings — CLI', () => {
   const run = (args) => runPanTools(args, dir);
 

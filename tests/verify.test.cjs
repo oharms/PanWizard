@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { runPanTools, createTempProject, cleanup } = require('./helpers.cjs');
-const { reconcilePhase, scanStubs } = require('../pan-wizard-core/bin/lib/verify.cjs');
+const { reconcilePhase, scanStubs, checkKeyLinks, checkArtifacts } = require('../pan-wizard-core/bin/lib/verify.cjs');
 
 describe('verify stubs — fake-implementation scanner (anti-fake, ADR-0036)', () => {
   let tmp;
@@ -181,8 +181,106 @@ describe('verify reconcile — verdict vs mechanical signals (anti-rubber-stamp,
     assert.match(r.note, /mechanical reconciliation unavailable/);
   });
 
-  test('missing phase / verification: does not throw, passes through', () => {
-    assert.equal(reconcilePhase(tmp, '99').reconciled, true);
+  // PAN-08 (3.42.0): this used to pin `reconciled: true` for a missing phase. Nothing
+  // to reconcile is not a pass, so a missing phase or verification now fails.
+  test('missing phase: does not throw, reconciled:false with phase_not_found', () => {
+    const r = reconcilePhase(tmp, '99');
+    assert.equal(r.reconciled, false);
+    assert.equal(r.error, 'phase_not_found');
+  });
+
+  test('PAN-08: CLI reconcile exits 1 when the phase has no verification', () => {
+    const dir = path.join(tmp, '.planning', 'phases', '03-api');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '03-01-plan.md'), '---\nphase: 03\n---\n# Plan\n');
+    const r = runPanTools('verify reconcile 03', tmp);
+    assert.equal(r.success, false, 'no verification must not pass reconcile');
+    const out = JSON.parse(r.output);
+    assert.equal(out.reconciled, false);
+    assert.equal(out.error, 'verification_missing');
+  });
+
+  test('PAN-08: CLI reconcile exits 1 for an unknown phase', () => {
+    const r = runPanTools('verify reconcile 42', tmp);
+    assert.equal(r.success, false);
+    assert.equal(JSON.parse(r.output).error, 'phase_not_found');
+  });
+
+  test('PAN-08: with workflow.verifier off, a phase without verification still reconciles', () => {
+    fs.writeFileSync(path.join(tmp, '.planning', 'config.json'), JSON.stringify({ workflow: { verifier: false } }));
+    const dir = path.join(tmp, '.planning', 'phases', '03-api');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '03-01-plan.md'), '---\nphase: 03\n---\n# Plan\n');
+    const r = runPanTools('verify reconcile 03', tmp);
+    assert.equal(r.success, true, r.error);
+    assert.equal(JSON.parse(r.output).skipped, 'verifier_off');
+  });
+});
+
+describe('PAN-09: prose must_haves values are not read as files', () => {
+  let tmp;
+  beforeEach(() => { tmp = createTempProject(); });
+  afterEach(() => { cleanup(tmp); });
+
+  const plan = (lines) => `---\nphase: 01\nmust_haves:\n${lines.join('\n')}\n---\n# Plan\n`;
+
+  test('a prose `from` is skipped while a missing src/a.ts still fails', () => {
+    fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'src', 'b.ts'), "import { a } from './a';\n");
+    const r = checkKeyLinks(tmp, plan([
+      '  key_links:',
+      '    - from: the checkout flow',
+      '      to: the payment service',
+      '      via: HTTP',
+      '    - from: src/a.ts',
+      '      to: src/b.ts',
+      '    - from: src/b.ts',
+      '      to: ./a',
+    ]));
+    assert.equal(r.links[0].verified, null);
+    assert.equal(r.links[0].skipped, 'prose — not a file');
+    assert.equal(r.links[1].verified, false);
+    assert.equal(r.links[1].detail, 'Source file not found');
+    assert.equal(r.links[2].verified, true);
+    assert.equal(r.total, 2, 'the prose link is not counted');
+    assert.equal(r.unchecked, 1);
+    assert.equal(r.verified, 1);
+    assert.equal(r.all_verified, false);
+  });
+
+  test('a prose artifact path is unchecked, not "File not found"', () => {
+    const r = checkArtifacts(tmp, plan([
+      '  artifacts:',
+      '    - path: the settings page',
+      '    - path: src/missing.ts',
+    ]));
+    assert.equal(r.artifacts[0].skipped, 'prose — not a file');
+    assert.equal(r.artifacts[0].passed, null);
+    assert.equal(r.artifacts[1].passed, false);
+    assert.equal(r.total, 1);
+    assert.equal(r.unchecked, 1);
+  });
+
+  test('isPathLike: Windows src\\a.ts and a bare app.js are paths, prose is not', () => {
+    const { isPathLike } = require('../pan-wizard-core/bin/lib/utils.cjs');
+    assert.equal(isPathLike('src\\a.ts'), true);
+    assert.equal(isPathLike('app.js'), true);
+    assert.equal(isPathLike('src/a.ts'), true);
+    assert.equal(isPathLike('docs/my notes.md'), true);
+    assert.equal(isPathLike('the checkout flow'), false);
+    assert.equal(isPathLike('Checkout'), false);
+    assert.equal(isPathLike('my file.ts'), false);
+    assert.equal(isPathLike(undefined), false);
+  });
+
+  test('CLI verify key-links with only prose links is a result, not "none found"', () => {
+    const p = path.join(tmp, 'plan.md');
+    fs.writeFileSync(p, plan(['  key_links:', '    - from: the checkout flow', '      to: the payment service']));
+    const r = runPanTools(`verify key-links ${p}`, tmp);
+    assert.equal(r.success, true, r.error);
+    const out = JSON.parse(r.output);
+    assert.equal(out.unchecked, 1);
+    assert.equal(out.all_verified, true);
   });
 });
 

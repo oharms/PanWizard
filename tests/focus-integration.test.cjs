@@ -454,6 +454,25 @@ describe('ownership: focus executes its own items and hands phase work off (D1)'
     assert.deepEqual(owner({ id: 'P1-1', file: 'src/a.js' }), ['focus', null], 'a scan id shaped like a requirement id is not one');
   });
 
+  test('parseTraceability reads the Phase column by its header (PAN-03)', () => {
+    // A description column before Phase: the old fixed layout read "phase 9" out of
+    // the description. A table with no Phase column maps nothing.
+    const text = [
+      '| ID | Description | Status | Phase |',
+      '|---|---|---|---|',
+      '| AUTH-01 | rework phase 9 login | Pending | Phase 3 |',
+      '| AUTH-02 | logout | Pending | — |',
+      '',
+      '| Req | Description | Status |',
+      '|---|---|---|',
+      '| AUTH-03 | phase 4 cleanup | Pending |',
+      '',
+    ].join('\n');
+    const t = focus.parseTraceability(text);
+    assert.deepEqual([...t.known].sort(), ['AUTH-01', 'AUTH-02', 'AUTH-03']);
+    assert.deepEqual([...t.phaseOf], [['AUTH-01', '3']]);
+  });
+
   test('focus route stamps owners, records the hand-offs and keeps the batch mtime; focus open registers only the rest', () => {
     write(dir, '.planning/requirements.md', REQS);
     write(dir, '.planning/phases/02-api/02-01-plan.md', '# plan\n');

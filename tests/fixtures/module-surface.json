@@ -1239,10 +1239,13 @@
     "classifyPhaseStatus:function",
     "countPlanTasks:function",
     "detectPlanningModel:function",
+    "extractField:function",
+    "extractListField:function",
     "fileAccessible:function",
     "filterPlanFiles:function",
     "filterSummaryFiles:function",
     "hasBraveSearchKey:function",
+    "isPathLike:function",
     "listPhaseDirs:function",
     "milestonesPath:function",
     "nextQuickNum:function",
@@ -1251,7 +1254,11 @@
     "planningPath:function",
     "planningRel:function",
     "readJsonFile:function",
-    "removeQuotes:function"
+    "readMarkdownTables:function",
+    "removeQuotes:function",
+    "replaceTableCell:function",
+    "splitTableRow:function",
+    "tableCellText:function"
   ],
   "verdict.cjs": [
     "DISPOSITIONS:object",

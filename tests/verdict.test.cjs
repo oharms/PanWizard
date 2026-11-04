@@ -134,6 +134,12 @@ describe('verdict — findings are recorded in their closest valid form', () => 
     const long = v.parseVerdictText(report({ ...REVIEW, findings: [{ class: 'defect', severity: 'low', summary: 'y'.repeat(v.LIMITS.summary + 50) }] }));
     assert.equal(long.verdict.findings[0].summary.length, v.LIMITS.summary);
     assert.ok(long.warnings.some((w) => w.startsWith('summary_truncated')));
+    // PAN-18 (3.42.0): the cap was 300, which cut real findings mid-sentence. A
+    // 1,200-character summary now passes whole and without a warning.
+    assert.equal(v.LIMITS.summary, 2000);
+    const para = v.parseVerdictText(report({ ...REVIEW, findings: [{ class: 'defect', severity: 'low', summary: 'z'.repeat(1200) }] }));
+    assert.equal(para.verdict.findings[0].summary.length, 1200);
+    assert.ok(!para.warnings.some((w) => w.startsWith('summary_truncated')));
   });
 
   test('findings that are not an array are ignored with a warning, not refused', () => {

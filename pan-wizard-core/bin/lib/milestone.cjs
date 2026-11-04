@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { PHASES_DIR, MILESTONES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, STATE_FILE, isPlanFile } = require('./constants.cjs');
-const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible, planningRel } = require('./utils.cjs');
+const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible, planningRel, readMarkdownTables, tableCellText, replaceTableCell } = require('./utils.cjs');
 const { output, error, isGitRepo, isGitIgnored, execGit, escapeRegex, loadConfig } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { writeStateMd } = require('./state.cjs');
@@ -46,6 +46,8 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
   }
   const updated = [];
   const notFound = [];
+  const tableUpdated = [];
+  const warnings = [];
 
   for (const reqId of reqIds) {
     let found = false;
@@ -61,16 +63,14 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
       found = true;
     }
 
-    // Update traceability table: | REQ-ID | Phase N | Pending | -> | REQ-ID | Phase N | Complete |
-    const tablePattern = new RegExp(`(\\|\\s*${reqEsc}\\s*\\|[^|]+\\|)\\s*Pending\\s*(\\|)`, 'gi');
-    if (tablePattern.test(reqContent)) {
-      // Re-create regex since test() advances lastIndex for global regex
-      reqContent = reqContent.replace(
-        new RegExp(`(\\|\\s*${reqEsc}\\s*\\|[^|]+\\|)\\s*Pending\\s*(\\|)`, 'gi'),
-        '$1 Complete $2'
-      );
-      found = true;
-    }
+    // Update the traceability table: the Status column is found by its header, not
+    // assumed to be the third (PAN-03), and a table PAN did not change is not
+    // reported as updated.
+    const row = markTraceabilityRows(reqContent, reqId);
+    reqContent = row.content;
+    if (row.changed) { found = true; tableUpdated.push(reqId); }
+    if (row.noStatusColumn) warnings.push(`${reqId}: its traceability table has no Status column; the table was left unchanged`);
+    else if (!row.rowFound && checkboxFound(reqContent, reqEsc)) warnings.push(`${reqId}: checked in the list but has no traceability table row`);
 
     if (found) {
       updated.push(reqId);
@@ -93,7 +93,44 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
     marked_complete: updated,
     not_found: notFound,
     total: reqIds.length,
+    table_updated: tableUpdated.length > 0,
+    table_marked: tableUpdated,
+    ...(warnings.length ? { warnings } : {}),
   }, raw, `${updated.length}/${reqIds.length} requirements marked complete`);
+}
+
+/** A traceability Status value that already says done. */
+const DONE_STATUS_RE = /^(?:complete[d]?|done|satisfied|shipped|verified|✅|✓)\b/i;
+
+function checkboxFound(content, reqEsc) {
+  return new RegExp(`-\\s*\\[[xX ]\\]\\s*\\*\\*${reqEsc}\\*\\*`, 'i').test(content);
+}
+
+/**
+ * Set a requirement's Status cell to Complete in every traceability table that
+ * lists it. The ID column is the one headed Req/Requirement/ID (else the first),
+ * the Status column the one headed Status; a table without one is left alone.
+ * @param {string} content - requirements.md
+ * @param {string} reqId
+ * @returns {{content: string, rowFound: boolean, changed: boolean, noStatusColumn: boolean}}
+ */
+function markTraceabilityRows(content, reqId) {
+  const lines = content.split('\n');
+  let rowFound = false, changed = false, noStatusColumn = false;
+  for (const table of readMarkdownTables(content)) {
+    let idCol = table.headers.findIndex((h) => /^(?:req(?:uirement)?s?(?:[\s-]*id)?|id)$/i.test(h));
+    if (idCol < 0) idCol = 0;
+    const statusCol = table.headers.findIndex((h) => /^status$/i.test(h));
+    for (const row of table.rows) {
+      if (tableCellText(row.cells[idCol]).toLowerCase() !== reqId.toLowerCase()) continue;
+      rowFound = true;
+      if (statusCol < 0) { noStatusColumn = true; continue; }
+      if (DONE_STATUS_RE.test(tableCellText(row.cells[statusCol]))) continue;
+      const next = replaceTableCell(lines[row.line], statusCol, 'Complete');
+      if (next !== lines[row.line]) { lines[row.line] = next; changed = true; }
+    }
+  }
+  return { content: changed ? lines.join('\n') : content, rowFound, changed, noStatusColumn };
 }
 
 /**

@@ -43,7 +43,9 @@ const V = require('./verdict.cjs');
 
 const FINDINGS_FILE = 'findings.jsonl';
 const LEDGER_V = 1;
-const REASON_MAX = 300;
+// A disposition reason, like a finding's summary (verdict.cjs LIMITS.summary), keeps
+// up to 2000 characters: the 300 cap cut real findings mid-sentence (PAN-18).
+const REASON_MAX = 2000;
 const FINDING_ID_RE = /^f_[0-9a-f]{10}$/;
 const STATUSES = Object.freeze(['open', ...V.DISPOSITIONS]);
 // Logic findings are never suppressed (R3): what the code does wrong, or not at all.

@@ -229,6 +229,88 @@ describe('milestone resolver — versions and defaults', () => {
   });
 });
 
+// ─── PAN-17 / DD-3 (3.42.0): the recorded milestone wins over a guess ────────
+
+describe('milestone resolver — phase headings and the recorded milestone (PAN-17)', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => cleanup(tmpDir));
+
+  const writeState = (milestone, name) => fs.writeFileSync(
+    path.join(tmpDir, '.planning', 'state.md'),
+    `---\nmilestone: ${milestone}\n${name ? `milestone_name: ${name}\n` : ''}status: executing\n---\n\n# State\n`,
+  );
+
+  test('a phase heading naming v2.0 is not a milestone', () => {
+    const headings = parseMilestoneHeadings([
+      '## ✅ Milestone v1.0 — Base (shipped)',
+      '### Phase 3: Upgrade to API v2.0 endpoints',
+      '### **Phase 4**: Move to v3.1 SDK',
+    ].join('\n'));
+    assert.deepEqual(headings.map((h) => h.version), ['v1.0']);
+  });
+
+  test('a Status: line under a heading marks it', () => {
+    const headings = parseMilestoneHeadings([
+      '## Milestone v1.0 — Base',
+      '',
+      '**Status:** ✅ Shipped 2026-01-02',
+      '',
+      '## Milestone v2.0 — Next',
+      'Status: in progress',
+    ].join('\n'));
+    assert.deepEqual(headings.map((h) => [h.version, h.status]), [['v1.0', 'shipped'], ['v2.0', 'current']]);
+  });
+
+  test('the recorded v3.0 beats an unmarked v2.0 heading', () => {
+    writeState('v3.0', 'Scale');
+    const info = resolveRoadmap(tmpDir, [
+      '## ✅ Milestone v1.0 — Base (shipped)',
+      '## Milestone v2.0 — Next',
+      '## Milestone v3.0 — Scale',
+    ].join('\n'));
+    assert.equal(info.version, 'v3.0');
+    assert.equal(info.name, 'Scale');
+    assert.equal(info.basis, 'recorded');
+  });
+
+  test('the recorded milestone beats a version named only in a phase heading', () => {
+    writeState('v3.0');
+    const info = resolveRoadmap(tmpDir, [
+      '## ✅ Milestone v1.0 — Base (shipped)',
+      '### Phase 3: Upgrade to API v2.0 endpoints',
+    ].join('\n'));
+    assert.equal(info.version, 'v3.0');
+    assert.equal(info.basis, 'recorded');
+  });
+
+  test('a 🚧-marked heading still beats state.md', () => {
+    writeState('v1.0');
+    const info = resolveRoadmap(tmpDir, [
+      '## ✅ Milestone v1.0 — Base',
+      '## 🚧 Milestone v2.0 — Next',
+    ].join('\n'));
+    assert.equal(info.version, 'v2.0');
+    assert.equal(info.basis, 'marked-current');
+  });
+
+  test('findings record stamps the resolved milestone', () => {
+    writeState('v3.0');
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), [
+      '## ✅ Milestone v1.0 — Base (shipped)',
+      '### Phase 1: Upgrade to API v2.0 endpoints',
+    ].join('\n'));
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-api'), { recursive: true });
+    const F = require('../pan-wizard-core/bin/lib/findings.cjs');
+    const fence = '`'.repeat(3);
+    const text = `## Code Review — Phase 01\n\n${fence}pan-verdict\n${JSON.stringify({ contract: '1.0', agent: 'pan-reviewer', phase: '01', verdict: 'NEEDS_FIXES', outcome: 'fail', findings: [{ class: 'defect', severity: 'low', where: 'src/a.js:1', summary: 'a thing' }] })}\n${fence}\n`;
+    const r = F.recordVerdict(tmpDir, { phase: '01', text });
+    assert.ok(r.recorded, JSON.stringify(r));
+    const [finding] = F.listFindings(tmpDir).findings;
+    assert.equal(finding.milestone, 'v3.0', 'not the v2.0 a phase heading mentions');
+  });
+});
+
 // ─── init milestone-op: multi-track sweep ───────────────────────────────────
 
 /**

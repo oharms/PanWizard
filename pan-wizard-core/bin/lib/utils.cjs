@@ -233,6 +233,164 @@ function nextQuickNum(cwd) {
   }
 }
 
+// ─── Roadmap fields, markdown tables, path-like values (3.42.0 Stage B) ──────
+
+function escapeLabel(label) {
+  return String(label).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** A line that starts a new block: a heading, a `**Label**` line, a rule, a table, a comment. */
+const BLOCK_START_RE = /^\s*(?:#{1,6}\s|(?:[-*+]\s+)?\*\*[^*\n]+\*\*|-{3,}\s*$|\||<!--)/;
+const LIST_ITEM_RE = /^\s*(\d+[.)]|[-*+])\s+(.*)$/;
+
+/**
+ * A `**Label:**` (or `**Label**:`) field's value from a roadmap section, joined
+ * across wrapped lines. The value runs from after the label to the next blank
+ * line, list item, heading or `**Other**` line. The single-line regex this
+ * replaces cut a wrapped goal at its first newline (PAN-15).
+ * @param {string} section - markdown text (LF or CRLF)
+ * @param {string} label - e.g. 'Goal'
+ * @returns {string|null}
+ */
+function extractField(section, label) {
+  const lines = String(section || '').replace(/\r\n?/g, '\n').split('\n');
+  const re = new RegExp(`\\*\\*${escapeLabel(label)}(?::\\*\\*|\\*\\*:)[ \\t]*(.*)$`, 'i');
+  for (let i = 0; i < lines.length; i++) {
+    const m = re.exec(lines[i]);
+    if (!m) continue;
+    const parts = m[1].trim() ? [m[1].trim()] : [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const line = lines[j];
+      if (!line.trim()) { if (parts.length) break; continue; }
+      if (BLOCK_START_RE.test(line) || LIST_ITEM_RE.test(line)) break;
+      parts.push(line.trim());
+    }
+    const value = parts.join(' ').replace(/\s+/g, ' ').trim();
+    return value || null;
+  }
+  return null;
+}
+
+/**
+ * The items of a `**Success Criteria**` block: numbered (`1.` / `1)`) or bulleted
+ * (`-`, `*`, `+`) items, an indented line joining the item above it. The block
+ * ends at a blank line not followed by another item, a heading, a `**Other**`
+ * line, or an unindented non-item line (PAN-15).
+ * @param {string} section - markdown text (LF or CRLF)
+ * @param {string} [label] - defaults to 'Success Criteria'
+ * @returns {string[]}
+ */
+function extractListField(section, label = 'Success Criteria') {
+  const lines = String(section || '').replace(/\r\n?/g, '\n').split('\n');
+  const re = new RegExp(`\\*\\*${escapeLabel(label)}(?::\\*\\*|\\*\\*)`, 'i');
+  const start = lines.findIndex((l) => re.test(l));
+  if (start < 0) return [];
+  const items = [];
+  for (let j = start + 1; j < lines.length; j++) {
+    const line = lines[j];
+    if (!line.trim()) {
+      // A loose list keeps going; anything else after a blank line ends the block.
+      if (!items.length) continue;
+      const next = lines.slice(j + 1).find((l) => l.trim());
+      if (next !== undefined && LIST_ITEM_RE.test(next)) continue;
+      break;
+    }
+    const item = LIST_ITEM_RE.exec(line);
+    if (item) {
+      items.push(item[2].replace(/^\[[ xX]\]\s*/, '').trim());
+      continue;
+    }
+    if (BLOCK_START_RE.test(line)) break;
+    if (items.length && /^\s+\S/.test(line)) {
+      items[items.length - 1] = `${items[items.length - 1]} ${line.trim()}`.trim();
+      continue;
+    }
+    break;
+  }
+  return items.filter(Boolean);
+}
+
+/** A table row's cells, without the outer pipes. `\|` is not a separator. */
+function splitTableRow(line) {
+  const body = String(line).replace(/\r$/, '').trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '');
+  return body.split(/(?<!\\)\|/).map((c) => c.trim());
+}
+
+const TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+
+/**
+ * Every pipe table in a markdown text that has a header row and a separator.
+ * Line indexes are 0-based into text.split('\n').
+ * @param {string} text
+ * @returns {Array<{header_line: number, headers: string[], rows: Array<{line: number, cells: string[]}>}>}
+ */
+function readMarkdownTables(text) {
+  const lines = String(text || '').split('\n');
+  const tables = [];
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (!/^\s*\|/.test(lines[i]) || !TABLE_SEPARATOR_RE.test(lines[i + 1].replace(/\r$/, ''))) continue;
+    const table = { header_line: i, headers: splitTableRow(lines[i]).map((h) => h.replace(/[*_`]+/g, '').trim()), rows: [] };
+    let j = i + 2;
+    for (; j < lines.length && /^\s*\|/.test(lines[j]); j++) table.rows.push({ line: j, cells: splitTableRow(lines[j]) });
+    tables.push(table);
+    i = j - 1;
+  }
+  return tables;
+}
+
+/** A cell's text without markdown emphasis or code ticks. */
+function tableCellText(cell) {
+  return String(cell == null ? '' : cell).replace(/[*_`]+/g, '').trim();
+}
+
+/**
+ * Replace one cell's text in a table row line, keeping the cell's padding
+ * (its width when the new text fits) and the line's ending.
+ * @param {string} line - the row line
+ * @param {number} col - 0-based column
+ * @param {string} text - the new cell text
+ * @returns {string} the line, unchanged when the column does not exist
+ */
+function replaceTableCell(line, col, text) {
+  const cr = /\r$/.test(line) ? '\r' : '';
+  const body = cr ? line.slice(0, -1) : line;
+  const pipes = [];
+  for (let k = 0; k < body.length; k++) if (body[k] === '|' && body[k - 1] !== '\\') pipes.push(k);
+  const leading = /^\s*\|/.test(body);
+  const startIdx = leading ? pipes[col] : (col === 0 ? -1 : pipes[col - 1]);
+  let endIdx = leading ? pipes[col + 1] : pipes[col];
+  if (startIdx === undefined) return line;
+  if (endIdx === undefined) {
+    // A row without a closing pipe: its last cell runs to the end of the line.
+    if (body.slice(startIdx + 1).trim() === '') return line;
+    endIdx = body.length;
+  }
+  const inner = body.slice(startIdx + 1, endIdx);
+  const lead = (inner.match(/^\s*/) || [''])[0];
+  const trail = (inner.match(/\s*$/) || [''])[0];
+  let next = lead + text;
+  const minTrail = trail.length ? 1 : 0;
+  next = next.length + minTrail <= inner.length ? next.padEnd(inner.length) : next + (minTrail ? ' ' : '');
+  return body.slice(0, startIdx + 1) + next + body.slice(endIdx) + cr;
+}
+
+/**
+ * Whether a must_haves value names a file rather than describing one in prose:
+ * it has a path separator, or ends in a 1-8 character extension, and has no
+ * space unless it also has a separator. "the checkout flow" is prose, so it is
+ * not read as a file (PAN-09).
+ * @param {*} v
+ * @returns {boolean}
+ */
+function isPathLike(v) {
+  if (typeof v !== 'string') return false;
+  const s = v.trim();
+  if (!s) return false;
+  const sep = /[\\/]/.test(s);
+  if (/\s/.test(s) && !sep) return false;
+  return sep || /\.[A-Za-z0-9]{1,8}$/.test(s);
+}
+
 module.exports = {
   countPlanTasks,
   readJsonFile,
@@ -250,4 +408,11 @@ module.exports = {
   classifyPhaseStatus,
   fileAccessible,
   hasBraveSearchKey,
+  extractField,
+  extractListField,
+  readMarkdownTables,
+  splitTableRow,
+  tableCellText,
+  replaceTableCell,
+  isPathLike,
 };

@@ -22,7 +22,7 @@ const {
   getPlanId,
   getSummaryId,
 } = require('./constants.cjs');
-const { planningPath, planningRel } = require('./utils.cjs');
+const { planningPath, planningRel, extractField } = require('./utils.cjs');
 
 // ─── Multi-Model Routing ─────────────────────────────────────────────────────
 
@@ -851,8 +851,7 @@ function getRoadmapPhaseInternal(cwd, phaseNum) {
     const compacted = require('./roadmap-compact.cjs').compactedPhaseSection(cwd, unpadded, section);
     if (compacted && compacted.section) section = compacted.section;
 
-    const goalMatch = section.match(/(?:\*\*Goal:\*\*|\*\*Goal\*\*:)\s*([^\n]+)/i);
-    const goal = goalMatch ? goalMatch[1].trim() : null;
+    const goal = extractField(section, 'Goal'); // wrapped lines joined (PAN-15)
 
     return {
       found: true,
@@ -1186,6 +1185,9 @@ function parseMilestoneHeadings(roadmap) {
     const plain = m ? null : line.match(ANY_HEADING_RE);
     const heading = m ? m[1] : plain ? plain[1] : null;
     if (!heading) return;
+    // A phase heading is never a milestone, whatever version it mentions:
+    // "### Phase 3: Upgrade to API v2.0 endpoints" made v2.0 the milestone (PAN-17).
+    if (PHASE_HEADING_TEXT_RE.test(heading)) return;
 
     // A version (`v4.1`) anywhere in the heading, or a letter-series label (`R-2`)
     // as its first word. The resolver used to know only the first, so a project
@@ -1199,6 +1201,8 @@ function parseMilestoneHeadings(roadmap) {
     for (const marker of MILESTONE_STATUS_MARKERS) {
       if (marker.re.test(heading)) { status = marker.status; break; }
     }
+    // A marker may sit on a "Status: shipped" line under the heading instead.
+    if (status === 'unknown') status = statusLineAfter(lines, i);
     // A <summary> heading is a collapsed, already-shipped milestone even when
     // it carries no explicit marker.
     if (status === 'unknown' && MILESTONE_SUMMARY_RE.test(line)) status = 'shipped';
@@ -1224,6 +1228,31 @@ function parseMilestoneHeadings(roadmap) {
   });
 
   return out;
+}
+
+/** Heading text that opens with "Phase N" (after glyphs or emphasis). */
+const PHASE_HEADING_TEXT_RE = /^\W*Phase\s+\d/i;
+
+/** A `Status: …` line (bold or bulleted or not). */
+const STATUS_LINE_RE = /^\s*(?:[-*+]\s+)?(?:\*\*|__)?Status(?:\*\*|__)?\s*:\s*(?:\*\*|__)?\s*(.+)$/i;
+
+/**
+ * The status a `Status:` line just under a milestone heading gives, read from the
+ * next few non-blank lines before another heading; 'unknown' when there is none.
+ */
+function statusLineAfter(lines, i) {
+  let seen = 0;
+  for (let j = i + 1; j < lines.length && seen < 3; j++) {
+    const line = lines[j];
+    if (!line.trim()) continue;
+    if (/^[ \t]{0,3}#{1,6}[ \t]/.test(line)) break;
+    seen++;
+    const m = STATUS_LINE_RE.exec(line);
+    if (!m) continue;
+    for (const marker of MILESTONE_STATUS_MARKERS) if (marker.re.test(m[1])) return marker.status;
+    return 'unknown';
+  }
+  return 'unknown';
 }
 
 /** Any markdown heading line — letter-series milestones carry no `vN.N`. */
@@ -1367,6 +1396,24 @@ function getMilestoneInfo(cwd) {
     const recorded = recordedStateMilestone(cwd);
     if (recorded) return { version: recorded.version, name: recorded.name || 'milestone', status: 'unknown', basis: 'state', ambiguous: false, candidates: 0 };
     return { ...fallback, basis: 'no-milestone-heading' };
+  }
+
+  // DD-3: the milestone state.md records wins over a guess. Only a heading the
+  // roadmap marks current overrides it; first-unshipped and last-shipped are
+  // positional guesses, and one of them overwrote a recorded v3.0 (PAN-17).
+  if (basis !== 'marked-current') {
+    const recorded = recordedStateMilestone(cwd);
+    if (recorded) {
+      const same = headings.find((h) => h.version === recorded.version);
+      return {
+        version: recorded.version,
+        name: recorded.name || (same && same.name) || 'milestone',
+        status: same ? same.status : 'unknown',
+        basis: 'recorded',
+        ambiguous: false,
+        candidates: headings.length,
+      };
+    }
   }
 
   return {

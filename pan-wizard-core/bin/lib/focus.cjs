@@ -25,7 +25,7 @@ const { readErrorPatterns } = require('./commands.cjs');
 const { weeklyLimitStop } = require('./cost.cjs');
 const store = require('./store.cjs');
 const { holdLock } = require('./lock.cjs');
-const { planningPath, listPhaseDirs, classifyPhaseStatus, filterPlanFiles, filterSummaryFiles, planningRel, nextQuickNum } = require('./utils.cjs');
+const { planningPath, listPhaseDirs, classifyPhaseStatus, filterPlanFiles, filterSummaryFiles, planningRel, nextQuickNum, readMarkdownTables, tableCellText } = require('./utils.cjs');
 
 // ─── Scan helpers ───────────────────────────────────────────────────────────
 
@@ -754,15 +754,35 @@ const PHASE_DIR_RE = /(?:^|\/)phases\/(\d+(?:\.\d+)?)-[^/]*/;
 function parseTraceability(text) {
   const known = new Set();
   const phaseOf = new Map();
-  for (const line of toPosix(String(text || '')).replace(/\r\n/g, '\n').split('\n')) {
-    const req = /^\s*- (?:\[[ xX]\] )?\*\*([A-Z][A-Z0-9]*-\d+)\*\*/.exec(line);
-    if (req) { known.add(req[1]); continue; }
-    const row = /^\|\s*([A-Z][A-Z0-9]*-\d+)\s*\|\s*([^|]*?)\s*\|/.exec(line);
-    if (!row) continue;
-    known.add(row[1]);
-    const ph = /(?:^|\bphase\s*)(\d+(?:\.\d+)?)\b/i.exec(row[2]);
-    if (ph) phaseOf.set(row[1], String(parseFloat(ph[1])));
+  const src = toPosix(String(text || '')).replace(/\r\n/g, '\n');
+  const lines = src.split('\n');
+  // Rows of a headed table use the columns its header names (PAN-03): the phase is
+  // not always the second column. A table with no Phase column maps nothing.
+  const tableRows = new Map();
+  for (const table of readMarkdownTables(src)) {
+    let idCol = table.headers.findIndex((h) => /^(?:req(?:uirement)?s?(?:[\s-]*id)?|id)$/i.test(h));
+    if (idCol < 0) idCol = 0;
+    const phaseCol = table.headers.findIndex((h) => /^phases?\b/i.test(h));
+    for (const row of table.rows) tableRows.set(row.line, { id: tableCellText(row.cells[idCol]), phase: phaseCol < 0 ? '' : tableCellText(row.cells[phaseCol]) });
   }
+  const REQ_ID_RE = /^[A-Z][A-Z0-9]*-\d+$/;
+  lines.forEach((line, i) => {
+    const req = /^\s*- (?:\[[ xX]\] )?\*\*([A-Z][A-Z0-9]*-\d+)\*\*/.exec(line);
+    if (req) { known.add(req[1]); return; }
+    let id, phase;
+    if (tableRows.has(i)) {
+      ({ id, phase } = tableRows.get(i));
+    } else {
+      // A row outside a headed table: the old fixed layout, phase in column 2.
+      const row = /^\|\s*([A-Z][A-Z0-9]*-\d+)\s*\|\s*([^|]*?)\s*\|/.exec(line);
+      if (!row) return;
+      [, id, phase] = row;
+    }
+    if (!REQ_ID_RE.test(id)) return;
+    known.add(id);
+    const ph = /(?:^|\bphase\s*)(\d+(?:\.\d+)?)\b/i.exec(phase);
+    if (ph) phaseOf.set(id, String(parseFloat(ph[1])));
+  });
   return { known, phaseOf };
 }
 

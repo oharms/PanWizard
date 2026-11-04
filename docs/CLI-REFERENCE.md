@@ -135,7 +135,7 @@ else
 fi
 ```
 
-A gate whose verdict has no `error` key sets its code explicitly instead: `links validate` (`0` pass / `1` fail), `verify reconcile` (`0` reconciled / `1` contradiction), `verify stubs --gate`, `campaign due`. Those are documented per command.
+A gate whose verdict has no `error` key sets its code explicitly instead: `links validate` (`0` pass / `1` fail), `verify reconcile` (`0` reconciled / `1` contradiction, or no verification to reconcile), `verify stubs --gate`, `campaign due`. Those are documented per command.
 
 **Help:** `pan-tools --help` (also `-h` or `help`) prints the command list and exits `0` — an explicit help request is a success. A *missing* command prints the same usage as an error and exits `1`.
 
@@ -1359,11 +1359,15 @@ pan-tools requirements mark-complete "[REQ-01, REQ-02]"
   "updated": true,
   "marked_complete": ["REQ-01", "REQ-02"],
   "not_found": [],
-  "total": 2
+  "total": 2,
+  "table_updated": true,
+  "table_marked": ["REQ-01", "REQ-02"]
 }
 ```
 
 **`--raw` output:** `2/2 requirements marked complete`. An id that is already complete has nothing left to tick and is listed under `not_found` too (`updated: false` when no id changed).
+
+The traceability table is read by its header: the ID column is the one headed `ID`, `Req`, `Requirement` or `Requirement ID` (else the first), and the status cell is the one under `Status` (any case), wherever it sits, in every table that lists the id. Any value other than a done word (`Complete`, `Done`, …) becomes `Complete`, keeping the cell's padding. `updated` says whether anything changed (a checkbox or a row); `table_updated` and `table_marked` say whether, and for which ids, a table row changed. `warnings` (present only when there are any) names an id whose table has no `Status` column (the table is left unchanged) and an id with a checkbox but no table row.
 
 ---
 
@@ -1741,11 +1745,14 @@ pan-tools verify artifacts .planning/phases/05-setup/05-01-plan.md [--raw]
   "total": 2,
   "artifacts": [
     { "path": "src/db/schema.ts", "exists": true, "issues": [], "passed": true }
-  ]
+  ],
+  "unchecked": 0
 }
 ```
 
 **`--raw` output:** `valid` or `invalid`. Both exit 0; callers read `all_passed`. A plan with no `must_haves.artifacts` returns an `error` but exits 0; a missing plan file exits 1.
+
+A `path` written as prose rather than a file (no `/` or `\`, no extension, or spaces without a separator: "the settings page") is not read: its entry has `passed: null` and `skipped: "prose — not a file"`, and it counts in `unchecked`, not in `passed` or `total`.
 
 ---
 
@@ -1765,17 +1772,20 @@ pan-tools verify key-links .planning/phases/05-setup/05-01-plan.md [--raw]
   "total": 2,
   "links": [
     { "from": "src/index.ts", "to": "src/db/schema.ts", "via": "import", "verified": true, "detail": "Pattern found in source" }
-  ]
+  ],
+  "unchecked": 0
 }
 ```
 
 **`--raw` output:** `valid` or `invalid`.
 
+A link whose `from` is prose ("the checkout flow"), or whose `to` is prose when it has no `pattern`, is not checked: `verified: null`, `skipped: "prose — not a file"`, counted in `unchecked` and left out of `verified` and `total`. A `from` that is a path and does not exist still fails with `Source file not found`. With a `pattern` and a prose `to`, only the source is searched.
+
 ---
 
 ### `verify reconcile <phase>`
 
-Cross-check a phase's recorded verification against the mechanical checks of every plan's `must_haves`, so a verification.md whose `status` claims a pass while an artifact substance check fails or a key link is unwired is caught (each artifact and link in the result names its `plan`). It also reports a `test_gate` in verification.md that disagrees with the engine's test run (`test run`), a passing status over a failed run, and, under `workflow.mutation_gate: gate`, a passing status over a failed mutation gate. Exits `1` on a contradiction (and the phase gate refuses with `reconcile_contradiction`) and `0` otherwise, including a phase with no directory, no verification.md or no `must_haves`, which report `reconciled: true` with a `note`.
+Cross-check a phase's recorded verification against the mechanical checks of every plan's `must_haves`, so a verification.md whose `status` claims a pass while an artifact substance check fails or a key link is unwired is caught (each artifact and link in the result names its `plan`). It also reports a `test_gate` in verification.md that disagrees with the engine's test run (`test run`), a passing status over a failed run, and, under `workflow.mutation_gate: gate`, a passing status over a failed mutation gate. Exits `1` on a contradiction (and the phase gate refuses with `reconcile_contradiction`) and `0` otherwise. Nothing to reconcile is not a pass: an unknown phase reports `error: "phase_not_found"` and a phase with no verification.md `error: "verification_missing"`, both `reconciled: false` at exit `1`; under `workflow.verifier: false` a phase without one reports `reconciled: true` with `skipped: "verifier_off"`. A phase with no `must_haves` reports `reconciled: true` with a `note`. Prose artifacts and links (see `verify key-links`) are counted in `unchecked`, not as failures.
 
 ```bash
 pan-tools verify reconcile 5 [--raw]

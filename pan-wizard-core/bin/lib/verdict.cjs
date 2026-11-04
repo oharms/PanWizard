@@ -36,7 +36,9 @@ const KNOWN_VERDICTS = Object.freeze({
   'pan-design-checker': Object.freeze({ PASS: 'pass', GAPS: 'fail' }),
 });
 
-const LIMITS = Object.freeze({ findings: 100, where: 200, summary: 300, verdict: 40, score: 40, not_checked: 20, check: 80, declined: 20 });
+// summary: 2000, not 300 — a judge's finding often needs a paragraph, and the cut lost
+// the part that said what to fix (PAN-18). Longer text is still cut with a warning.
+const LIMITS = Object.freeze({ findings: 100, where: 200, summary: 2000, verdict: 40, score: 40, not_checked: 20, check: 80, declined: 20 });
 // What the verifier's test gate can report (verify-phase.md, run_test_suite).
 const TEST_GATE_VALUES = Object.freeze(['passed', 'failed', 'skipped']);
 const RESOLUTION_STATUSES = Object.freeze(['resolved', 'still_present', 'cannot_tell']);

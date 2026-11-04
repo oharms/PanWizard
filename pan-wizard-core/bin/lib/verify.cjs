@@ -14,7 +14,7 @@ const {
   PLAN_SUFFIX, SUMMARY_SUFFIX, STANDARDS_FILE, STANDARDS_CATALOG, HEALTH_STATUS,
   BUILTIN_DRIFT_RULES, DRIFT_VERDICTS, BINARY_EXTENSIONS, DRIFT_MAX_FILES, DRIFT_MAX_FILE_SIZE, DRIFT_SEVERITY_WEIGHTS,
 } = require('./constants.cjs');
-const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible, detectPlanningModel } = require('./utils.cjs');
+const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible, detectPlanningModel, isPathLike } = require('./utils.cjs');
 const { detectForeignPlanningTree } = require('./foreign-planning.cjs');
 const { unknownConfigKeys, nearestConfigKey } = require('./config.cjs');
 // Drift detection lives in verify-drift.cjs; re-exported below so consumers of
@@ -439,6 +439,11 @@ function checkArtifacts(cwd, planContent) {
     if (typeof artifact === 'string') continue; // skip simple string items
     const artPath = artifact.path;
     if (!artPath) continue;
+    if (!isPathLike(artPath)) {
+      // Prose ("the checkout flow") names no file to read: not checked, not failed (PAN-09).
+      results.push({ path: artPath, exists: null, issues: [], passed: null, skipped: PROSE_SKIP });
+      continue;
+    }
     const fileContent = safeReadFile(path.join(cwd, artPath));
     const exists = fileContent !== null;
     const check = { path: artPath, exists, issues: [], passed: false };
@@ -462,9 +467,12 @@ function checkArtifacts(cwd, planContent) {
     }
     results.push(check);
   }
-  const passed = results.filter(r => r.passed).length;
-  return { all_passed: passed === results.length, passed, total: results.length, artifacts: results };
+  const checked = results.filter(r => !r.skipped);
+  const passed = checked.filter(r => r.passed).length;
+  return { all_passed: passed === checked.length, passed, total: checked.length, unchecked: results.length - checked.length, artifacts: results };
 }
+
+const PROSE_SKIP = 'prose — not a file';
 
 function cmdVerifyArtifacts(cwd, planFilePath, raw) {
   if (!planFilePath) { error('plan file path required'); }
@@ -472,7 +480,7 @@ function cmdVerifyArtifacts(cwd, planFilePath, raw) {
   const content = safeReadFile(fullPath);
   if (!content) { output({ error: 'File not found', path: planFilePath }, raw); return; }
   const r = checkArtifacts(cwd, content);
-  if (r.total === 0) {
+  if (r.total === 0 && !r.unchecked) {
     // EXIT_OK: "nothing declared to check" is a RESULT, not a failure. Two pieces of
     // shipped evidence: (1) the plan template ships `must_haves: { truths: [],
     // artifacts: [], key_links: [] }` (pan-wizard-core/templates/phase-prompt.md,
@@ -505,6 +513,16 @@ function checkKeyLinks(cwd, planContent) {
   for (const link of keyLinks) {
     if (typeof link === 'string') continue;
     const check = { from: link.from, to: link.to, via: link.via || '', verified: false, detail: '' };
+    // A `from` (or, with no pattern, a `to`) written as prose names no file: the link
+    // is not checked rather than failed as "Source file not found" (PAN-09).
+    const toIsPath = isPathLike(link.to);
+    if (!isPathLike(link.from) || (!link.pattern && !toIsPath)) {
+      check.verified = null;
+      check.skipped = PROSE_SKIP;
+      check.detail = `Not checked: ${isPathLike(link.from) ? '`to`' : '`from`'} is prose, not a file`;
+      results.push(check);
+      continue;
+    }
     const sourceContent = safeReadFile(path.join(cwd, link.from || ''));
     if (!sourceContent) {
       check.detail = 'Source file not found';
@@ -515,7 +533,7 @@ function checkKeyLinks(cwd, planContent) {
           check.verified = true;
           check.detail = 'Pattern found in source';
         } else {
-          const targetContent = safeReadFile(path.join(cwd, link.to || ''));
+          const targetContent = toIsPath ? safeReadFile(path.join(cwd, link.to || '')) : null;
           if (targetContent && regex.test(targetContent)) {
             check.verified = true;
             check.detail = 'Pattern found in target';
@@ -534,8 +552,9 @@ function checkKeyLinks(cwd, planContent) {
     }
     results.push(check);
   }
-  const verified = results.filter(r => r.verified).length;
-  return { all_verified: verified === results.length, verified, total: results.length, links: results };
+  const checked = results.filter(r => !r.skipped);
+  const verified = checked.filter(r => r.verified).length;
+  return { all_verified: verified === checked.length, verified, total: checked.length, unchecked: results.length - checked.length, links: results };
 }
 
 function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
@@ -544,7 +563,7 @@ function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
   const content = safeReadFile(fullPath);
   if (!content) { output({ error: 'File not found', path: planFilePath }, raw); return; }
   const r = checkKeyLinks(cwd, content);
-  if (r.total === 0) {
+  if (r.total === 0 && !r.unchecked) {
     // EXIT_OK: same reasoning as cmdVerifyArtifacts above — an empty key_links block is
     // the shipped template default, so a plan that declares none is a result, not a failure.
     output({ error: 'No must_haves.key_links found in frontmatter', path: planFilePath }, raw, undefined, EXIT_OK);
@@ -574,29 +593,39 @@ function findPhaseDir(cwd, phaseNum) {
  * contradiction (a rubber stamp) — reported deterministically, never trusted.
  * When no must_haves are declared there are no mechanical signals to reconcile,
  * so the verdict is passed through (reconciled: true, with a note).
+ *
+ * Nothing to reconcile is not a pass (PAN-08): an unknown phase is
+ * `phase_not_found` and a phase with no verification `verification_missing`, both
+ * reconciled: false. The one exception is `workflow.verifier: false`, where no
+ * verification is the configured state (the phase gate skips it the same way).
  */
 function reconcilePhase(cwd, phaseNum) {
-  const base = { phase: String(phaseNum), found: false, reconciled: true, contradictions: [] };
+  const base = { phase: String(phaseNum), found: false, reconciled: false, contradictions: [] };
   const dir = findPhaseDir(cwd, phaseNum);
-  if (!dir) return { ...base, note: 'phase directory not found' };
+  if (!dir) return { ...base, error: 'phase_not_found', note: 'phase directory not found' };
   let files;
-  try { files = fs.readdirSync(dir); } catch { return { ...base, note: 'phase directory unreadable' }; }
+  try { files = fs.readdirSync(dir); } catch { return { ...base, error: 'phase_unreadable', note: 'phase directory unreadable' }; }
   const verFile = files.find(f => isVerificationFile(f));
-  if (!verFile) return { ...base, note: 'no verification.md — absence is covered by the verification gate, not reconcile' };
+  if (!verFile) {
+    let verifierOn = true;
+    try { verifierOn = loadConfig(cwd).verifier !== false; } catch { /* default: on */ }
+    if (!verifierOn) return { ...base, reconciled: true, skipped: 'verifier_off', note: 'workflow.verifier is off — no verification to reconcile' };
+    return { ...base, error: 'verification_missing', note: 'the phase has no verification.md; run /pan:verify-phase first' };
+  }
   const verRaw = safeReadFile(path.join(dir, verFile)) || '';
   const sm = verRaw.match(/^status:\s*([A-Za-z_-]+)/m);
   const status = sm ? sm[1].toLowerCase() : 'unknown';
   const claimsPass = /^(pass|passed|verified|complete|verified_pass)$/.test(status);
   // Every plan's must_haves. Reading only the first plan let a later plan's failing
   // artifact through under a passing verdict — the rubber stamp this check exists for.
-  const artifacts = { all_passed: true, passed: 0, total: 0, artifacts: [] };
-  const keyLinks = { all_verified: true, verified: 0, total: 0, links: [] };
+  const artifacts = { all_passed: true, passed: 0, total: 0, unchecked: 0, artifacts: [] };
+  const keyLinks = { all_verified: true, verified: 0, total: 0, unchecked: 0, links: [] };
   for (const planFile of files.filter(f => isPlanFile(f)).sort()) {
     const planContent = safeReadFile(path.join(dir, planFile)) || '';
     const a = checkArtifacts(cwd, planContent);
     const k = checkKeyLinks(cwd, planContent);
-    artifacts.passed += a.passed; artifacts.total += a.total; artifacts.artifacts.push(...a.artifacts.map(x => ({ plan: planFile, ...x })));
-    keyLinks.verified += k.verified; keyLinks.total += k.total; keyLinks.links.push(...k.links.map(x => ({ plan: planFile, ...x })));
+    artifacts.passed += a.passed; artifacts.total += a.total; artifacts.unchecked += a.unchecked; artifacts.artifacts.push(...a.artifacts.map(x => ({ plan: planFile, ...x })));
+    keyLinks.verified += k.verified; keyLinks.total += k.total; keyLinks.unchecked += k.unchecked; keyLinks.links.push(...k.links.map(x => ({ plan: planFile, ...x })));
   }
   artifacts.all_passed = artifacts.passed === artifacts.total;
   keyLinks.all_verified = keyLinks.verified === keyLinks.total;

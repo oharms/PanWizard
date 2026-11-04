@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { PHASES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, ROADMAP_SLICE_SUFFIX, isPlanFile, isSummaryFile, isContextFile, isResearchFile, PHASE_HEADER_RE, getPlanId, getSummaryId } = require('./constants.cjs');
-const { planningPath, planningRel, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus } = require('./utils.cjs');
+const { planningPath, planningRel, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus, extractField, extractListField } = require('./utils.cjs');
 const { escapeRegex, normalizePhaseName, output, error, findPhaseInternal, safeReadFile, toLf, dominantEol, withEol } = require('./core.cjs');
 
 /**
@@ -72,15 +72,9 @@ function cmdRoadmapGetPhase(cwd, phaseNum, raw) {
     const compacted = require('./roadmap-compact.cjs').compactedPhaseSection(cwd, phaseNum, section);
     if (compacted && compacted.section) section = compacted.section;
 
-    // Extract goal if present
-    const goalMatch = section.match(/(?:\*\*Goal:\*\*|\*\*Goal\*\*:)\s*([^\n]+)/i);
-    const goal = goalMatch ? goalMatch[1].trim() : null;
-
-    // Extract success criteria as structured array
-    const criteriaMatch = section.match(/\*\*Success Criteria\*\*[^\n]*:\s*\n((?:\s*\d+\.\s*[^\n]+\n?)+)/i);
-    const success_criteria = criteriaMatch
-      ? criteriaMatch[1].trim().split('\n').map(line => line.replace(/^\s*\d+\.\s*/, '').trim()).filter(Boolean)
-      : [];
+    // Goal and success criteria, wrapped lines and bullets included (PAN-15).
+    const goal = extractField(section, 'Goal');
+    const success_criteria = extractListField(section, 'Success Criteria');
 
     output(
       {
@@ -127,13 +121,9 @@ function enumerateRoadmapPhases(content) {
     const sectionEnd = nextHeader ? sectionStart + nextHeader.index : content.length;
     const section = content.slice(sectionStart, sectionEnd);
 
-    // Extract goal from the section
-    const goalMatch = section.match(/(?:\*\*Goal:\*\*|\*\*Goal\*\*:)\s*([^\n]+)/i);
-    const goal = goalMatch ? goalMatch[1].trim() : null;
-
-    // Extract dependency info from the section
-    const dependsMatch = section.match(/(?:\*\*Depends on:\*\*|\*\*Depends on\*\*:)\s*([^\n]+)/i);
-    const dependsOn = dependsMatch ? dependsMatch[1].trim() : null;
+    // Goal and dependency, wrapped lines included (PAN-15).
+    const goal = extractField(section, 'Goal');
+    const dependsOn = extractField(section, 'Depends on');
 
     phases.push({
       number: phaseNum,

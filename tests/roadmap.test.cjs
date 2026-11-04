@@ -474,3 +474,100 @@ describe('roadmap commands handle missing roadmap.md', () => {
 // phase add command
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PAN-15 (3.42.0): wrapped goals and wrapped or bulleted success criteria
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PAN-15: multi-line goal and criteria', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  const write = (text) => fs.writeFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), text);
+  const getPhase = (n) => {
+    const r = runPanTools(`roadmap get-phase ${n}`, tmpDir);
+    assert.ok(r.success, r.error);
+    return JSON.parse(r.output);
+  };
+
+  const WRAPPED = [
+    '# Roadmap',
+    '',
+    '### Phase 1: Auth',
+    '',
+    '**Goal:** Users can sign in with SSO',
+    'and stay signed in across',
+    'browser restarts',
+    '**Depends on:** Nothing',
+    '',
+    '**Success Criteria** (what must be TRUE):',
+    '1. A user signs in with',
+    '   their company account',
+    '2. A session survives a restart',
+    '',
+    '### Phase 2: Billing',
+    '',
+    '**Goal:** Charge cards',
+    '',
+    '**Success Criteria**:',
+    '- Cards are charged once',
+    '- Refunds',
+    '  reach the card',
+    '',
+    '### Phase 3: Mixed',
+    '**Goal:**',
+    '  Goal on the next line',
+    '**Success Criteria:**',
+    '1. Numbered first',
+    '- then a bullet',
+    '2) then a paren item',
+    '',
+    'Plans:',
+    '- [ ] TBD',
+    '',
+  ].join('\n');
+
+  test('a wrapped goal is read whole and stops at **Depends on:**', () => {
+    write(WRAPPED);
+    assert.equal(getPhase(1).goal, 'Users can sign in with SSO and stay signed in across browser restarts');
+  });
+
+  test('a wrapped numbered criterion joins its continuation line', () => {
+    write(WRAPPED);
+    assert.deepEqual(getPhase(1).success_criteria, ['A user signs in with their company account', 'A session survives a restart']);
+  });
+
+  test('bullet criteria are read', () => {
+    write(WRAPPED);
+    assert.deepEqual(getPhase(2).success_criteria, ['Cards are charged once', 'Refunds reach the card']);
+  });
+
+  test('mixed numbered and bulleted criteria, and a goal on the next line', () => {
+    write(WRAPPED);
+    const p = getPhase(3);
+    assert.equal(p.goal, 'Goal on the next line');
+    assert.deepEqual(p.success_criteria, ['Numbered first', 'then a bullet', 'then a paren item']);
+  });
+
+  test('a CRLF roadmap reads the same', () => {
+    write(WRAPPED.replace(/\n/g, '\r\n'));
+    const p = getPhase(1);
+    assert.equal(p.goal, 'Users can sign in with SSO and stay signed in across browser restarts');
+    assert.deepEqual(p.success_criteria, ['A user signs in with their company account', 'A session survives a restart']);
+  });
+
+  test('roadmap analyze reports the full goal', () => {
+    write(WRAPPED);
+    const r = runPanTools('roadmap analyze', tmpDir);
+    assert.ok(r.success, r.error);
+    const phase1 = JSON.parse(r.output).phases.find((p) => p.number === '1');
+    assert.equal(phase1.goal, 'Users can sign in with SSO and stay signed in across browser restarts');
+    assert.equal(phase1.depends_on, 'Nothing');
+  });
+
+  test('core getRoadmapPhaseInternal (init) returns the full goal', () => {
+    write(WRAPPED);
+    const { getRoadmapPhaseInternal } = require('../pan-wizard-core/bin/lib/core.cjs');
+    assert.equal(getRoadmapPhaseInternal(tmpDir, '1').goal, 'Users can sign in with SSO and stay signed in across browser restarts');
+  });
+});

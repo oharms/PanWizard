@@ -31,7 +31,7 @@ const {
 } = require('./constants.cjs');
 const {
   planningPath, phasesPath, listPhaseDirs, parsePhaseDir,
-  filterPlanFiles, filterSummaryFiles,
+  filterPlanFiles, filterSummaryFiles, extractField, extractListField,
 } = require('./utils.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { reconcilePhase } = require('./verify.cjs');
@@ -110,12 +110,9 @@ function extractPhaseGoal(cwd, phaseNumber) {
   // A phase moved out by `roadmap compact` keeps a stub; its criteria are in the history.
   const compacted = require('./roadmap-compact.cjs').compactedPhaseSection(cwd, phaseNumber, section);
   if (compacted && compacted.section) section = compacted.section;
-  const gm = section.match(/(?:\*\*Goal:\*\*|\*\*Goal\*\*:)\s*([^\n]+)/i);
-  const objective = gm ? gm[1].trim() : null;
-  const cm = section.match(/\*\*Success Criteria\*\*[^\n]*:\s*\n((?:\s*\d+\.\s*[^\n]+\n?)+)/i);
-  const success_criteria = cm
-    ? cm[1].trim().split('\n').map(l => l.replace(/^\s*\d+\.\s*/, '').trim()).filter(Boolean).slice(0, 8)
-    : [];
+  // Wrapped goals and bulleted criteria read whole (PAN-15).
+  const objective = extractField(section, 'Goal');
+  const success_criteria = extractListField(section, 'Success Criteria').slice(0, 8);
   return { objective, success_criteria };
 }
 
