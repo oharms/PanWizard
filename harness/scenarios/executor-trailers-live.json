@@ -46,6 +46,6 @@
   ],
   "covers": [
     "agents/pan-executor:6ec88a3d",
-    "pan-wizard-core/workflows/execute-plan:282e8848"
+    "pan-wizard-core/workflows/execute-plan:57f6a721"
   ]
 }

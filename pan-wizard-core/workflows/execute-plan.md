@@ -267,7 +267,7 @@ git add src/types/user.ts
 | `style` | Formatting | style(08-02): format auth module |
 | `chore` | Config/deps | chore(08-02): add bcrypt dependency |
 
-**4. Format:** `{type}({phase}-{plan}): {description}` with bullet points for key changes, and the final trailer block starts with `PAN-Step: ${PHASE}-${PLAN}/task-${TASK_NUM}` on its own line. The commit is the task's record: a crashed run resumes after it. Only the commit that finishes a task carries the line (a TDD RED commit does not); a coalesced commit carries one line per task. Start the final trailer block with the `PAN-Step` line(s); put `Co-Authored-By` and any other trailers after them, with no blank line between. PAN finds the line anywhere in the message, so do not amend a commit only to move it.
+**4. Format:** `{type}({phase}-{plan}): {description}` with bullet points for key changes, and ends with a trailer block whose first line is `PAN-Step: ${PHASE}-${PLAN}/task-${TASK_NUM}`. The commit is the task's record: a crashed run resumes after it. Only the commit that finishes a task carries the line (a TDD RED commit does not); a coalesced commit carries one line per task. Put `Co-Authored-By` and any other trailers after the `PAN-Step` line(s), with no blank line between. PAN finds the line anywhere in the message, so do not amend a commit only to move it.
 
 **5. Record hash:**
 ```bash
@@ -403,7 +403,7 @@ If SUMMARY "Issues Encountered" ≠ "None": yolo → log and continue. Interacti
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap update-plan-progress "${PHASE}"
 ```
-Counts PLAN vs SUMMARY files on disk. Updates progress table row with correct count and status (`In Progress` or `Complete` with date).
+Counts the phase's plans paired with their own summaries (a summary with no plan counts for nothing). Updates progress table row with correct count and status (`In Progress` or `Complete` with date).
 </step>
 
 <step name="update_requirements">

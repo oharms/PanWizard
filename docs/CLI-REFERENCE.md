@@ -195,7 +195,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `codebase.cjs` | Codebase analysis: detect-languages, analyze-imports, best-practices, `codebase estimate-size` |
 | `memory.cjs` | **(E-4)** Cross-phase agent memory: `memory read`, `memory append`, `memory list`, `memory compact`, `memory select`, `memory record`, `memory prune`, `memory budget` |
 | `memory-optimize.cjs` | Reconcile the always-loaded project memory: `memory optimize [--apply] [--keep N]` (dedupe / placeholder-strip / cap-with-archive state.md); also runs automatically in the focus + normal flows |
-| `memory-rebuild.cjs` | Regenerate derived tools-memory: `memory rebuild [--apply] [--only agents-md]` (AGENTS.md PAN section in the project's routing mode, CLAUDE.md bridge when a local or global Claude install is visible, state.md frontmatter) |
+| `memory-rebuild.cjs` | Regenerate derived tools-memory: `memory rebuild [--apply] [--only agents-md]` (AGENTS.md PAN section in the project's routing mode, CLAUDE.md bridge when a local or global Claude install is visible, state.md's position keys patched in place) |
 | `agents-md.cjs` | Single source for the AGENTS.md PAN section and PAN's CLAUDE.md block (the `@AGENTS.md` import plus a `# Compact instructions` section Claude Code reads when it compacts), shared by the installer and `memory rebuild` |
 | `core.cjs` (CLI surface) | **(E-1)** Cached context: `cache prime [--summary]` lists the stable planning files agents re-read (wraps `buildCachedContext`). It measures them and primes nothing: the host caches each agent's prompt prefix itself. |
 | `cost.cjs` | **(Y-6)** Cost dashboard: `cost report`, `cost append`, `cost clear`, `cost limits` (the host's usage-limit windows as the status line last saw them), `cost budget --phase N` (a phase's spend against `cost.phase_budget_usd`; it warns, never stops), plus `models check` rate-table staleness. Log at `.planning/metrics/tokens.jsonl`. |
@@ -735,7 +735,7 @@ pan-tools state compact --keep-days 90
 
 **What never moves:**
 - headings PAN reads or writes (matched as heading prefixes: Decisions, Accumulated…, Blockers, Concerns, Session, Next Action, Phase Progress, Project Reference, Source Authority, Toolchain, Metrics, Current…, Status) — `state get <section>` can read any heading by name
-- any section carrying a field the frontmatter is rebuilt from (`**Status:**`, `**Current Phase:**`, `**Progress:**`, …), because `syncStateFrontmatter` patches the frontmatter from the **first** such match in the body
+- any section carrying a field the frontmatter is patched from (`**Status:**`, `**Current Phase:**`, `**Last Activity:**`, …), because `syncStateFrontmatter` patches the frontmatter from the **first** such match in the body
 - anything unrecognised — the classifier declines rather than guesses
 - everything, when archiving would not actually shrink the file (on a small `state.md` the pointer costs more than the section)
 
@@ -1243,7 +1243,7 @@ pan-tools roadmap analyze
 
 ### `roadmap update-plan-progress <phase>`
 
-Update the progress table row and the `**Plans:**` count in roadmap.md for a specific phase from the on-disk PLAN/SUMMARY counts (the number matches padded or not); when the phase is complete it also ticks the phase checkbox (with the completion date), and it ticks each plan's own checkbox whose summary exists.
+Update the progress table row and the `**Plans:**` count in roadmap.md for a specific phase from its plans paired with their own summaries, a summary with no plan counting for nothing (the number matches padded or not); when the phase is complete it also ticks the phase checkbox (with the completion date), and it ticks each plan's own checkbox whose summary exists.
 
 The table cells are found **by header name**: the row whose first cell names the phase, in a table whose header has a Plans column and a Status column, gets those two cells (and a Completed column's date) rewritten; every other cell is left as it was. A table without Plans and Status columns is not touched — the output says `table_updated: false` with the reason in `table_reason`. The `**Plans:**` line is rewritten only inside the phase's own section, never the next phase's.
 
@@ -4103,7 +4103,7 @@ Dry-run by default; pass `--apply` to write. A second run changes nothing. `--on
 
 ```bash
 pan-tools memory rebuild             # dry-run: report the derived targets
-pan-tools memory rebuild --apply     # regenerate AGENTS.md / CLAUDE.md / state.md frontmatter
+pan-tools memory rebuild --apply     # regenerate AGENTS.md / CLAUDE.md; patch state.md's position keys
 ```
 
 **JSON output:**

@@ -176,7 +176,7 @@
     "reason": "Focus cycles as quick tasks (Stage A): the same focus open behaviour as the focus-auto rule, from the --step exec workflow; tests/focus-integration.test.cjs covers it, and its prompt-contract test pins that focus-exec opens before its commit and closes after."
   },
   {
-    "id": "commands/pan/focus-auto:d61f0c7a",
+    "id": "commands/pan/focus-auto:b544b80e",
     "reason": "Focus Stage A.1 (A1-S, A1-C): the derived status, the regression commit refusal and the commit_blocked way out are engine code in focusClose; tests/focus-integration.test.cjs asserts a pre-existing failure verifies, a regression records failed with no commit, a claim only lowers, and a sensitive path refuses with nothing written."
   },
   {
@@ -184,7 +184,7 @@
     "reason": "Focus Stage A.1 (A1-U): --update recording the run's current_cycle, refusing an open one, and stopping the run resumable on a failed cycle are engine code; tests/focus-integration.test.cjs records the named cycle only, lists the older one as unrecorded, and asserts cycle_failed and --continue."
   },
   {
-    "id": "pan-wizard-core/workflows/focus-exec:c38891f6",
+    "id": "pan-wizard-core/workflows/focus-exec:e08b8e04",
     "reason": "Focus Stage A.1 (A1-C, A1-S): the same close contract as focus-auto's; enforced in focusClose and pinned by tests/focus-integration.test.cjs (derived status, regression refusal, commit_blocked)."
   },
   {

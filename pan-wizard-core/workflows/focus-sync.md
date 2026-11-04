@@ -32,7 +32,7 @@ Only `--all` edits files. Before its first edit, open a docs cycle, which regist
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus open --kind docs
 ```
-After the last edit, close it, naming the files you changed so the close commits them: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from focus open> --status verified|partial|failed --files <files changed>` (`partial` when some stale entries were left for manual review). If the close refuses with `commit_blocked` (a named path matched `commit.sensitive_patterns`, or the commit would delete a file), it wrote nothing and the cycle stays open: fix the cause (rename the file, or narrow the pattern in `.planning/config.json`) and close again, or commit exactly the reported paths yourself and close with `--commit <sha>` in place of `--files`. The report-only modes open nothing.
+After the last edit, close it, naming the files you changed so the close commits them: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from focus open> --status verified|partial|failed --files <files changed>` (`partial` when some stale entries were left for manual review). If the close refuses with `commit_blocked` (a named file matched `commit.sensitive_patterns`, a staged file holds a credential (`sensitive_content_detected`), or the commit would delete a file), it wrote nothing and the cycle stays open: fix the cause (rename the file, or narrow the pattern in `.planning/config.json`) and close again, or commit exactly the reported paths yourself and close with `--commit <sha>` in place of `--files`. The report-only modes open nothing.
 
 ---
 

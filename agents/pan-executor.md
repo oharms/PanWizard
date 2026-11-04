@@ -487,7 +487,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs requirements mark-complete ${RE
 - `state record-metric`: Appends a per-plan row to the Performance Metrics table
 - `state add-decision`: Adds to Decisions section, removes placeholders
 - `state record-session`: Updates Last session timestamp and Stopped At fields
-- `roadmap update-plan-progress`: Updates roadmap.md progress table row with PLAN vs SUMMARY counts
+- `roadmap update-plan-progress`: Updates roadmap.md progress table row from the phase's plans paired with their own summaries
 - `requirements mark-complete`: Checks off requirement checkboxes and updates traceability table in requirements.md
 
 **Extract decisions from summary.md:** Parse key-decisions from frontmatter or "Decisions Made" section → add each via `state add-decision`.

@@ -71,10 +71,9 @@ ls .planning/phases/XX-current/*-summary.md 2>/dev/null | sort
 
 **Verification logic:**
 
-- Count PLAN files
-- Count SUMMARY files
-- If counts match: all plans complete
-- If counts don't match: incomplete
+- A plan is complete when its own `{id}-summary.md` exists
+- The phase is complete when every plan has one (a summary with no plan, such as a research summary, does not count)
+- Otherwise: incomplete
 
 <config-check>
 
