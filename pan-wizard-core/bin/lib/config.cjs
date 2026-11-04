@@ -9,7 +9,7 @@ const { output, error, safeReadFile, toPosix, findPhaseInternal } = require('./c
 const {
   CONFIG_FILE, PROJECT_FILE, STANDARDS_FILE,
   STANDARDS_CATALOG, STANDARDS_CATEGORIES, STANDARDS_RECOMMENDATIONS,
-  PHASE_KEYWORDS_TO_STANDARDS, STANDARDS_EXTERNAL_TOOLS,
+  PHASE_KEYWORDS_TO_STANDARDS, STANDARDS_EXTERNAL_TOOLS, DEFAULT_SENSITIVE_PATTERNS,
 } = require('./constants.cjs');
 const { readJsonFile, planningPath, fileAccessible, hasBraveSearchKey, planningRel } = require('./utils.cjs');
 
@@ -112,7 +112,7 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
     commit: {
       safety_checks: true,
       conventional_types: true,
-      sensitive_patterns: ['\\.env$', '\\.pem$', '\\.key$', 'credentials', 'secret', 'password', 'token'],
+      sensitive_patterns: [...DEFAULT_SENSITIVE_PATTERNS],
     },
     execution: {
       default_mode: 'wave_order',

@@ -336,37 +336,87 @@ function runCommitSafetyChecks(cwd, config, force) {
     if (patterns.length > 0) {
       const stagedFiles = stagedResult.stdout.split('\n').filter(Boolean);
       const regexes = patterns.map(p => { try { return new RegExp(p, 'i'); } catch { return null; } }).filter(Boolean);
-      // PAN's own cost ledger matches the bare `token` pattern, which blocked every
-      // commit that staged .planning/ once the cost logger had written to it. It holds
-      // token counts, never a credential. The hook always writes the root tree's copy.
+      // PAN's own cost ledger could match a project's custom pattern (it matched the
+      // old bare `token` default, which blocked every commit that staged .planning/
+      // once the cost logger had written to it). It holds token counts, never a
+      // credential. The hook always writes the root tree's copy.
       const { METRICS_DIR, TOKENS_FILE } = require('./cost.cjs');
       const ownLedger = new Set([planningRel(METRICS_DIR, TOKENS_FILE), `.planning/${METRICS_DIR}/${TOKENS_FILE}`]);
       for (const f of stagedFiles) {
         if (ownLedger.has(f)) continue;
-        if (regexes.some(re => re.test(f))) safetyChecks.sensitive_files_blocked.push(f);
+        // Each pattern is tried on the basename (the defaults are anchored to it:
+        // `^\.env…$`, `^id_rsa$`) and on the whole path (a project's own pattern
+        // such as `config/prod/` keeps working as it always has).
+        const base = f.split('/').pop();
+        if (regexes.some(re => re.test(base) || re.test(f))) safetyChecks.sensitive_files_blocked.push(f);
       }
     }
   }
   if (safetyChecks.sensitive_files_blocked.length > 0) {
     // The hint must not say "unstage them" — cmdCommit now unstages PAN's own
     // additions before returning, so that advice would describe work already done.
-    // It matters that the user knows this can be a FALSE positive: the patterns
-    // match the PATH, never file content, and the bare words in
-    // DEFAULT_SENSITIVE_PATTERNS (credentials/secret/password/token) are unanchored,
-    // so an ordinary planning doc under a phase like `03-secrets-design/` trips it
-    // with no secret anywhere. Without that context the block reads as "PAN found a
-    // secret in your files", which is not what was checked.
     return {
       blocked: true,
       reason: 'sensitive_file_detected',
       safetyChecks,
-      hint: 'Matched on filename/path, not content — this can be a false positive. '
+      hint: 'Matched on the file name (a .env, key, credentials or secrets file). '
         + 'If the file is safe, narrow commit.sensitive_patterns in .planning/config.json '
         + 'or commit it yourself; if it is a real secret, gitignore it.',
     };
   }
 
+  // Staged content: a credential written into an ordinary file (DD-7). The name rules
+  // cannot see `api_key = "sk-…"` in a notes file; the content rules can.
+  safetyChecks.sensitive_content_blocked = scanStagedContent(cwd);
+  if (safetyChecks.sensitive_content_blocked.length > 0) {
+    return {
+      blocked: true,
+      reason: 'sensitive_content_detected',
+      safetyChecks,
+      hint: 'A staged file contains what looks like a credential (the rule is named, the value is not printed). '
+        + 'Remove it or move it to an ignored file; if it is a placeholder or test value, commit the file yourself.',
+    };
+  }
+
   return { blocked: false, safetyChecks };
+}
+
+/** Staged files larger than this are not content-scanned (generated or vendored). */
+const CONTENT_SCAN_MAX_BYTES = 512 * 1024;
+
+/**
+ * Scan the staged (index) content of each added or modified file for credentials,
+ * with redact.cjs's rules: TOKEN_RE (a provider token or private key shape) and
+ * SECRET_KV_RE (`api_key = …`). The key-value rule alone also matches prose and type
+ * declarations (`password: string`, `token: required`), so its value must look like
+ * a secret: at least 12 characters mixing letters and digits, not a placeholder
+ * (`<…>`, `${…}`, `process.env…`, `xxxx`, `changeme`). Binary files (a NUL byte) and
+ * files over CONTENT_SCAN_MAX_BYTES are skipped. Reports rule names, never values.
+ * @param {string} cwd
+ * @returns {Array<{file: string, rule: string}>}
+ */
+function scanStagedContent(cwd) {
+  const { TOKEN_RE, SECRET_KV_RE } = require('./redact.cjs');
+  const listed = execGit(cwd, ['diff', '--cached', '--name-only', '--diff-filter=ACMR']);
+  if (listed.exitCode !== 0 || !listed.stdout) return [];
+  const kvGlobal = new RegExp(SECRET_KV_RE.source, 'gi');
+  const placeholder = /^(?:<.*>|\$\{?.*|process\.env.*|env\[.*|x{4,}.*|.*(?:changeme|example|placeholder|your[_-]).*)$/i;
+  const looksSecret = (v) => v.length >= 12 && /\d/.test(v) && /[A-Za-z]/.test(v) && !placeholder.test(v);
+  const hits = [];
+  for (const file of listed.stdout.split('\n').map((l) => l.trim()).filter(Boolean)) {
+    const shown = execGit(cwd, ['show', `:${file}`]);
+    if (shown.exitCode !== 0) continue; // too large for the buffer, or unreadable
+    const text = shown.stdout;
+    if (text.length > CONTENT_SCAN_MAX_BYTES || text.includes('\0')) continue;
+    if (TOKEN_RE.test(text)) { hits.push({ file, rule: 'token' }); continue; }
+    kvGlobal.lastIndex = 0;
+    let m;
+    while ((m = kvGlobal.exec(text)) !== null) {
+      const value = m[0].replace(/^[^:=]*[:=]\s*["']?/, '');
+      if (looksSecret(value)) { hits.push({ file, rule: 'secret_key_value' }); break; }
+    }
+  }
+  return hits;
 }
 
 /**

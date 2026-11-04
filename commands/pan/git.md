@@ -71,7 +71,8 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs git commit \
 | Check | Blocks on | Override |
 |-------|-----------|---------|
 | Deleted files | A deletion anywhere in the repository (`git status --porcelain`, staged or not) | `--force` |
-| Sensitive files | A staged path ending `.env`, `.pem` or `.key`, or containing `credentials`, `secret`, `password` or `token` (PAN's own `.planning/metrics/tokens.jsonl` is exempt) | None: narrow `commit.sensitive_patterns` in `.planning/config.json`, or commit the file yourself |
+| Sensitive files | A staged file named like a secret store: `.env`/`.env.*` (not `.env.example`), `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa` and kin, `credentials.*`, `.npmrc`, `.netrc`, `.pypirc`, `secrets.yaml`/`json`/`env` (PAN's own `.planning/metrics/tokens.jsonl` is exempt) | None: narrow `commit.sensitive_patterns` in `.planning/config.json`, or commit the file yourself |
+| Sensitive content | A staged file containing a credential: a provider token or private key, or `api_key = "…"`-style secret (reported as `sensitive_content_detected`, the value never printed) | None: remove the secret, or commit the file yourself if it is a placeholder |
 
 **Output:** `{committed, hash, type, safety_checks}`
 

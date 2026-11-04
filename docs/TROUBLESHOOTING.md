@@ -920,7 +920,7 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 
 **Symptom:** `focus close --files …` exits 1 with `error: "commit_blocked"`, a `reason` of `sensitive_file_detected` or `deleted_files_detected`, and `safety_checks`.
 
-**Root cause:** A named path matched `commit.sensitive_patterns` (matched on the path, not the content: `token`, `secret`, `password` and `credentials` are bare words), or the commit would delete a file. Nothing was written and the cycle is still open; the paths the close staged are unstaged again.
+**Root cause:** A named file matched `commit.sensitive_patterns` (by default a secret-store file name such as `.env`, `server.key` or `credentials.json`), a staged file contains what looks like a credential (`sensitive_content_detected`), or the commit would delete a file. Nothing was written and the cycle is still open; the paths the close staged are unstaged again.
 
 **Fix:** For a false positive, rename the file or narrow `commit.sensitive_patterns` in `.planning/config.json`, then close again. Otherwise commit exactly the reported paths yourself and close with `--commit <sha>` in place of `--files`.
 

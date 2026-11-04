@@ -224,6 +224,7 @@
     "HYGIENE_TRACE_RETENTION_DAYS:number",
     "LARGE_CONTEXT_TOKEN_THRESHOLD:number",
     "LEARNINGS_FILE:string",
+    "LEGACY_SENSITIVE_PATTERNS:object",
     "MAX_CYCLES_MAX:number",
     "MAX_CYCLES_MIN:number",
     "MAX_JSON_SIZE:number",
@@ -335,6 +336,7 @@
     "hostRuntime:function",
     "isGitIgnored:function",
     "isGitRepo:function",
+    "isLegacySensitivePatterns:function",
     "loadConfig:function",
     "normalizePhaseName:function",
     "output:function",
@@ -1071,11 +1073,13 @@
     "enrichPhaseWithDiskStatus:function",
     "enumerateRoadmapPhases:function",
     "extractMilestones:function",
+    "insertProgressTableRow:function",
     "phaseDependencies:function",
     "phaseRequirementIds:function",
     "requirementLines:function",
     "roadmapRequirementIds:function",
-    "syncRequirementCheckboxes:function"
+    "syncRequirementCheckboxes:function",
+    "updateProgressTableRow:function"
   ],
   "runner.cjs": [
     "DEFAULT_TIMEOUT_MS:number",

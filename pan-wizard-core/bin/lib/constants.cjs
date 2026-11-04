@@ -655,8 +655,30 @@ const SKILL_ALIGN_CONTENT_CAP = 700;            // chars of file head scored (�
 // here, so `pan-tools commit --type perf` refused a type the docs prescribe.
 const VALID_COMMIT_TYPES = ['feat', 'fix', 'docs', 'test', 'refactor', 'perf', 'chore'];
 
-/** Default sensitive file patterns for commit safety checks */
-const DEFAULT_SENSITIVE_PATTERNS = ['\\.env$', '\\.pem$', '\\.key$', 'credentials', 'secret', 'password', 'token'];
+/**
+ * Default sensitive file patterns for commit safety checks (DD-7, PAN-11). Each is
+ * anchored to a file's BASENAME: env files (not their .example/.sample/.template
+ * twins), key and certificate stores, private SSH keys (the `.pub` half is public and
+ * commits), credentials files, package-manager and netrc credential files, and
+ * secrets.yaml/json/env. The bare words this replaced (`secret`, `token`, ...) matched
+ * anywhere in a path, so docs/secret-rotation.md and src/token-utils.ts were refused.
+ * Secrets inside ordinary files are caught by the staged-content scan instead.
+ */
+const DEFAULT_SENSITIVE_PATTERNS = [
+  '^\\.env(?!\\.(?:example|sample|template)$)(?:\\..+)?$',
+  '\\.(?:pem|key|p12|pfx)$',
+  '^id_(?:rsa|ed25519|ecdsa|dsa)$',
+  '^credentials(?:\\.\\w+)?$',
+  '^\\.(?:npmrc|netrc|pypirc)$',
+  '^secrets?\\.(?:ya?ml|json|env)$',
+];
+
+/**
+ * The pre-3.42 default list. A project config.json written by an older install still
+ * carries it verbatim; it is read as the default (DEFAULT_SENSITIVE_PATTERNS) and
+ * `validate health` reports it, so the old false refusals stop without a manual edit.
+ */
+const LEGACY_SENSITIVE_PATTERNS = ['\\.env$', '\\.pem$', '\\.key$', 'credentials', 'secret', 'password', 'token'];
 
 // ─── Drift detection ─────────────────────────────────────────────────────────
 
@@ -922,6 +944,7 @@ module.exports = {
   // Commit
   VALID_COMMIT_TYPES,
   DEFAULT_SENSITIVE_PATTERNS,
+  LEGACY_SENSITIVE_PATTERNS,
   // Auto-run
   AUTORUN_STATUSES,
   // Drift detection

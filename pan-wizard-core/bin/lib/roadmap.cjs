@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { PHASES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, ROADMAP_SLICE_SUFFIX, isPlanFile, isSummaryFile, isContextFile, isResearchFile, PHASE_HEADER_RE, getPlanId, getSummaryId } = require('./constants.cjs');
 const { planningPath, planningRel, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus, extractField, extractListField } = require('./utils.cjs');
-const { escapeRegex, normalizePhaseName, output, error, findPhaseInternal, safeReadFile, toLf, dominantEol, withEol } = require('./core.cjs');
+const { escapeRegex, normalizePhaseName, comparePhaseNum, output, error, findPhaseInternal, safeReadFile, toLf, dominantEol, withEol } = require('./core.cjs');
 
 /**
  * Extract a single phase section from roadmap.md including goal and success criteria.
@@ -388,6 +388,67 @@ function updatePhasePlansLine(content, phaseNum, text) {
   return { content, updated: false };
 }
 
+/**
+ * Add a Progress-table row for a phase `phase insert` or `phase add` just created.
+ * The table is the first whose header names Plans and Status columns (the same rule
+ * updateProgressTableRow uses, so `roadmap update-plan-progress <new>` finds the row
+ * afterwards). The row copies the after-phase row's number format ("5. Name",
+ * "Phase 5: Name", "05") and its Milestone cell, and goes after the after-phase row
+ * and its decimals — before the first row that numbers higher. Plans `0/0`, Status
+ * `Not started`, everything else `-`. Before this, insert and add wrote no row and
+ * update-plan-progress reported `updated: false` for the new phase. Pure.
+ * @param {string} content - Full roadmap.md content
+ * @param {string|null} afterPhase - The phase the new one follows (null: none)
+ * @param {string} newPhase - The new phase's number
+ * @param {string} name - Its name
+ * @returns {{content: string, updated: boolean}}
+ */
+function insertProgressTableRow(content, afterPhase, newPhase, name) {
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
+  const rowNum = (cells) => {
+    const m = String(cells[0] || '').match(/^(?:phase\s+)?(\d+[A-Z]?(?:\.\d+)*)/i);
+    return m ? m[1] : null;
+  };
+  for (let i = 0; i + 1 < lines.length; i++) {
+    if (!isTableLine(lines[i]) || !isSeparator(lines[i + 1])) continue;
+    const header = splitRow(lines[i]);
+    const col = (re) => header.findIndex((h) => re.test(h));
+    const plansIdx = col(/\bplans?\b/i);
+    const statusIdx = col(/^status$/i);
+    if (plansIdx < 0 || statusIdx < 0) continue;
+    const milestoneIdx = col(/^milestone$/i);
+    let end = i + 2;
+    while (end < lines.length && isTableLine(lines[end])) end++;
+    const rows = [];
+    for (let r = i + 2; r < end; r++) rows.push({ r, cells: splitRow(lines[r]), num: rowNum(splitRow(lines[r])) });
+    if (rows.some((x) => x.num && unpadPhase(x.num) === unpadPhase(newPhase))) return { content, updated: false };
+    const afterRow = afterPhase ? rows.find((x) => x.num && unpadPhase(x.num) === unpadPhase(afterPhase)) : null;
+    const higher = rows.find((x) => x.num && comparePhaseNum(unpadPhase(x.num), unpadPhase(newPhase)) > 0);
+    const at = higher ? higher.r : end;
+    const preceding = rows.filter((x) => x.r < at && x.num);
+    const model = afterRow || preceding[preceding.length - 1] || rows.find((x) => x.num) || null;
+    // Number cell in the model row's format: its prefix, padding and separator.
+    let first = `${unpadPhase(newPhase)}. ${name}`;
+    if (model) {
+      const m = model.cells[0].match(/^((?:phase\s+)?)(\d+)([A-Z]?(?:\.\d+)*)(.*)$/i);
+      const padded = m && m[2].length > 1 && m[2].startsWith('0');
+      const num = padded ? normalizePhaseName(unpadPhase(newPhase)) : unpadPhase(newPhase);
+      const sep = m ? (m[4].match(/^\s*[.:\-–]?\s*/) || [''])[0] : '. ';
+      first = m && m[4].trim() === '' ? `${m[1]}${num}` : `${m ? m[1] : ''}${num}${sep || ' '}${name}`;
+    }
+    const cells = header.map(() => '-');
+    cells[0] = first;
+    cells[plansIdx] = '0/0';
+    cells[statusIdx] = 'Not started';
+    if (milestoneIdx > 0 && model && model.cells[milestoneIdx]) cells[milestoneIdx] = model.cells[milestoneIdx];
+    const indent = (model ? lines[model.r] : lines[i]).match(/^\s*/)[0];
+    lines.splice(at, 0, `${indent}| ${cells.join(' | ')} |`);
+    return { content: lines.join(eol), updated: true };
+  }
+  return { content, updated: false };
+}
+
 function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
   if (!phaseNum) {
     error('phase number required for roadmap update-plan-progress');
@@ -764,5 +825,7 @@ module.exports = {
   phaseRequirementIds,
   phaseDependencies,
   requirementLines,
+  updateProgressTableRow,
+  insertProgressTableRow,
   ROADMAP_SLICE_SUFFIX,
 };

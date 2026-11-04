@@ -154,36 +154,40 @@ function autoSessionId(now = new Date()) {
 const SESSION_STALE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Last time anything was written to a session: its event log if it has one, else the
- * moment it started. Null when the session cannot be read at all.
+ * When a session started: its `started_at`, else (a session.json without one) its
+ * event log's last write, else null. Mirrors sessionStartedMs in the trace and cost
+ * hooks.
+ *
+ * The age is taken from started_at, NOT from the event log's mtime (PAN-20, DD-10):
+ * every append refreshes the mtime, and `findings record` appends through
+ * logTraceEvent, so any writer kept an explicit session "alive" indefinitely.
  */
-function sessionLastActivityMs(cwd, sid) {
-  const dir = path.join(getTracesDir(cwd), sid);
+function sessionStartedMs(dir, meta) {
+  const t = meta && meta.started_at ? new Date(meta.started_at).getTime() : NaN;
+  if (Number.isFinite(t)) return t;
   try {
     return fs.statSync(path.join(dir, TRACE_EVENT_FILE)).mtimeMs;
-  } catch { /* no events yet */ }
-  try {
-    const meta = JSON.parse(fs.readFileSync(path.join(dir, OPT_SESSION_FILE), 'utf-8'));
-    const t = new Date(meta.started_at).getTime();
-    return Number.isFinite(t) ? t : null;
   } catch {
     return null;
   }
 }
 
 /**
- * Is this session finished, or too old to still be the one running? Read-only —
- * finalizing a stale session is the writing path's job (the trace hook's rollover).
+ * Is this session finished, started more than SESSION_STALE_MS ago, or started under
+ * another host session (when `hostSessionId` is given and the session recorded one)?
+ * Read-only — finalizing a stale session is the writing path's job (the trace hook's
+ * rollover).
  */
-function isSessionStale(cwd, sid, now = Date.now()) {
+function isSessionStale(cwd, sid, now = Date.now(), hostSessionId = null) {
   const dir = path.join(getTracesDir(cwd), sid);
+  let meta = null;
   try {
-    const meta = JSON.parse(fs.readFileSync(path.join(dir, OPT_SESSION_FILE), 'utf-8'));
-    if (meta && meta.ended_at) return true;
+    meta = JSON.parse(fs.readFileSync(path.join(dir, OPT_SESSION_FILE), 'utf-8'));
   } catch { /* unreadable meta — fall through to the age test */ }
-  const last = sessionLastActivityMs(cwd, sid);
-  if (last === null) return true;
-  return now - last > SESSION_STALE_MS;
+  if (meta && meta.ended_at) return true;
+  if (hostSessionId && meta && meta.host_session_id && meta.host_session_id !== hostSessionId) return true;
+  const started = sessionStartedMs(dir, meta);
+  return started === null || now - started > SESSION_STALE_MS;
 }
 
 /**

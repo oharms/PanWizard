@@ -325,20 +325,22 @@ describe('focus close commits the cycle (A1-C)', () => {
     assert.equal(out.record_commit, 'skipped_gitignored');
   });
 
+  // 3.42 (PAN-11): src/server.key no longer matches (the defaults are basename rules, not
+  // the bare word "token" anywhere); a key file still does.
   test('a sensitive path refuses the close, unstages it and writes nothing; a commit of your own then closes it', () => {
     const opened = json(runPanTools('focus open', dir));
-    write(dir, 'src/token.js', 'module.exports = 1;\n');
+    write(dir, 'src/server.key', 'module.exports = 1;\n');
     const before = read(dir, '.planning/state.md');
-    const r = runPanTools(`focus close --dir ${opened.dir} --files src/token.js --done P1-1`, dir);
+    const r = runPanTools(`focus close --dir ${opened.dir} --files src/server.key --done P1-1`, dir);
     assert.equal(r.success, false);
     const out = json(r);
     assert.equal(out.error, 'commit_blocked');
-    assert.deepEqual(out.safety_checks.sensitive_files_blocked, ['src/token.js']);
+    assert.deepEqual(out.safety_checks.sensitive_files_blocked, ['src/server.key']);
     assert.equal(git(dir, 'diff --cached --name-only'), '', 'the refused file is not left staged');
     assert.ok(focus.openFocusCycle(dir), 'the cycle stays open');
     assert.equal(read(dir, '.planning/state.md'), before);
-    git(dir, 'add src/token.js');
-    git(dir, 'commit -qm "fix: token"');
+    git(dir, 'add src/server.key');
+    git(dir, 'commit -qm "fix: key"');
     const sha = git(dir, 'rev-parse --short HEAD');
     const closed = json(runPanTools(`focus close --dir ${opened.dir} --commit ${sha} --done P1-1`, dir));
     assert.equal(closed.commit, sha);

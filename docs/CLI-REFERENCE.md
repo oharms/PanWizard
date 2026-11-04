@@ -103,7 +103,7 @@ Mutating commands report the outcome as a past-tense flag: `{committed}`, `{upda
 | Payload | Exit | Why |
 |---|---|---|
 | `{committed: false, reason: "commit_failed", error: …}` | `1` | git refused; nothing landed |
-| `{committed: false, reason: …, error: "commit_blocked"}` | `1` | a safety check protected you; nothing landed (`reason` names the check: `sensitive_file_detected` or `deleted_files_detected`) |
+| `{committed: false, reason: …, error: "commit_blocked"}` | `1` | a safety check protected you; nothing landed (`reason` names the check: `sensitive_file_detected`, `sensitive_content_detected` or `deleted_files_detected`) |
 | `{updated: false, reason: "state.md not found", error: …}` | `1` | the write had nowhere to go |
 | `{resolved: false, reason: "no matching blocker", error: …}` | `1` | the blocker is still open |
 | `{committed: false, reason: "nothing_to_commit"}` | `0` | no change was needed |
@@ -957,13 +957,15 @@ pan-tools phase add "API Integration Layer" [--raw]
 
 **`--raw` output:** The padded phase number.
 
-**Side effects:** Creates `.planning/phases/NN-slug/` (with a `.gitkeep`), appends a new `### Phase N:` detail section to roadmap.md, and adds a `- [ ] **Phase N: <name>**` checklist entry when the roadmap has a checklist.
+**Side effects:** Creates `.planning/phases/NN-slug/` (empty, no placeholder file), appends a new `### Phase N:` detail section to roadmap.md whose `**Depends on:**` names the last phase in roadmap order (a decimal included), adds a `- [ ] **Phase N: <name>**` checklist entry when the roadmap has a checklist, and adds a Progress-table row (`0/0`, `Not started`) when the roadmap has a table with Plans and Status columns.
 
 ---
 
 ### `phase insert <after> <description>`
 
 Insert a decimal phase after an existing phase. Creates the directory and updates roadmap.md.
+
+The number comes from the phase directories and the roadmap's headings together. After an integer phase `N` it is the next free `N.k`. After a decimal such as `29.4` it is the next sibling, `29.5`, when no phase has that number; only when `29.5` exists does it nest (`29.4.1`), and the output says so with `nested: true`.
 
 ```bash
 pan-tools phase insert 5 "Emergency Hotfix" [--raw]
@@ -974,6 +976,7 @@ pan-tools phase insert 5 "Emergency Hotfix" [--raw]
 {
   "phase_number": "05.1",
   "after_phase": "5",
+  "nested": false,
   "name": "Emergency Hotfix",
   "slug": "emergency-hotfix",
   "directory": ".planning/phases/05.1-emergency-hotfix"
@@ -981,6 +984,8 @@ pan-tools phase insert 5 "Emergency Hotfix" [--raw]
 ```
 
 **`--raw` output:** The decimal phase number (e.g., `05.1`).
+
+**Side effects:** Creates the phase directory (empty, no placeholder file); inserts the `### Phase N.k: <name> (INSERTED)` section after the after-phase and its own decimals, with `**Depends on:**` naming the phase immediately before it (the after-phase's last decimal, else the after-phase, unpadded); adds the checklist entry, and a Progress-table row (`0/0`, `Not started`, the after-phase row's number format and Milestone cell) when the roadmap has a table with Plans and Status columns, so `roadmap update-plan-progress` finds it.
 
 ---
 
@@ -1520,6 +1525,7 @@ pan-tools validate health --links
 | I004 | info | Another tool shares the planning tree (planning-with-files markers: `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories such as `sessions/`). PAN leaves its files alone and keeps checking its own | No |
 | I005 | info | The planning tree is ignored by git while `commit_docs` is true, so planning commits commit nothing. planning-with-files adds `.planning/` to `.gitignore` by default. Fix: remove the entry, or set `commit_docs` to false | No |
 | I006 | info | `config.json` holds keys PAN does not read, usually a typo. The fix names the nearest known key. A key starting with lowercase `x-` is your own metadata and is never reported. Fix: correct the spelling or remove the key | No |
+| I007 | info | `config.json` stores the pre-3.42 default `commit.sensitive_patterns` (bare words such as `secret` and `token` anywhere in a path). PAN already reads it as today's basename defaults. Fix: remove the key, or replace it with your own list | No |
 | STATE_REQ_DRIFT | warning | `state.md` shows all plans complete but `requirements.md` has unchecked boxes | Yes |
 | STATE_ROADMAP_DRIFT | warning | `state.md` shows all plans complete but `roadmap.md` has unchecked plan boxes | Yes |
 | VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record (verifier enabled) | No |
@@ -2800,7 +2806,8 @@ pan-tools commit "bugfix" --type fix --force
 
 **Safety checks** (enabled by default via `config.commit.safety_checks`):
 - **Deleted files:** Blocks a commit that would delete a file: a deletion staged in the index, whether this call staged it (a deleted path in `--files`) or it was staged before (use `--force` to override). An unstaged deletion elsewhere in the tree is not part of the commit and does not block it
-- **Sensitive files:** Blocks commit if a staged path matches a sensitive pattern: `.env`, `.pem` or `.key` at the end of the path, or `credentials`, `secret`, `password` or `token` anywhere in it (configurable via `config.commit.sensitive_patterns`). The match is on the path, not the content. PAN's own cost ledger, `.planning/metrics/tokens.jsonl`, is exempt
+- **Sensitive files:** Blocks commit if a staged file's name matches a sensitive pattern. The defaults match the basename: `.env` and `.env.*` (not `.env.example`, `.env.sample` or `.env.template`), `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa`/`id_ed25519`/`id_ecdsa`/`id_dsa` (the `.pub` half commits), `credentials` and `credentials.*`, `.npmrc`, `.netrc`, `.pypirc`, and `secret(s).yaml|yml|json|env`. A file merely named for a secret (`docs/secret-rotation.md`, `src/token-utils.ts`) commits. `config.commit.sensitive_patterns` replaces the list; each pattern is tried on the basename and on the whole path, so a custom pattern such as `^private/` works as before. A config.json holding the pre-3.42 default list verbatim is read as today's defaults (`validate health` reports it as I007). PAN's own cost ledger, `.planning/metrics/tokens.jsonl`, is exempt
+- **Sensitive content:** Blocks commit if an added or modified staged file contains a credential: a provider token or private-key shape, or a key-value secret (`api_key = "…"`, `client_secret: …`) whose value is 12 or more characters mixing letters and digits and is not a placeholder. Binary files and files over 512 KiB are not scanned. `safety_checks.sensitive_content_blocked` lists `{file, rule}`; the value itself is never printed
 
 **JSON output:**
 ```json
@@ -2809,11 +2816,11 @@ pan-tools commit "bugfix" --type fix --force
   "hash": "abc1234",
   "reason": "committed",
   "type": "feat",
-  "safety_checks": { "deleted_files": [], "sensitive_files_blocked": [] }
+  "safety_checks": { "deleted_files": [], "sensitive_files_blocked": [], "sensitive_content_blocked": [] }
 }
 ```
 
-**Block reasons:** `deleted_files_detected`, `sensitive_file_detected`.
+**Block reasons:** `deleted_files_detected`, `sensitive_file_detected`, `sensitive_content_detected`.
 
 **Skip reasons:** `skipped_commit_docs_false`, `skipped_gitignored`, `nothing_to_commit`, `not_a_git_repo` (exit 0, with a `hint`). A blocked commit exits 1 with `error: commit_blocked`; PAN un-stages what it staged itself (`safety_checks.unstaged_by_pan`) and leaves anything you had staged beforehand untouched.
 

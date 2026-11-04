@@ -7,7 +7,7 @@ const path = require('path');
 const { escapeRegex, normalizePhaseName, comparePhaseNum, findPhaseInternal, getArchivedPhaseDirs, generateSlugInternal, loadConfig, output, error, toPosix, isGitRepo, isGitIgnored, execGit } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { writeStateMd, readStateSafe } = require('./state.cjs');
-const { enumerateRoadmapPhases, roadmapRequirementIds } = require('./roadmap.cjs');
+const { enumerateRoadmapPhases, roadmapRequirementIds, insertProgressTableRow } = require('./roadmap.cjs');
 const { PHASES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, STATE_FILE, isPlanFile, isSummaryFile, getPlanId, PHASE_DIR_RE, ARCHIVE_DIR_RE } = require('./constants.cjs');
 const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, parsePhaseDir, fileAccessible, planningRel } = require('./utils.cjs');
 // Phase removal lives in phase-remove.cjs; re-exported below so consumers of
@@ -489,6 +489,44 @@ function insertPhaseChecklistEntry(content, basePhase, phaseNum, name) {
 }
 
 /**
+ * The decimal numbers used one level under `parent` (29 → [1, 2, 4] for 29.1, 29.2,
+ * 29.4.3), from both the phase directories and the roadmap's phase headings.
+ * @param {string} content - Full roadmap.md content
+ * @param {string} phasesDir - Absolute path of .planning/phases
+ * @param {string} parent - The parent phase number, padded or not
+ * @returns {number[]}
+ */
+function childPhaseNumbers(content, phasesDir, parent) {
+  const base = escapeRegex(String(parent).replace(/^0+(?=\d)/, ''));
+  const found = new Set();
+  try {
+    const dirRe = new RegExp(`^0*${base}\\.(\\d+)(?=[.-]|$)`, 'i');
+    for (const entry of fs.readdirSync(phasesDir, { withFileTypes: true })) {
+      const m = entry.isDirectory() && entry.name.match(dirRe);
+      if (m) found.add(parseInt(m[1], 10));
+    }
+  } catch {
+    // no phases directory yet
+  }
+  const headRe = new RegExp(`^#{2,4}\\s*Phase\\s+0*${base}\\.(\\d+)(?=[.:\\s]|$)`, 'gim');
+  for (const m of String(content).matchAll(headRe)) found.add(parseInt(m[1], 10));
+  return [...found];
+}
+
+/**
+ * The highest phase number among the roadmap's phase headings, unpadded (5.2 when 5
+ * and 5.2 exist), or null when there is none.
+ * @param {string} content - Full roadmap.md content
+ * @returns {string|null}
+ */
+function lastRoadmapPhase(content) {
+  const nums = [...String(content).matchAll(/^#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)[:\s]/gim)]
+    .map((m) => m[1].replace(/^0+(?=\d)/, ''));
+  if (nums.length === 0) return null;
+  return nums.sort(comparePhaseNum)[nums.length - 1];
+}
+
+/**
  * Append a new phase to the end of the roadmap and create its directory. Returns the
  * result or `{error, reason}`; cmdPhaseAdd is the CLI wrapper and `design handoff`
  * adds a designed phase through it.
@@ -524,19 +562,21 @@ function phaseAdd(cwd, description, opts = {}) {
   const dirName = `${paddedNum}-${slug}`;
   const dirPath = path.join(phasesPath(cwd), dirName);
 
-  // Create directory with .gitkeep so git tracks empty folders
+  // No placeholder file: the phase's context and plans fill the directory, and the
+  // `.gitkeep` left in every phase was noise in later commits (PAN-14).
   try {
     fs.mkdirSync(dirPath, { recursive: true });
-    fs.writeFileSync(path.join(dirPath, '.gitkeep'), '');
   } catch (e) {
     return { error: 'mkdir_failed', reason: `Failed to create phase directory: ${e.message}` };
   }
 
-  // Build phase entry
+  // Build phase entry. It depends on the phase immediately before it in roadmap
+  // order — a decimal included (5.2 after 5) — not the bare highest integer.
+  const lastPhase = lastRoadmapPhase(content);
   const oneLine = (t) => String(t).replace(/\r?\n+/g, ' ').trim();
   const goal = opts.goal ? oneLine(opts.goal) : '[To be planned]';
   const design = opts.design ? `**Design:** ${oneLine(opts.design)}\n` : '';
-  const phaseEntry = `\n### Phase ${newPhaseNum}: ${description}\n\n**Goal:** ${goal}\n${design}**Requirements**: TBD\n**Depends on:** Phase ${maxPhase}\n**Plans:** 0 plans\n\nPlans:\n- [ ] TBD (run /pan:plan-phase ${newPhaseNum} to break down)\n`;
+  const phaseEntry = `\n### Phase ${newPhaseNum}: ${description}\n\n**Goal:** ${goal}\n${design}**Requirements**: TBD\n**Depends on:** Phase ${lastPhase || maxPhase}\n**Plans:** 0 plans\n\nPlans:\n- [ ] TBD (run /pan:plan-phase ${newPhaseNum} to break down)\n`;
 
   // Find insertion point: before last "---" or at end
   let updatedContent;
@@ -553,6 +593,8 @@ function phaseAdd(cwd, description, opts = {}) {
   // `phase complete` then reported roadmap_updated:true having changed nothing, because
   // it ticks a checklist line that was never there.
   updatedContent = appendPhaseChecklistEntry(updatedContent, newPhaseNum, description);
+  // And its Progress-table row, so `roadmap update-plan-progress` has one to update (PAN-05).
+  updatedContent = insertProgressTableRow(updatedContent, lastPhase, String(newPhaseNum), description).content;
 
   try {
     fs.writeFileSync(roadmapPath, updatedContent, 'utf-8');
@@ -613,38 +655,39 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
     error(`Phase ${afterPhase} not found in roadmap.md`);
   }
 
-  // Calculate next decimal using existing logic
+  // The new phase's number (PAN-23). After an integer phase N: N.(highest child + 1).
+  // After a decimal such as 29.4: the next sibling, 29.5, when no phase has that
+  // number; only when 29.5 is taken does it nest (29.4.1, reported as `nested`).
+  // Before, the whole decimal was the base, so every decimal insert nested. Numbers
+  // are taken from the phase directories AND the roadmap's headings, so a decimal
+  // the roadmap names but no directory holds yet is never handed out twice.
   const phasesDir = phasesPath(cwd);
-  const normalizedBase = normalizePhaseName(afterPhase);
-  let existingDecimals = [];
-
-  try {
-    const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
-    const dirs = entries.filter(entry => entry.isDirectory()).map(entry => entry.name);
-    const decimalPattern = new RegExp(`^${escapeRegex(normalizedBase)}\\.(\\d+)`);
-    for (const dir of dirs) {
-      const decMatch = dir.match(decimalPattern);
-      if (decMatch) existingDecimals.push(parseInt(decMatch[1], 10));
+  const segments = normalizedAfter.split('.');
+  let decimalPhase;
+  let nested = false;
+  if (segments.length === 1) {
+    const children = childPhaseNumbers(content, phasesDir, normalizedAfter);
+    decimalPhase = `${normalizedAfter}.${children.length ? Math.max(...children) + 1 : 1}`;
+  } else {
+    const parent = segments.slice(0, -1).join('.');
+    const nextSibling = parseInt(segments[segments.length - 1], 10) + 1;
+    if (!childPhaseNumbers(content, phasesDir, parent).includes(nextSibling)) {
+      decimalPhase = `${parent}.${nextSibling}`;
+    } else {
+      const children = childPhaseNumbers(content, phasesDir, normalizedAfter);
+      decimalPhase = `${normalizedAfter}.${children.length ? Math.max(...children) + 1 : 1}`;
+      nested = true;
     }
-  } catch {
-    // Phases directory does not exist; proceed with empty decimal list
   }
-
-  const nextDecimal = existingDecimals.length === 0 ? 1 : Math.max(...existingDecimals) + 1;
-  const decimalPhase = `${normalizedBase}.${nextDecimal}`;
   const dirName = `${decimalPhase}-${slug}`;
   const dirPath = path.join(phasesDir, dirName);
 
-  // Create directory with .gitkeep so git tracks empty folders
+  // No placeholder `.gitkeep` (PAN-14) — see phaseAdd.
   try {
     fs.mkdirSync(dirPath, { recursive: true });
-    fs.writeFileSync(path.join(dirPath, '.gitkeep'), '');
   } catch (e) {
     error(`Failed to create phase directory: ${e.message}`);
   }
-
-  // Build phase entry
-  const phaseEntry = `\n### Phase ${decimalPhase}: ${description} (INSERTED)\n\n**Goal:** [Urgent work - to be planned]\n**Requirements**: TBD\n**Depends on:** Phase ${afterPhase}\n**Plans:** 0 plans\n\nPlans:\n- [ ] TBD (run /pan:plan-phase ${decimalPhase} to break down)\n`;
 
   // Insert after the target phase section
   const headerPattern = new RegExp(`(#{2,4}\\s*Phase\\s+0*${afterPhaseEscaped}:[^\\n]*\\n)`, 'i'); // afterPhaseEscaped already run through escapeRegex above
@@ -664,14 +707,25 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
   const headingRe = /\n(#{2,4}\s+Phase\s+\d[^\n]*)/gi;
   let insertIdx = content.length;
   let heading;
+  // The phase immediately before the new one: the last of the after-phase's own
+  // decimals passed over, else the after-phase itself. It is the dependency (PAN-14:
+  // the raw argument was written before, "Phase 06" after `insert 06`, and after
+  // 29 with 29.1-29.4 present the new 29.5 claimed to depend on 29).
+  let predecessor = unpadded;
   while ((heading = headingRe.exec(afterHeader)) !== null) {
     if (!ownDecimal.test(heading[1])) { insertIdx = bodyStart + heading.index; break; }
+    const num = heading[1].match(/Phase\s+(\d+[A-Z]?(?:\.\d+)*)/i);
+    if (num) predecessor = num[1].replace(/^0+(?=\d)/, '');
   }
 
+  const phaseEntry = `\n### Phase ${decimalPhase}: ${description} (INSERTED)\n\n**Goal:** [Urgent work - to be planned]\n**Requirements**: TBD\n**Depends on:** Phase ${predecessor}\n**Plans:** 0 plans\n\nPlans:\n- [ ] TBD (run /pan:plan-phase ${decimalPhase} to break down)\n`;
+
   // Insert the detail section, then the matching checklist entry — same reason as
-  // cmdPhaseAdd: without it the inserted phase never appears in the "## Phases" list.
+  // cmdPhaseAdd: without it the inserted phase never appears in the "## Phases" list —
+  // and the Progress-table row (PAN-05).
   const withEntry = content.slice(0, insertIdx) + phaseEntry + content.slice(insertIdx);
-  const updatedContent = insertPhaseChecklistEntry(withEntry, unpadded, decimalPhase, description);
+  let updatedContent = insertPhaseChecklistEntry(withEntry, unpadded, decimalPhase, description);
+  updatedContent = insertProgressTableRow(updatedContent, unpadded, decimalPhase, description).content;
   try {
     fs.writeFileSync(roadmapPath, updatedContent, 'utf-8');
   } catch (e) {
@@ -681,6 +735,7 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
   const result = {
     phase_number: decimalPhase,
     after_phase: afterPhase,
+    nested,
     name: description,
     slug,
     directory: `.planning/${PHASES_DIR}/${dirName}`,

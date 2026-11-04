@@ -144,9 +144,11 @@ describe('pan-tools phase state against a model (H7)', () => {
       fs.cpSync(path.join(ROOT, 'pan-wizard-core', 'bin'), bin, { recursive: true });
       const phaseFile = path.join(bin, 'lib', 'phase.cjs');
       const src = fs.readFileSync(phaseFile, 'utf8');
-      const correct = 'Math.max(...existingDecimals) + 1';
+      // 3.42 (PAN-23) renamed the list: children of the after-phase, from directories and
+      // roadmap headings. The first occurrence is the integer after-phase branch.
+      const correct = 'Math.max(...children) + 1';
       assert.ok(src.includes(correct), 'the line the mutant plants into is where this test expects it');
-      fs.writeFileSync(phaseFile, src.replace(correct, 'Math.max(...existingDecimals)'));
+      fs.writeFileSync(phaseFile, src.replace(correct, 'Math.max(...children)'));
       const r = checkCommands(phaseSpec(path.join(bin, 'pan-tools.cjs'), { seed: 7, runs: 30, maxLength: 6 }));
       assert.equal(r.ok, false, 'the planted off-by-one went unnoticed');
       assert.ok(r.shrunk.length <= 4, `shrunk to ${r.shrunk.length}: ${show(r.shrunk)}`);

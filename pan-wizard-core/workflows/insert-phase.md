@@ -10,7 +10,7 @@ Read all files referenced by the invoking prompt's execution_context before star
 
 <step name="parse_arguments">
 Parse the command arguments:
-- First argument: integer phase number to insert after
+- First argument: the phase number to insert after: an integer (`72`) or a decimal (`72.1`)
 - Remaining arguments: phase description
 
 Example: `/pan:insert-phase 72 Fix critical auth bug`
@@ -27,7 +27,7 @@ Example: /pan:insert-phase 72 Fix critical auth bug
 
 Exit.
 
-Validate first argument is an integer.
+Validate the first argument is a phase number (digits, optionally `.`-separated decimals).
 </step>
 
 <step name="init_context">
@@ -53,12 +53,12 @@ RESULT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase insert "${after_
 
 The CLI handles:
 - Verifying target phase exists in roadmap.md
-- Calculating next decimal phase number (checking existing decimals on disk)
+- Calculating the next phase number from the phase directories and the roadmap's headings: after `72` the next free `72.N`; after `72.1` the next sibling `72.2`, or, when `72.2` already exists, a nested `72.1.1` (reported as `nested: true`)
 - Generating slug from description
 - Creating the phase directory (`.planning/phases/{N.M}-{slug}/`)
-- Inserting the phase entry into roadmap.md after the target phase with (INSERTED) marker
+- Inserting the phase entry into roadmap.md after the target phase with (INSERTED) marker, its "## Phases" checklist entry, and its Progress-table row
 
-Extract from result: `phase_number`, `after_phase`, `name`, `slug`, `directory`.
+Extract from result: `phase_number`, `after_phase`, `nested`, `name`, `slug`, `directory`. When `nested` is true, tell the user the next sibling number was taken, so the phase nests under the after-phase.
 </step>
 
 <step name="update_project_state">

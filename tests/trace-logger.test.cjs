@@ -729,7 +729,7 @@ describe('pan-trace-logger — M62 PAN-project gate', () => {
 });
 
 describe('pan-trace-logger — v3.21.0 enrichment', () => {
-  const { ensureSessionId, getCurrentSessionId } = require('../hooks/pan-trace-logger.js');
+  const { ensureSessionId, getCurrentSessionId, isSessionStale } = require('../hooks/pan-trace-logger.js');
 
   test('model falls back to the transcript when the payload omits it', () => {
     const p = writeTranscript([
@@ -814,6 +814,38 @@ describe('pan-trace-logger — v3.21.0 enrichment', () => {
     assert.match(fresh, /^sess_auto_\d{8}$/, `expected a day-scoped session, got ${fresh}`);
     const finalized = JSON.parse(fs.readFileSync(path.join(dir, 'session.json'), 'utf-8'));
     assert.ok(finalized.ended_at, 'the dead session is finalized on the way out');
+  });
+
+  // PAN-20: the age was trace.jsonl's mtime, refreshed by every append, so a session in
+  // daily use never rolled. started_at decides now.
+  test('an explicit session started 2 days ago rolls over though trace.jsonl was touched now', () => {
+    const sid = 'sess_20260102T080000';
+    const dir = path.join(tmpDir, PLANNING_DIR, OPTIMIZE_DIR, TRACES_DIR, sid);
+    fs.mkdirSync(dir, { recursive: true });
+    const meta = { session_id: sid, started_at: new Date(Date.now() - 2 * 86400000).toISOString(), ended_at: null };
+    fs.writeFileSync(path.join(dir, 'session.json'), JSON.stringify(meta));
+    fs.writeFileSync(path.join(dir, TRACE_EVENT_FILE), JSON.stringify({ type: 'decision', agent: 'a' }) + '\n');
+    fs.writeFileSync(path.join(tmpDir, PLANNING_DIR, OPTIMIZE_DIR, 'current-session'), sid + '\n');
+    assert.equal(isSessionStale(dir, meta), true);
+    assert.match(ensureSessionId(tmpDir), /^sess_auto_\d{8}$/);
+  });
+
+  test('an explicit session records the host session, and a new host session rolls it over', () => {
+    const sid = 'sess_20260102T080001';
+    const dir = path.join(tmpDir, PLANNING_DIR, OPTIMIZE_DIR, TRACES_DIR, sid);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'session.json'), JSON.stringify({ session_id: sid, started_at: new Date().toISOString(), ended_at: null }));
+    fs.writeFileSync(path.join(tmpDir, PLANNING_DIR, OPTIMIZE_DIR, 'current-session'), sid + '\n');
+    assert.equal(ensureSessionId(tmpDir, 'host-1'), sid);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'session.json'), 'utf-8')).host_session_id, 'host-1');
+    assert.equal(ensureSessionId(tmpDir, 'host-1'), sid, 'same host session: kept');
+    assert.match(ensureSessionId(tmpDir, 'host-2'), /^sess_auto_\d{8}$/, 'another host session: rolled');
+  });
+
+  test('a same-day auto-session is reused whatever the host session', () => {
+    const first = ensureSessionId(tmpDir, 'host-1');
+    assert.match(first, /^sess_auto_\d{8}$/);
+    assert.equal(ensureSessionId(tmpDir, 'host-2'), first);
   });
 
   test('a pointer at a session with no directory at all rolls over too', () => {

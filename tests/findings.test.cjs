@@ -358,6 +358,32 @@ describe('findings — long summaries (PAN-18)', () => {
   });
 });
 
+// DD-9 / PAN-22: the findings ledger is written on its own. A project that banned PAN's
+// state writers must still be able to record and dispose findings, and neither command
+// may touch state.md or roadmap.md (a hidden writer there would undo DD-1's in-place
+// frontmatter guarantee on every judge run).
+describe('findings — record and dispose touch no state.md or roadmap.md (PAN-22)', () => {
+  const run = (args) => runPanTools(args, dir);
+
+  test('state.md and roadmap.md are byte-identical after record, dispose and a trace event', () => {
+    const state = '---\n# a comment the writers must keep\nmilestone: v3.0\nprogress:\n  percent: 40\n  custom: keep\n---\n\n# State\n\nStatus: none of the above\n';
+    const roadmap = '# Roadmap\n\n### Phase 3: Auth\n**Goal:** g\n\n### Phase 4: Billing\n**Goal:** g\n\n## Progress\n\n| Phase | Plans Complete | Status | Completed |\n|---|---|---|---|\n| 3. Auth | 0/1 | Planned | - |\n';
+    const statePath = path.join(dir, '.planning', 'state.md');
+    const roadmapPath = path.join(dir, '.planning', 'roadmap.md');
+    fs.writeFileSync(statePath, state);
+    fs.writeFileSync(roadmapPath, roadmap);
+    const file = path.join(dir, '.planning', 'phases', '03-auth', '03-verification.md');
+    fs.writeFileSync(file, verification({ gaps: [GAP_LOGIN, GAP_EXPIRY] }));
+    assert.equal(run(`findings record --phase 03 --file ${JSON.stringify(file)}`).success, true);
+    const [a] = F.listFindings(dir).findings.map((f) => f.id);
+    assert.equal(run(`findings dispose ${a} --as dismissed --reason "duplicate"`).success, true);
+    assert.equal(run('findings dispose --phase 3 --open --as deferred --reason "later"').success, true);
+    assert.ok(traceEvents().length > 0, 'the record did write its trace event');
+    assert.equal(fs.readFileSync(statePath, 'utf-8'), state);
+    assert.equal(fs.readFileSync(roadmapPath, 'utf-8'), roadmap);
+  });
+});
+
 describe('findings — CLI', () => {
   const run = (args) => runPanTools(args, dir);
 

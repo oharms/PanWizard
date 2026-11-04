@@ -537,7 +537,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
   "commit": {
     "safety_checks": true,
     "conventional_types": true,
-    "sensitive_patterns": ["\\.env$", "\\.pem$", "\\.key$", "credentials", "secret", "password", "token"]
+    "sensitive_patterns": ["^\\.env(?!\\.(?:example|sample|template)$)(?:\\..+)?$", "\\.(?:pem|key|p12|pfx)$", "^id_(?:rsa|ed25519|ecdsa|dsa)$", "^credentials(?:\\.\\w+)?$", "^\\.(?:npmrc|netrc|pypirc)$", "^secrets?\\.(?:ya?ml|json|env)$"]
   },
   "execution": {
     "default_mode": "wave_order",
@@ -628,7 +628,7 @@ Disable these to speed up phases in familiar domains or when conserving tokens.
 |---------|---------|---------|------------------|
 | `commit.safety_checks` | `true`, `false` | `true` | Enable deleted-file and sensitive-file checks before commit |
 | `commit.conventional_types` | `true`, `false` | `true` | Reserved — written by the defaults but not read; `--type` is always accepted and validated against `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore` |
-| `commit.sensitive_patterns` | array of regex | See default | File patterns blocked from commits (`.env`, `.pem`, etc.) |
+| `commit.sensitive_patterns` | array of regex | See default | File names blocked from commits (`.env`, `*.pem`, `*.key`, `id_rsa`, `credentials.json`, `.npmrc`, `secrets.yaml`, …), tried on the basename and the whole path; a list you set replaces the defaults. Staged content is also scanned for credentials |
 
 ### Execution Settings
 
@@ -835,6 +835,8 @@ PAN's judges decide whether work passed: the plan checker, the reviewer, the des
 - **Applies can be undone.** `/pan:learn --optimize apply` records exactly what it wrote. `/pan:learn --optimize revert <apply_id>` (or `--last`) undoes one apply byte for byte, and refuses files someone edited since. Applying the same report twice writes nothing the second time.
 
 `pan-tools findings list` shows the ledger, filtered by phase, agent, status, class or milestone. MCP clients read the same data as `pan://findings`.
+
+The ledger is committed with the planning docs, so the record travels with the project; a project that wants it local-only adds `.planning/findings.jsonl` to its own `.gitignore`.
 
 ### Self-Improvement Loop
 

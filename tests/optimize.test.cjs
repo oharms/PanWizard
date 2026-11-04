@@ -216,16 +216,45 @@ describe('logTraceEvent', () => {
     assert.ok(SESSION_STALE_MS >= 60 * 60 * 1000, 'the window must outlast a long single run');
   });
 
-  test('event activity, not start time, keeps a long session alive', () => {
+  // This test used to pin the opposite: "event activity, not start time, keeps a long
+  // session alive". PAN-20 (3.42.0): every append refreshes trace.jsonl's mtime and
+  // `findings record` appends through logTraceEvent, so by that rule an explicit
+  // session in a project in daily use never went stale. The age is now started_at's.
+  test('start time, not event activity, ages a session (PAN-20)', () => {
     cwd = createTempProject();
     const s = initTraceSession(cwd, { sessionId: 'sess_long_run' });
     const metaPath = path.join(getTracesDir(cwd), s.session_id, OPT_SESSION_FILE);
     const meta = readJson(metaPath);
-    meta.started_at = new Date(Date.now() - 3 * SESSION_STALE_MS).toISOString();
+    meta.started_at = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
     fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n');
-    // It started days ago but is still producing events, so it is still the live session.
+    // Started two days ago; its event log was written a moment ago.
     fs.writeFileSync(path.join(getTracesDir(cwd), s.session_id, TRACE_EVENT_FILE), JSON.stringify({ ts: new Date().toISOString() }) + '\n');
-    assert.equal(isSessionStale(cwd, s.session_id), false);
+    assert.equal(isSessionStale(cwd, s.session_id), true);
+    // And logTraceEvent (the path `findings record` uses) moves on to today's auto-session.
+    fs.writeFileSync(path.join(getTracesDir(cwd), '..', 'current-session'), s.session_id + '\n');
+    assert.equal(logTraceEvent(cwd, { type: 'correction', description: 'x' }), true);
+    assert.equal(getCurrentSessionId(cwd), autoSessionId());
+  });
+
+  test('a session started under another host session is stale when the host id is given', () => {
+    cwd = createTempProject();
+    const s = initTraceSession(cwd, { sessionId: 'sess_host' });
+    const metaPath = path.join(getTracesDir(cwd), s.session_id, OPT_SESSION_FILE);
+    fs.writeFileSync(metaPath, JSON.stringify({ ...readJson(metaPath), host_session_id: 'host-a' }, null, 2) + '\n');
+    assert.equal(isSessionStale(cwd, s.session_id, Date.now(), 'host-a'), false);
+    assert.equal(isSessionStale(cwd, s.session_id, Date.now(), 'host-b'), true);
+    assert.equal(isSessionStale(cwd, s.session_id), false, 'no host id given: age alone decides');
+  });
+
+  test('a same-day auto-session is reused', () => {
+    cwd = createTempProject();
+    assert.equal(logTraceEvent(cwd, { type: 'decision', description: 'a' }), true);
+    const first = getCurrentSessionId(cwd);
+    assert.equal(first, autoSessionId());
+    assert.equal(logTraceEvent(cwd, { type: 'decision', description: 'b' }), true);
+    assert.equal(getCurrentSessionId(cwd), first);
+    const lines = fs.readFileSync(path.join(getTracesDir(cwd), first, TRACE_EVENT_FILE), 'utf-8').trim().split('\n');
+    assert.equal(lines.length, 2);
   });
 
   test('appends event to trace.jsonl', () => {
@@ -1109,5 +1138,48 @@ describe('telemetry P1/P2 — session reconcile-on-read + token aggregation + ov
   test('computeSessionCostAndCommits leaves commit_count null outside a git repo', () => {
     const r = computeSessionCostAndCommits(cwd, { started_at: '2026-07-30T00:00:00Z', ended_at: '2026-07-30T01:00:00Z' });
     assert.equal(r.commit_count, null, 'no fabricated 0 when git is unavailable');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAN-20 / DD-10: the three copies of "is this trace session stale?" — the trace
+// logger hook, the cost logger hook and optimize.cjs (the hooks cannot import the
+// core) — give the same answer. A session is aged by session.json `started_at`,
+// never by trace.jsonl's mtime, which every append refreshes.
+// ─────────────────────────────────────────────────────────────────────────────
+const traceHook = require('../hooks/pan-trace-logger.js');
+const costHook = require('../hooks/pan-cost-logger.js');
+const optimizeLib = require('../pan-wizard-core/bin/lib/optimize.cjs');
+const osForParity = require('os');
+describe('trace-session staleness — three copies agree (PAN-20)', () => {
+  let cwd;
+  beforeEach(() => { cwd = fs.mkdtempSync(path.join(osForParity.tmpdir(), 'pan-stale-parity-')); });
+  afterEach(() => { fs.rmSync(cwd, { recursive: true, force: true }); });
+
+  const DAY = 24 * 60 * 60 * 1000;
+  const cases = [
+    { name: 'started 2 days ago, trace.jsonl written now', meta: { started_at: new Date(Date.now() - 2 * DAY).toISOString() }, touch: true, stale: true },
+    { name: 'started an hour ago, no events', meta: { started_at: new Date(Date.now() - 3600000).toISOString() }, touch: false, stale: false },
+    { name: 'started an hour ago, ended', meta: { started_at: new Date(Date.now() - 3600000).toISOString(), ended_at: new Date().toISOString() }, touch: true, stale: true },
+    { name: 'no started_at, trace.jsonl written now (legacy session.json)', meta: {}, touch: true, stale: false },
+    { name: 'no started_at, no events', meta: {}, touch: false, stale: true },
+    { name: 'another host session', meta: { started_at: new Date().toISOString(), host_session_id: 'h-old' }, touch: false, stale: true, host: 'h-new' },
+    { name: 'same host session', meta: { started_at: new Date().toISOString(), host_session_id: 'h-1' }, touch: false, stale: false, host: 'h-1' },
+  ];
+
+  cases.forEach((c, i) => {
+    test(c.name, () => {
+      const sid = `sess_case_${i}`;
+      const dir = path.join(optimizeLib.getTracesDir(cwd), sid);
+      fs.mkdirSync(dir, { recursive: true });
+      const meta = { session_id: sid, ...c.meta };
+      fs.writeFileSync(path.join(dir, 'session.json'), JSON.stringify(meta));
+      if (c.touch) fs.writeFileSync(path.join(dir, 'trace.jsonl'), '{"type":"decision"}\n');
+      const now = Date.now();
+      const host = c.host || null;
+      assert.equal(traceHook.isSessionStale(dir, meta, now, host), c.stale, 'trace logger');
+      assert.equal(costHook.isSessionStale(dir, meta, now, host), c.stale, 'cost logger');
+      assert.equal(optimizeLib.isSessionStale(cwd, sid, now, host), c.stale, 'optimize.cjs');
+    });
   });
 });

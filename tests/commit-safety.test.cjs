@@ -157,9 +157,12 @@ describe('commit safety checks', () => {
     assert.ok(out.safety_checks.sensitive_files_blocked.some(f => f.includes('credentials')));
   });
 
-  test('PAN\'s own cost ledger does not trip the `token` pattern; a real token file still does', () => {
-    // .planning/metrics/tokens.jsonl matched the bare `token` pattern, so every commit
+  test('PAN\'s own cost ledger and a file merely named for tokens commit; a credentials file does not', () => {
+    // .planning/metrics/tokens.jsonl matched the old bare `token` pattern, so every commit
     // that staged .planning/ was blocked once the cost logger had written to it.
+    // 3.42 (PAN-11): the defaults match a basename shape, not a word anywhere in the path,
+    // so api-token.txt (blocked before this release) now commits on its name; a credential
+    // inside it would still be caught by the content scan.
     fs.mkdirSync(path.join(tmpDir, '.planning', 'metrics'), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, '.planning', 'metrics', 'tokens.jsonl'), '{"agent":"pan-executor","input_tokens":12}\n');
     fs.writeFileSync(path.join(tmpDir, '.planning', 'ledger.md'), '# ledger test');
@@ -167,9 +170,13 @@ describe('commit safety checks', () => {
     assert.ok(ok.success, ok.error);
     assert.strictEqual(JSON.parse(ok.output).committed, true);
     fs.writeFileSync(path.join(tmpDir, '.planning', 'api-token.txt'), 'abc');
-    const blocked = runPanTools('commit with-token-file', tmpDir);
+    const named = runPanTools('commit with-token-file', tmpDir);
+    assert.ok(named.success, named.output);
+    assert.strictEqual(JSON.parse(named.output).committed, true);
+    fs.writeFileSync(path.join(tmpDir, '.planning', '.npmrc'), 'registry=x');
+    const blocked = runPanTools('commit with-npmrc', tmpDir);
     assert.equal(blocked.success, false);
-    assert.deepEqual(JSON.parse(blocked.output).safety_checks.sensitive_files_blocked, ['.planning/api-token.txt']);
+    assert.deepEqual(JSON.parse(blocked.output).safety_checks.sensitive_files_blocked, ['.planning/.npmrc']);
   });
 
   test('a deletion the commit would make is refused and reported by its full name', () => {
@@ -239,6 +246,109 @@ describe('commit safety checks', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
     const out = JSON.parse(result.output);
     assert.strictEqual(out.committed, true, 'should commit when safety checks disabled');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3.42.0 PAN-11 / DD-7: sensitive files by basename, secrets by staged content
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('commit safety — basename rules and content scan (PAN-11)', () => {
+  let tmpDir;
+  const configPath = () => path.join(tmpDir, '.planning', 'config.json');
+  const put = (rel, text) => {
+    fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, rel), text);
+  };
+  const commit = (rel) => {
+    const r = runPanTools(`commit add-file --files ${rel}`, tmpDir);
+    return { ok: r.success, out: JSON.parse(r.output) };
+  };
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    runPanTools('config-ensure-section', tmpDir);
+    execSync('git init', { cwd: tmpDir, stdio: 'pipe' });
+    execSync('git config user.email "test@test.com"', { cwd: tmpDir, stdio: 'pipe' });
+    execSync('git config user.name "Test"', { cwd: tmpDir, stdio: 'pipe' });
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'init.md'), '# init');
+    execSync('git add .', { cwd: tmpDir, stdio: 'pipe' });
+    execSync('git commit -m "init"', { cwd: tmpDir, stdio: 'pipe' });
+  });
+
+  afterEach(() => { cleanup(tmpDir); });
+
+  for (const rel of ['docs/secret-rotation.md', 'src/secrets-manager.ts', 'src/token-utils.ts', 'docs/password-policy.md', '.env.example', 'keys/id_rsa.pub']) {
+    test(`${rel} commits (no sensitive basename, no secret inside)`, () => {
+      put(rel, '# ordinary content\nconst tokenLength = 32;\npassword: string\n');
+      const r = commit(rel);
+      assert.ok(r.ok, JSON.stringify(r.out));
+      assert.strictEqual(r.out.committed, true);
+    });
+  }
+
+  for (const rel of ['.env', 'config/.env.local', 'id_rsa', 'deploy/server.key', 'certs/site.pem', 'credentials.json', 'secrets.yaml']) {
+    test(`${rel} is blocked by its name`, () => {
+      put(rel, 'x');
+      const r = commit(rel);
+      assert.strictEqual(r.ok, false);
+      assert.strictEqual(r.out.reason, 'sensitive_file_detected');
+      assert.deepStrictEqual(r.out.safety_checks.sensitive_files_blocked, [rel]);
+    });
+  }
+
+  test('a .md with api_key = "sk-…" is blocked on content, the value not printed', () => {
+    const value = 'sk-' + 'a1B2c3D4e5F6g7H8i9J0k1L2';
+    put('docs/setup.md', `# Setup\n\napi_key = "${value}"\n`);
+    const r = commit('docs/setup.md');
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.out.reason, 'sensitive_content_detected');
+    assert.deepStrictEqual(r.out.safety_checks.sensitive_content_blocked, [{ file: 'docs/setup.md', rule: 'token' }]);
+    assert.ok(!JSON.stringify(r.out).includes(value), 'the secret is never echoed');
+    assert.strictEqual(execSync('git diff --cached --name-only', { cwd: tmpDir, encoding: 'utf8' }).trim(), '', 'unstaged again');
+  });
+
+  test('a key-value secret without a provider prefix is blocked; a placeholder is not', () => {
+    put('notes/a.md', 'client_secret: "q8Zt3kP0vW9xR2mN7bL4"\n');
+    const r = commit('notes/a.md');
+    assert.strictEqual(r.out.reason, 'sensitive_content_detected');
+    assert.deepStrictEqual(r.out.safety_checks.sensitive_content_blocked, [{ file: 'notes/a.md', rule: 'secret_key_value' }]);
+    put('notes/b.md', 'password: <your-password-here>\napi_key = ${API_KEY_2024_PROD}\ntoken: required\n');
+    assert.ok(commit('notes/b.md').ok);
+  });
+
+  test('a binary staged file is not content-scanned', () => {
+    put('assets/blob.bin', Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from('api_key = "sk-a1B2c3D4e5F6g7H8i9J0"')]));
+    assert.ok(commit('assets/blob.bin').ok);
+  });
+
+  test('a config.json carrying the old default list verbatim is read as the new default', () => {
+    const config = JSON.parse(fs.readFileSync(configPath(), 'utf-8'));
+    config.commit = { safety_checks: true, sensitive_patterns: ['\\.env$', '\\.pem$', '\\.key$', 'credentials', 'secret', 'password', 'token'] };
+    fs.writeFileSync(configPath(), JSON.stringify(config, null, 2));
+    put('docs/secret-rotation.md', '# rotate\n');
+    assert.ok(commit('docs/secret-rotation.md').ok, 'the old bare `secret` no longer applies');
+    put('.env', 'x');
+    assert.strictEqual(commit('.env').out.reason, 'sensitive_file_detected');
+  });
+
+  test('a custom pattern still applies to the whole path', () => {
+    const config = JSON.parse(fs.readFileSync(configPath(), 'utf-8'));
+    config.commit = { safety_checks: true, sensitive_patterns: ['^private/', 'internal'] };
+    fs.writeFileSync(configPath(), JSON.stringify(config, null, 2));
+    put('private/notes.md', '# n\n');
+    const r = commit('private/notes.md');
+    assert.strictEqual(r.out.reason, 'sensitive_file_detected');
+    put('docs/internal-design.md', '# d\n');
+    assert.strictEqual(commit('docs/internal-design.md').out.reason, 'sensitive_file_detected');
+    put('.env', 'x');
+    assert.ok(commit('.env').ok, 'a custom list replaces the defaults, as before');
+  });
+
+  test('config-ensure-section writes the basename defaults, not the old words', () => {
+    const config = JSON.parse(fs.readFileSync(configPath(), 'utf-8'));
+    const { DEFAULT_SENSITIVE_PATTERNS } = require('../pan-wizard-core/bin/lib/constants.cjs');
+    assert.deepStrictEqual(config.commit.sensitive_patterns, DEFAULT_SENSITIVE_PATTERNS);
   });
 });
 

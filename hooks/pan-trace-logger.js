@@ -302,27 +302,33 @@ function readCommandFromTranscript(transcriptPath) {
 const SESSION_STALE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Last write to a session — its event log, else the moment it started, else null.
+ * When a session started: session.json's `started_at`, else (a session.json without
+ * one, written before started_at was recorded) its event log's last write, else null.
  * Best-effort; never throws.
+ *
+ * The age is taken from started_at, NOT from trace.jsonl's mtime (PAN-20, DD-10):
+ * every append refreshes the mtime, and `findings record` appends a trace event, so any
+ * writer kept an explicit session "alive" for as long as the project was used.
  */
-function sessionLastActivityMs(dir) {
+function sessionStartedMs(dir, meta) {
+  const t = meta && meta.started_at ? new Date(meta.started_at).getTime() : NaN;
+  if (Number.isFinite(t)) return t;
   try {
     return fs.statSync(path.join(dir, 'trace.jsonl')).mtimeMs;
-  } catch { /* no events yet */ }
-  try {
-    const meta = JSON.parse(fs.readFileSync(path.join(dir, 'session.json'), 'utf-8'));
-    const t = new Date(meta.started_at).getTime();
-    return Number.isFinite(t) ? t : null;
   } catch {
     return null;
   }
 }
 
-/** Finished, or too old to be the session running now. */
-function isSessionStale(dir, meta, now = Date.now()) {
+/**
+ * Finished, started more than SESSION_STALE_MS ago, or (when the host's session id is
+ * known and the session recorded one) started under another host session.
+ */
+function isSessionStale(dir, meta, now = Date.now(), hostSessionId = null) {
   if (meta && meta.ended_at) return true;
-  const last = sessionLastActivityMs(dir);
-  return last === null || now - last > SESSION_STALE_MS;
+  if (hostSessionId && meta && meta.host_session_id && meta.host_session_id !== hostSessionId) return true;
+  const started = sessionStartedMs(dir, meta);
+  return started === null || now - started > SESSION_STALE_MS;
 }
 
 function getOptimizeDir(cwd) {
@@ -511,7 +517,7 @@ function writeTraceCursor(cwd, cursor) {
  * @param {string} cwd
  * @returns {string} The active session ID
  */
-function ensureSessionId(cwd) {
+function ensureSessionId(cwd, hostSessionId = null) {
   const now = new Date();
   const stamp = dayStamp(now); // YYYYMMDD
   const existing = getCurrentSessionId(cwd);
@@ -519,15 +525,26 @@ function ensureSessionId(cwd) {
     // Day-rollover: a stale day-scoped auto-session from a previous day must not keep
     // accumulating today's rows. Finalize it and mint a fresh one. An EXPLICIT session
     // used to stay sticky with no bound at all, which is how a field project was still
-    // pointing at a 17 July session on 17 September; it now rolls over once it has been
-    // quiet for SESSION_STALE_MS, so "sticky while in use" no longer means "forever".
+    // pointing at a 17 July session on 17 September. It then rolled over once quiet
+    // for SESSION_STALE_MS by trace.jsonl's mtime — which every append refreshes, so a
+    // project in daily use still never let go (PAN-20). It now rolls over
+    // SESSION_STALE_MS after its started_at, or as soon as the host session changes.
     const m = /^sess_auto_(\d{8})$/.exec(existing);
     const dir = path.join(getTracesDir(cwd), existing);
-    const stale = isSessionStale(dir, readSessionMetaById(cwd, existing));
+    const meta = readSessionMetaById(cwd, existing);
+    const host = !m && typeof hostSessionId === 'string' && hostSessionId ? hostSessionId : null;
+    const stale = isSessionStale(dir, meta, now.getTime(), host);
     if ((m && m[1] !== stamp) || stale) {
       finalizeSession(cwd, existing);
       // fall through to mint a new day-scoped session below
     } else {
+      // The first event an explicit session sees records the host session it runs in,
+      // so a later host session (a new conversation) rolls it over.
+      if (host && meta && meta.started_at && !meta.host_session_id) {
+        try {
+          fs.writeFileSync(path.join(dir, 'session.json'), JSON.stringify({ ...meta, host_session_id: host }, null, 2) + '\n');
+        } catch { /* best effort */ }
+      }
       return existing;
     }
   }
@@ -1239,7 +1256,7 @@ if (require.main === module) {
       if (isHostInternalAgent(normalized, resolveAgentTranscript(normalized))) return;
       // In a PAN project, ensure a session exists — creates a day-scoped
       // auto-session if needed.
-      const sessionId = ensureSessionId(cwd);
+      const sessionId = ensureSessionId(cwd, typeof normalized.session_id === 'string' ? normalized.session_id : null);
       const events = buildTraceEvents(data, sessionId, cwd);
       appendTraceEvents(cwd, events, sessionId);
     } catch {
