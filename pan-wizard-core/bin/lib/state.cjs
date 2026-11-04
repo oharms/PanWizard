@@ -5,17 +5,14 @@
 const fs = require('fs');
 const path = require('path');
 const { loadConfig, getMilestoneInfo, escapeRegex, escapeTableCell, safeReadFile, output, error } = require('./core.cjs');
-const { extractFrontmatter, reconstructFrontmatter } = require('./frontmatter.cjs');
-const { withFileLock, writeFileAtomic } = require('./lock.cjs');
+const { extractFrontmatter, reconstructFrontmatter, patchFrontmatter } = require('./frontmatter.cjs');
 const {
   STATE_FILE,
   ROADMAP_FILE,
   CONFIG_FILE,
   PHASES_DIR,
-  isPlanFile,
-  isSummaryFile,
-  getPlanId,
-  getSummaryId,
+  PHASE_DIR_RE,
+  ARCHIVE_DIR_RE,
   FIELD_VALUE_RE,
   PROGRESS_BAR_WIDTH,
   FILLED_BLOCK,
@@ -25,9 +22,9 @@ const {
 const {
   planningPath,
   phasesPath,
-  filterPlanFiles,
-  filterSummaryFiles,
+  milestonesPath,
   fileAccessible,
+  localDay,
 } = require('./utils.cjs');
 
 /**
@@ -251,7 +248,7 @@ function cmdStateAdvancePlan(cwd, raw) {
   if (content === null) { output({ error: 'state.md not found' }, raw); return; }
   const currentPlan = parseInt(stateExtractField(content, 'Current Plan'), 10);
   const totalPlans = parseInt(stateExtractField(content, 'Total Plans in Phase'), 10);
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDay();
 
   if (isNaN(currentPlan) || isNaN(totalPlans)) {
     output({ error: 'Cannot parse Current Plan or Total Plans in Phase from state.md' }, raw);
@@ -310,7 +307,7 @@ function cmdStateRecordMetric(cwd, options, raw) {
     rows.push(newRow);
 
     content = content.replace(metricsPattern, (_match, header) => `${header}${rows.join('\n')}\n`);
-    writeStateMd(statePath, content, cwd);
+    writeStateMd(statePath, content, cwd, { owns: FM_KEYS.touch });
     output({ recorded: true, phase, plan, duration }, raw, 'true');
   } else {
     output({ recorded: false, reason: 'Performance Metrics section not found in state.md', error: 'metrics_section_missing' }, raw, 'false');
@@ -318,45 +315,53 @@ function cmdStateRecordMetric(cwd, options, raw) {
 }
 
 /**
- * Recalculate and update the progress bar in state.md from SUMMARY counts on disk.
+ * Recalculate and update the progress bar in state.md from the plans on disk
+ * (countPlanProgress: a plan counts as done when its own summary exists).
+ * The frontmatter's `progress.*` keys that exist are updated too; absent ones are
+ * added only with `--write-counts` (opts.writeCounts).
  * @param {string} cwd - Working directory path
  * @param {boolean} raw - If true, output raw value instead of JSON
+ * @param {{writeCounts?: boolean}} [opts]
  * @returns {void}
  */
-function cmdStateUpdateProgress(cwd, raw) {
+function cmdStateUpdateProgress(cwd, raw, opts = {}) {
   const statePath = path.join(planningPath(cwd), STATE_FILE);
   let content = safeReadFile(statePath);
   if (content === null) { output({ error: 'state.md not found' }, raw); return; }
 
-  // Count summaries across all phases by scanning disk
-  const phasesDir = phasesPath(cwd);
-  let totalPlans = 0;
-  let totalSummaries = 0;
-
-  try {
-    const phaseDirs = fs.readdirSync(phasesDir, { withFileTypes: true })
-      .filter(entry => entry.isDirectory()).map(entry => entry.name);
-    for (const dir of phaseDirs) {
-      const files = fs.readdirSync(path.join(phasesDir, dir));
-      totalPlans += files.filter(isPlanFile).length;
-      totalSummaries += files.filter(isSummaryFile).length;
-    }
-  } catch {
-    // Phases directory does not exist yet — totals remain 0
-  }
-
-  // Render progress bar from completed/total counts
-  const progressStr = calculateProgressBar(totalSummaries, totalPlans);
-  const percent = totalPlans > 0 ? Math.min(100, Math.round(totalSummaries / totalPlans * 100)) : 0;
+  // One count (DD-2). This used to tally every directory under phases/ and every
+  // file ending in -summary.md, so an orphan research summary made completed
+  // exceed total, and the percent was clamped to hide it.
+  const counts = countPlanProgress(cwd);
+  const progressStr = calculateProgressBar(counts.completed_plans, counts.total_plans);
 
   const progressPattern = /(\*\*Progress:\*\*\s*).*/i;
   if (progressPattern.test(content)) {
     content = content.replace(progressPattern, (_match, prefix) => `${prefix}${progressStr}`);
-    writeStateMd(statePath, content, cwd);
-    output({ updated: true, percent, completed: totalSummaries, total: totalPlans, bar: progressStr }, raw, progressStr);
+    writeStateMd(statePath, content, cwd, { owns: FM_KEYS.position, counts: true, writeCounts: !!opts.writeCounts });
+    output({
+      updated: true,
+      percent: counts.percent,
+      completed: counts.completed_plans,
+      total: counts.total_plans,
+      completed_phases: counts.completed_phases,
+      total_phases: counts.total_phases,
+      bar: progressStr,
+      counts_written: !!opts.writeCounts,
+    }, raw, progressStr);
   } else {
     output({ updated: false, reason: 'Progress field not found in state.md', error: 'progress_field_missing' }, raw, 'false');
   }
+}
+
+/**
+ * A section body without its placeholder lines: a line that, trimmed, matches re.
+ * @param {string} body - The section body
+ * @param {RegExp} re - Anchored test for a placeholder line
+ * @returns {string}
+ */
+function dropPlaceholderLines(body, re) {
+  return body.split('\n').filter((line) => !re.test(line.trim())).join('\n');
 }
 
 /**
@@ -392,11 +397,12 @@ function cmdStateAddDecision(cwd, options, raw) {
 
   if (match) {
     let sectionBody = match[2];
-    // Remove placeholders
-    sectionBody = sectionBody.replace(/None yet\.?\s*\n?/gi, '').replace(/No decisions yet\.?\s*\n?/gi, '');
+    // Drop the template's placeholder line, and only a whole one: the unanchored
+    // replace also cut "none yet" out of the middle of a recorded decision.
+    sectionBody = dropPlaceholderLines(sectionBody, /^(?:-\s+)?(?:None yet|No decisions yet)\.?$/i);
     sectionBody = sectionBody.trimEnd() + '\n' + entry + '\n';
     content = content.replace(sectionPattern, (_match, header) => `${header}${sectionBody}`);
-    writeStateMd(statePath, content, cwd);
+    writeStateMd(statePath, content, cwd, { owns: FM_KEYS.touch });
     output({ added: true, decision: entry }, raw, 'true');
   } else {
     output({ added: false, reason: 'Decisions section not found in state.md', error: 'decisions_section_missing' }, raw, 'false');
@@ -432,11 +438,13 @@ function cmdStateAddBlocker(cwd, text, raw) {
 
   if (match) {
     let sectionBody = match[2];
-    // "None yet" first: stripping "None" first left a stray "yet." on the template.
-    sectionBody = sectionBody.replace(/None yet\.?\s*\n?/gi, '').replace(/None\.?\s*\n?/gi, '');
+    // Drop a placeholder line ("None", "None yet.") and only a whole one: the
+    // unanchored replace cut "none" out of earlier blockers, so "nonetheless"
+    // became "theless" (PAN-01).
+    sectionBody = dropPlaceholderLines(sectionBody, /^(?:-\s+)?None(?: yet)?\.?$/i);
     sectionBody = sectionBody.trimEnd() + '\n' + entry + '\n';
     content = content.replace(sectionPattern, (_match, header) => `${header}${sectionBody}`);
-    writeStateMd(statePath, content, cwd);
+    writeStateMd(statePath, content, cwd, { owns: FM_KEYS.touch });
     output({ added: true, blocker: blockerText }, raw, 'true');
   } else {
     output({ added: false, reason: 'Blockers section not found in state.md', error: 'blockers_section_missing' }, raw, 'false');
@@ -485,7 +493,7 @@ function cmdStateResolveBlocker(cwd, text, raw) {
     }
 
     content = content.replace(sectionPattern, (_match, header) => `${header}${newBody}`);
-    writeStateMd(statePath, content, cwd);
+    writeStateMd(statePath, content, cwd, { owns: FM_KEYS.touch });
     output({ resolved: true, blocker: text }, raw, 'true');
   } else {
     output({ resolved: false, reason: 'Blockers section not found in state.md', error: 'blockers_section_missing' }, raw, 'false');
@@ -526,7 +534,7 @@ function cmdStateRecordSession(cwd, options, raw) {
   if (result) { content = result; updated.push('Resume File'); }
 
   if (updated.length > 0) {
-    writeStateMd(statePath, content, cwd);
+    writeStateMd(statePath, content, cwd, { owns: FM_KEYS.touch });
     // Normal-flow checkpoint: reconcile the always-loaded project memory once
     // the session is recorded (no-op when already lean; never throws).
     try { require('./memory-optimize.cjs').maybeAutoOptimizeMemory(cwd); } catch { /* best-effort */ }
@@ -715,46 +723,104 @@ function extractFieldsFromState(bodyContent) {
   };
 }
 
+/** A plan's id from its file name, case-insensitive ("29.4-01-PLAN.md" → "29.4-01", "plan.md" → ""), or null. */
+function planIdOf(name) {
+  const lower = String(name).toLowerCase();
+  if (lower === 'plan.md') return '';
+  return lower.endsWith('-plan.md') ? lower.slice(0, -'-plan.md'.length) : null;
+}
+
+/** A summary's id from its file name, case-insensitive, or null. */
+function summaryIdOf(name) {
+  const lower = String(name).toLowerCase();
+  if (lower === 'summary.md') return '';
+  return lower.endsWith('-summary.md') ? lower.slice(0, -'-summary.md'.length) : null;
+}
+
 /**
- * Scan phase directories on disk to count plans and summaries.
- * Reads each subdirectory under .planning/phases/ and tallies plan/summary files
- * to determine per-phase and overall completion counts.
+ * One phase directory's plans, paired with their summaries by plan id.
+ * @param {string} dirPath - Absolute path of the phase directory
+ * @returns {{plans: number, completed: number}}
+ */
+function countPhaseDirPlans(dirPath) {
+  let files = [];
+  try { files = fs.readdirSync(dirPath); } catch { return { plans: 0, completed: 0 }; }
+  const planIds = new Set();
+  const summaryIds = new Set();
+  for (const f of files) {
+    const p = planIdOf(f);
+    if (p !== null) { planIds.add(p); continue; }
+    const s = summaryIdOf(f);
+    if (s !== null) summaryIds.add(s);
+  }
+  let completed = 0;
+  for (const id of planIds) if (summaryIds.has(id)) completed++;
+  return { plans: planIds.size, completed };
+}
+
+/**
+ * The plan count every writer uses (DD-2): each plan paired with its own summary
+ * by plan id, so a summary without a plan (`29.4-research-summary.md`) counts
+ * for nothing and completed can never exceed total. Suffixes match in any case
+ * (`-PLAN.md`), only directories named like a phase count, and a phase is
+ * complete only when every plan in it has a summary.
+ *
+ * Scope 'current' (default) counts `phases/`; 'all' adds the milestone archives
+ * (`milestones/v*-phases/`).
+ *
+ * @param {string} cwd - Project root
+ * @param {{scope?: 'current'|'all'}} [opts]
+ * @returns {{scope: string, found: boolean, phases: Array<{dir: string, number: string, archived: string|null, plans: number, completed: number, complete: boolean}>,
+ *   total_phases: number, completed_phases: number, total_plans: number, completed_plans: number, percent: number}}
+ */
+function countPlanProgress(cwd, opts = {}) {
+  const scope = opts.scope === 'all' ? 'all' : 'current';
+  const roots = [{ dir: phasesPath(cwd), archived: null }];
+  if (scope === 'all') {
+    try {
+      for (const e of fs.readdirSync(milestonesPath(cwd), { withFileTypes: true })) {
+        if (e.isDirectory() && ARCHIVE_DIR_RE.test(e.name)) roots.push({ dir: path.join(milestonesPath(cwd), e.name), archived: e.name.replace(/-phases$/, '') });
+      }
+    } catch { /* no milestones directory */ }
+  }
+  let found = false;
+  const phases = [];
+  for (const root of roots) {
+    let entries;
+    try { entries = fs.readdirSync(root.dir, { withFileTypes: true }); } catch { continue; }
+    if (root.archived === null) found = true;
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const m = e.name.match(PHASE_DIR_RE);
+      if (!m) continue;
+      const { plans, completed } = countPhaseDirPlans(path.join(root.dir, e.name));
+      phases.push({ dir: e.name, number: m[1], archived: root.archived, plans, completed, complete: plans > 0 && completed === plans });
+    }
+  }
+  const total_plans = phases.reduce((n, p) => n + p.plans, 0);
+  const completed_plans = phases.reduce((n, p) => n + p.completed, 0);
+  return {
+    scope,
+    found,
+    phases,
+    total_phases: phases.length,
+    completed_phases: phases.filter((p) => p.complete).length,
+    total_plans,
+    completed_plans,
+    percent: total_plans > 0 ? Math.round(completed_plans / total_plans * 100) : 0,
+  };
+}
+
+/**
+ * Plan and phase totals for `phases/`, in the shape the dashboard reads (nulls
+ * when there is no phases directory). A view of countPlanProgress.
  * @param {string} cwd - Working directory path
  * @returns {{totalPhases: number|null, completedPhases: number|null, totalPlans: number|null, completedPlans: number|null}}
  */
 function scanPhaseProgress(cwd) {
-  let totalPhases = null;
-  let completedPhases = null;
-  let totalPlans = null;
-  let completedPlans = null;
-
-  try {
-    const phasesDir = phasesPath(cwd);
-    const phaseDirs = fs.readdirSync(phasesDir, { withFileTypes: true })
-      .filter(entry => entry.isDirectory()).map(entry => entry.name);
-    let diskTotalPlans = 0;
-    let diskTotalSummaries = 0;
-    let diskCompletedPhases = 0;
-
-    // Walk each phase directory and count plan vs summary files
-    for (const dir of phaseDirs) {
-      const files = fs.readdirSync(path.join(phasesDir, dir));
-      const plans = files.filter(isPlanFile).length;
-      const summaries = files.filter(isSummaryFile).length;
-      diskTotalPlans += plans;
-      diskTotalSummaries += summaries;
-      // A phase is complete when every plan has a corresponding summary
-      if (plans > 0 && summaries >= plans) diskCompletedPhases++;
-    }
-    totalPhases = phaseDirs.length;
-    completedPhases = diskCompletedPhases;
-    totalPlans = diskTotalPlans;
-    completedPlans = diskTotalSummaries;
-  } catch {
-    // Phases directory may not exist or be unreadable -- return nulls
-  }
-
-  return { totalPhases, completedPhases, totalPlans, completedPlans };
+  const c = countPlanProgress(cwd);
+  if (!c.found) return { totalPhases: null, completedPhases: null, totalPlans: null, completedPlans: null };
+  return { totalPhases: c.total_phases, completedPhases: c.completed_phases, totalPlans: c.total_plans, completedPlans: c.completed_plans };
 }
 
 /**
@@ -838,8 +904,10 @@ function buildStateFrontmatter(bodyContent, cwd, existing = {}) {
   if (cwd) {
     try {
       const info = getMilestoneInfo(cwd);
-      const guessed = info.basis === 'default' || info.basis === 'no-milestone-heading';
-      if (!(guessed && prior.milestone)) {
+      // Only a roadmap that marks a milestone current outranks the recorded one
+      // (DD-3): "first unshipped" and "last shipped" are guesses too, and one of
+      // them rewrote a recorded v3.0 to the v2.0 a phase heading mentioned.
+      if (!(prior.milestone && info.basis !== 'marked-current')) {
         milestone = info.version;
         milestoneName = info.name;
       }
@@ -857,14 +925,15 @@ function buildStateFrontmatter(bodyContent, cwd, existing = {}) {
   let totalPlans = fields.totalPlansRaw ? parseInt(fields.totalPlansRaw, 10) : null;
   let completedPlans = null;
 
-  // Scan disk for actual plan/summary counts if cwd is available
+  // The disk count (countPlanProgress) when there are phase directories; the
+  // body's `Total Phases` only stands in before any exists.
   if (cwd) {
-    const diskProgress = scanPhaseProgress(cwd);
-    if (diskProgress.totalPhases !== null) {
-      if (totalPhases === null) totalPhases = diskProgress.totalPhases;
-      completedPhases = diskProgress.completedPhases;
-      totalPlans = diskProgress.totalPlans;
-      completedPlans = diskProgress.completedPlans;
+    const counts = countPlanProgress(cwd);
+    if (counts.found) {
+      if (totalPhases === null || counts.total_phases > 0) totalPhases = counts.total_phases;
+      completedPhases = counts.completed_phases;
+      totalPlans = counts.total_plans;
+      completedPlans = counts.completed_plans;
     }
   }
 
@@ -895,7 +964,8 @@ function buildStateFrontmatter(bodyContent, cwd, existing = {}) {
   keep('stopped_at', fields.stoppedAt);
   keep('paused_at', fields.pausedAt);
   frontmatter.last_updated = new Date().toISOString();
-  keep('last_activity', fields.lastActivity);
+  // A stale body date never takes the recorded last_activity backwards.
+  keep('last_activity', activityMovesBack(prior.last_activity, fields.lastActivity) ? null : fields.lastActivity);
 
   const progress = {};
   if (totalPhases !== null) progress.total_phases = totalPhases;
@@ -925,64 +995,163 @@ function stripFrontmatter(content) {
 }
 
 /**
- * Re-derive state.md's front matter from its body, merged with the front matter
- * already there. Output uses `eol` (default: whatever the content already uses).
+ * The front-matter keys each writer owns (DD-1). A writer patches its own keys
+ * and no others; everything else in the block stays byte for byte.
+ *   position   update, patch, advance-plan, apply, init, and the writers that
+ *              rewrite the body (phase remove, compaction, health)
+ *   touch      add-decision, add-blocker, resolve-blocker, record-metric,
+ *              record-session, section, quick-task
+ *   milestone  milestone complete (with the position keys)
+ * update-progress and phase complete own the position keys plus the
+ * `progress.*` keys that already exist ({counts: true}).
+ */
+const FM_KEYS = Object.freeze({
+  position: Object.freeze(['current_phase', 'current_phase_name', 'current_plan', 'status', 'last_activity', 'last_updated']),
+  touch: Object.freeze(['last_updated']),
+  milestone: Object.freeze(['milestone', 'milestone_name']),
+});
+const PROGRESS_KEYS = ['total_phases', 'completed_phases', 'total_plans', 'completed_plans', 'percent'];
+
+/** The YYYY-MM-DD a Last Activity value starts with, or null. */
+const activityDay = (v) => {
+  const m = String(v == null ? '' : v).match(/^\s*(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+};
+
+/** True when writing `next` over the recorded `prior` would take last_activity backwards (or replace a date with none). */
+function activityMovesBack(prior, next) {
+  const was = activityDay(prior);
+  if (!was) return false;
+  const now = activityDay(next);
+  return !now || now < was;
+}
+
+/**
+ * The front-matter patch one write makes: the owned keys, derived from the body
+ * (and the plan count with opts.counts), that differ from what the file records.
+ * @param {string} body - state.md body, LF
+ * @param {string|null} cwd - Project root (milestone and counts need it)
+ * @param {Object} prior - The front matter as parsed now
+ * @param {{owns?: string[], counts?: boolean, writeCounts?: boolean, set?: Object}} [opts]
+ * @returns {{set: Object}}
+ */
+function stateFrontmatterPatch(body, cwd, prior, opts = {}) {
+  const owns = new Set(opts.owns || FM_KEYS.position);
+  const fields = extractFieldsFromState(body);
+  const set = {};
+  const fromBody = { current_phase: fields.currentPhase, current_phase_name: fields.currentPhaseName, current_plan: fields.currentPlan };
+  for (const [key, value] of Object.entries(fromBody)) if (owns.has(key) && value) set[key] = value;
+  if (owns.has('status') && (fields.status || fields.pausedAt)) set.status = normalizePhaseStatus(fields.status, fields.pausedAt);
+  if (owns.has('last_activity') && fields.lastActivity && !activityMovesBack(prior.last_activity, fields.lastActivity)) {
+    set.last_activity = fields.lastActivity;
+  }
+  if (owns.has('last_updated')) set.last_updated = new Date().toISOString();
+  if (owns.has('milestone') && cwd && !(opts.set && opts.set.milestone)) {
+    try {
+      const info = getMilestoneInfo(cwd);
+      if (!prior.milestone || info.basis === 'marked-current') {
+        set.milestone = info.version;
+        set.milestone_name = info.name;
+      }
+    } catch { /* no roadmap: the recorded milestone stands */ }
+  }
+  if (opts.counts && cwd) {
+    const counts = countPlanProgress(cwd);
+    const recorded = prior.progress && typeof prior.progress === 'object' && !Array.isArray(prior.progress) ? prior.progress : {};
+    if (counts.found) {
+      for (const key of PROGRESS_KEYS) {
+        if (opts.writeCounts || key in recorded) set[`progress.${key}`] = counts[key];
+      }
+    }
+  }
+  Object.assign(set, opts.set || {});
+  return { set };
+}
+
+function stackedFrontmatterError() {
+  const err = new Error('state.md starts with more than one front-matter block (an earlier PAN release stacked them on CRLF files). Keep the block with the right values, delete the other, and run the command again — PAN will not pick one for you.');
+  err.code = 'STATE_STACKED_FRONTMATTER';
+  return err;
+}
+
+/**
+ * The file a write produces. `content` is what the caller wants written: with
+ * its front matter (read from the file, under the lock), or the body alone, in
+ * which case the front matter on disk (`disk`) is kept. The block is patched in
+ * place (patchFrontmatter); only a file with no front matter at all gets a new
+ * one built. Throws STATE_STACKED_FRONTMATTER on a stacked block.
+ */
+function composeStateFile(content, disk, cwd, opts) {
+  const text = String(content);
+  if (STATE_FRONTMATTER_RE.test(stripFrontmatter(text))) throw stackedFrontmatterError();
+  let base = null;
+  if (STATE_FRONTMATTER_RE.test(text)) {
+    base = text;
+  } else {
+    const dm = disk != null ? String(disk).match(STATE_FRONTMATTER_RE) : null;
+    if (dm) {
+      const gap = (String(disk).slice(dm[0].length).match(/^(?:\r?\n)*/) || [''])[0];
+      base = dm[0] + gap + text.replace(/^﻿/, '').replace(/^(?:\r?\n)+/, '');
+    }
+  }
+  if (base === null) {
+    const body = stripFrontmatter(text).replace(/\r\n/g, '\n');
+    return `---\n${reconstructFrontmatter(buildStateFrontmatter(body, cwd, {}))}\n---\n\n${body}`;
+  }
+  const prior = extractFrontmatter(base);
+  const body = stripFrontmatter(base).replace(/\r\n/g, '\n');
+  return patchFrontmatter(base, stateFrontmatterPatch(body, cwd, prior, opts));
+}
+
+/** text in one line ending. */
+const toEol = (text, eol) => (eol === '\r\n' ? text.replace(/\r?\n/g, '\r\n') : text.replace(/\r\n/g, '\n'));
+
+/**
+ * state.md as a write would leave it: the owned front-matter keys patched from
+ * the body (see writeStateMd), in `eol` (default: whatever the content uses).
  * Throws (code STATE_STACKED_FRONTMATTER) when the content starts with more than
  * one front-matter block — earlier releases stacked them on CRLF files, and
  * choosing between them silently is exactly the guess this function must not make.
  */
-function syncStateFrontmatter(content, cwd, eol) {
+function syncStateFrontmatter(content, cwd, eol, opts = {}) {
   const text = String(content);
-  const lineEnd = eol || (/\r\n/.test(text) ? '\r\n' : '\n');
-  const m = text.match(STATE_FRONTMATTER_RE);
-  const existing = m ? extractFrontmatter(m[0]) : {};
-  const body = stripFrontmatter(text).replace(/\r\n/g, '\n');
-  if (STATE_FRONTMATTER_RE.test(body)) {
-    const err = new Error('state.md starts with more than one front-matter block (an earlier PAN release stacked them on CRLF files). Keep the block with the right values, delete the other, and run the command again — PAN will not pick one for you.');
-    err.code = 'STATE_STACKED_FRONTMATTER';
-    throw err;
-  }
-  const frontmatter = buildStateFrontmatter(body, cwd, existing);
-  const yamlStr = reconstructFrontmatter(frontmatter);
-  const out = `---\n${yamlStr}\n---\n\n${body}`;
-  return lineEnd === '\r\n' ? out.replace(/\n/g, '\r\n') : out;
+  return toEol(composeStateFile(text, null, cwd, opts), eol || (/\r\n/.test(text) ? '\r\n' : '\n'));
 }
 
 /**
- * Write state.md with synchronized YAML frontmatter.
+ * Write state.md, patching only the front-matter keys this writer owns.
  * All state.md writes should use this instead of raw writeFileSync.
  *
- * Concurrency (ADR-0030): the write is serialized behind an advisory
- * state.md.lock and lands atomically (temp + rename), so concurrent agents
- * cannot tear the file or interleave read-modify-write cycles. Lock
- * acquisition is best-effort — on timeout the write proceeds unlocked,
- * matching the file-lock contract.
+ * The front matter is never re-serialised (DD-1): comments, quoting, order and
+ * keys PAN does not know survive byte for byte, and `progress.*` counts are only
+ * updated where they exist (opts.counts), or added with opts.writeCounts.
+ * last_activity never moves backwards, and generic writes never touch
+ * `milestone` (opts.owns names FM_KEYS.milestone for the milestone writers).
  *
- * The file keeps its own line ending, and the write is verified: exactly one
- * front-matter block goes in, and what is read back under the lock must be what
- * was written. A write that cannot meet either stops with an error and leaves
- * the file as it was — it never reports success over a file it did not produce.
+ * Concurrency: the write goes through store.updateText, so the file is read
+ * inside state.md's lock (the front matter kept is the one on disk at write
+ * time) and lands atomically; under concurrency.strict a lock that cannot be
+ * taken stops the write. The file keeps its own line ending, and exactly one
+ * front-matter block goes in.
+ *
+ * @param {string} statePath
+ * @param {string} content - The new file, or the new body alone
+ * @param {string} cwd
+ * @param {{owns?: string[], counts?: boolean, writeCounts?: boolean, set?: Object}} [opts]
  */
-function writeStateMd(statePath, content, cwd) {
-  let diskEol = null;
-  try { diskEol = /\r\n/.test(fs.readFileSync(statePath, 'utf-8')) ? '\r\n' : '\n'; } catch { /* new file */ }
-  let synced;
+function writeStateMd(statePath, content, cwd, opts = {}) {
+  let r;
   try {
-    synced = syncStateFrontmatter(content, cwd, diskEol);
+    r = require('./store.cjs').updateText(statePath, (disk) => {
+      const out = composeStateFile(content, disk, cwd, opts);
+      const eol = disk != null ? (/\r\n/.test(disk) ? '\r\n' : '\n') : null;
+      return eol ? toEol(out, eol) : out;
+    }, { cwd });
   } catch (err) {
     if (err && err.code === 'STATE_STACKED_FRONTMATTER') error(err.message);
-    throw err;
-  }
-  let mismatch = false;
-  try {
-    withFileLock(statePath, () => {
-      writeFileAtomic(statePath, synced);
-      mismatch = fs.readFileSync(statePath, 'utf-8') !== synced;
-    });
-  } catch (err) {
     throw new Error('Failed to write state.md: ' + err.message);
   }
-  if (mismatch) error('state.md did not read back as written — another writer changed it during the write. Re-run the command.');
+  if (r && r.error) error(`state.md not written: ${r.reason || r.error}`);
 }
 
 /**
@@ -1130,6 +1299,10 @@ module.exports = {
   stateReplaceField,
   writeStateMd,
   syncStateFrontmatter,
+  countPlanProgress,
+  countPhaseDirPlans,
+  calculateProgressBar,
+  FM_KEYS,
   cmdStateLoad,
   cmdStateGet,
   cmdStatePatch,

@@ -706,7 +706,7 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
  */
 function markPhaseCompleteInRoadmap(cwd, phaseNum, _phaseName, planCount, summaryCount) {
   const roadmapPath = path.join(planningPath(cwd), ROADMAP_FILE);
-  const today = new Date().toISOString().split('T')[0];
+  const today = require('./utils.cjs').localDay();
 
   let roadmapContent;
   try {
@@ -729,12 +729,16 @@ function markPhaseCompleteInRoadmap(cwd, phaseNum, _phaseName, planCount, summar
   // phase — if none does, say so instead of best-effort-ing past it.
   const hasChecklistEntry = new RegExp(`-\\s*\\[[ xX]\\]\\s*.*Phase\\s+${numPat}[:\\s]`, 'i').test(roadmapContent);
 
+  // The status comes from the counts (DD-6): a phase closed with --force, or past
+  // a gate in warn mode, at 1 of 2 plans was written "1/2 | Complete" and ticked.
+  const done = summaryCount >= planCount;
+
   // Checkbox: - [ ] Phase N: -> - [x] Phase N: (...completed DATE)
   const checkboxPattern = new RegExp(
     `(-\\s*\\[)[ ](\\]\\s*.*Phase\\s+${numPat}[:\\s][^\\n]*)`,
     'i'
   );
-  roadmapContent = roadmapContent.replace(checkboxPattern, `$1x$2 (completed ${today})`);
+  if (done) roadmapContent = roadmapContent.replace(checkboxPattern, `$1x$2 (completed ${today})`);
 
   // Progress table: update Plans Complete, Status, and Date columns
   const tablePattern = new RegExp(
@@ -743,7 +747,9 @@ function markPhaseCompleteInRoadmap(cwd, phaseNum, _phaseName, planCount, summar
   );
   roadmapContent = roadmapContent.replace(
     tablePattern,
-    `$1 ${summaryCount}/${planCount} $2 Complete    $3 ${today} $4`
+    done
+      ? `$1 ${summaryCount}/${planCount} $2 Complete    $3 ${today} $4`
+      : `$1 ${summaryCount}/${planCount} $2 In Progress $3 - $4`
   );
 
   // Update plan count in phase section
@@ -770,6 +776,7 @@ function markPhaseCompleteInRoadmap(cwd, phaseNum, _phaseName, planCount, summar
   return {
     requirements_warning: reqResult && reqResult.error ? reqResult.error : null,
     roadmap_warning: roadmapWarning,
+    roadmap_status: done ? 'Complete' : 'In Progress',
   };
 }
 
@@ -834,7 +841,7 @@ function markRequirementsCompleteForPhase(cwd, phaseNum, roadmapContent) {
  */
 function updateStateAfterPhaseComplete(cwd, { phaseNum, totalPhases: _totalPhases, nextPhaseNum, nextPhaseName, isLastPhase }) {
   const statePath = path.join(planningPath(cwd), STATE_FILE);
-  const today = new Date().toISOString().split('T')[0];
+  const today = require('./utils.cjs').localDay();
 
   let stateContent;
   try {
@@ -881,7 +888,14 @@ function updateStateAfterPhaseComplete(cwd, { phaseNum, totalPhases: _totalPhase
     `$1Phase ${phaseNum} complete${nextPhaseNum ? `, transitioned to Phase ${nextPhaseNum}` : ''}`
   );
 
-  writeStateMd(statePath, stateContent, cwd);
+  // Recount (DD-2): the Progress bar and the frontmatter's progress keys stayed
+  // at their old values after every phase complete.
+  const { countPlanProgress, calculateProgressBar, FM_KEYS } = require('./state.cjs');
+  const counts = countPlanProgress(cwd);
+  const bar = calculateProgressBar(counts.completed_plans, counts.total_plans);
+  stateContent = stateContent.replace(/(\*\*Progress:\*\*[ \t]*).*/i, (_m, prefix) => `${prefix}${bar}`);
+
+  writeStateMd(statePath, stateContent, cwd, { owns: FM_KEYS.position, counts: true });
 }
 
 /**
@@ -898,7 +912,7 @@ function cmdPhaseComplete(cwd, phaseNum, raw, opts) {
 
   const phasesDir = phasesPath(cwd);
   const normalized = normalizePhaseName(phaseNum);
-  const today = new Date().toISOString().split('T')[0];
+  const today = require('./utils.cjs').localDay();
 
   // Verify phase info
   const phaseInfo = findPhaseInternal(cwd, phaseNum);
@@ -926,8 +940,11 @@ function cmdPhaseComplete(cwd, phaseNum, raw, opts) {
     if (force) gateOverride = recordGateOverride(cwd, gate, forceReason);
   }
 
-  const planCount = phaseInfo.plans.length;
-  const summaryCount = phaseInfo.summaries.length;
+  // Plans paired with their own summaries (DD-2): a summary with no plan, such
+  // as a research summary, no longer counts towards completion.
+  const paired = require('./state.cjs').countPhaseDirPlans(path.join(cwd, phaseInfo.directory));
+  const planCount = paired.plans;
+  const summaryCount = paired.completed;
 
   // Update roadmap.md and requirements.md
   const roadmapResult = markPhaseCompleteInRoadmap(cwd, phaseNum, phaseInfo.phase_name, planCount, summaryCount);
@@ -992,6 +1009,7 @@ function cmdPhaseComplete(cwd, phaseNum, raw, opts) {
     gate: gate.error ? { error: gate.error } : { ok: gate.ok, mode: gate.mode, reasons: gate.reasons, not_checked: gate.not_checked },
     ...(gateOverride ? { gate_override: gateOverride } : {}),
   };
+  if (roadmapResult && roadmapResult.roadmap_status) result.roadmap_status = roadmapResult.roadmap_status;
   if (roadmapResult && roadmapResult.requirements_warning) {
     result.requirements_warning = roadmapResult.requirements_warning;
   }
@@ -1011,7 +1029,11 @@ function cmdPhaseComplete(cwd, phaseNum, raw, opts) {
     || isGitIgnored(cwd, planningRel());
   if (!noCommit && isGitRepo(cwd)) {
     const commitMsg = `docs(${normalized}): complete phase — ${phaseInfo.phase_name}`;
-    execGit(cwd, ['add', planningRel() + '/']);
+    // Only what this command wrote (DD-6): `git add .planning/` swept every stray
+    // untracked planning file into the phase commit.
+    const toStage = [ROADMAP_FILE, REQUIREMENTS_FILE, STATE_FILE].map((f) => planningRel(f)).concat(phaseInfo.directory)
+      .filter((rel) => fs.existsSync(path.join(cwd, rel)));
+    if (toStage.length > 0) execGit(cwd, ['add', '--', ...toStage]);
     const commitResult = execGit(cwd, ['commit', '-m', commitMsg]);
     if (commitResult.exitCode === 0) {
       const hashResult = execGit(cwd, ['rev-parse', '--short', 'HEAD']);

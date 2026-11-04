@@ -422,7 +422,7 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
 
   const isComplete = summaryCount >= planCount;
   const status = isComplete ? 'Complete' : summaryCount > 0 ? 'In Progress' : 'Planned';
-  const today = new Date().toISOString().split('T')[0];
+  const today = require('./utils.cjs').localDay();
 
   let roadmapContent;
   try {

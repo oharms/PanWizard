@@ -584,6 +584,7 @@
     "extractFrontmatter:function",
     "extractPriorityEffort:function",
     "parseMustHavesBlock:function",
+    "patchFrontmatter:function",
     "reconstructFrontmatter:function",
     "spliceFrontmatter:function"
   ],
@@ -1139,7 +1140,9 @@
     "stateSection:function"
   ],
   "state.cjs": [
+    "FM_KEYS:object",
     "activeBlockersFromState:function",
+    "calculateProgressBar:function",
     "cmdDashboard:function",
     "cmdStateAddBlocker:function",
     "cmdStateAddDecision:function",
@@ -1154,6 +1157,8 @@
     "cmdStateSnapshot:function",
     "cmdStateUpdate:function",
     "cmdStateUpdateProgress:function",
+    "countPhaseDirPlans:function",
+    "countPlanProgress:function",
     "readStateSafe:function",
     "stateExtractField:function",
     "stateReplaceField:function",
@@ -1244,6 +1249,7 @@
     "filterSummaryFiles:function",
     "hasBraveSearchKey:function",
     "listPhaseDirs:function",
+    "localDay:function",
     "milestonesPath:function",
     "nextQuickNum:function",
     "parsePhaseDir:function",

@@ -17,17 +17,17 @@
 const fs = require('fs');
 const path = require('path');
 const { output, escapeRegex } = require('./core.cjs');
-const { planningPath } = require('./utils.cjs');
-const { writeStateMd } = require('./state.cjs');
+const { planningPath, localDay } = require('./utils.cjs');
+const { writeStateMd, FM_KEYS } = require('./state.cjs');
 
 const statePathOf = (cwd) => planningPath(cwd, 'state.md');
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localDay();
 
 function readBody(cwd) {
   try { return fs.readFileSync(statePathOf(cwd), 'utf8').replace(/\r\n/g, '\n'); } catch { return null; }
 }
 
-/** The body without its frontmatter (writeStateMd rebuilds the frontmatter). */
+/** The body without its frontmatter (writeStateMd keeps the one on disk and patches its owned keys). */
 function stripFrontmatter(text) {
   return text.replace(/^---\n[\s\S]*?\n---\n+/, '');
 }
@@ -165,22 +165,24 @@ function stateInit(cwd, o = {}) {
     fs.copyFileSync(p, backup);
   }
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  writeStateMd(p, body, cwd);
+  // A re-init (milestone new) keeps the front matter on disk and patches the
+  // position, the milestone and any progress counts it already records.
+  writeStateMd(p, body, cwd, { owns: [...FM_KEYS.position, ...FM_KEYS.milestone], counts: true });
   return { written: true, path: path.relative(cwd, p).replace(/\\/g, '/'), backup: backup && path.relative(cwd, backup).replace(/\\/g, '/'), kept_context: !!(o.keepContext && existing) };
 }
 
-function withState(cwd, fn) {
+function withState(cwd, fn, owns) {
   // The read happens inside state.md's lock, so a concurrent writer's change is
   // read before this one is made, whichever verb got here (focus close too).
-  return require('./store.cjs').locked(statePathOf(cwd), () => withStateLocked(cwd, fn), { cwd });
+  return require('./store.cjs').locked(statePathOf(cwd), () => withStateLocked(cwd, fn, owns), { cwd });
 }
 
-function withStateLocked(cwd, fn) {
+function withStateLocked(cwd, fn, owns) {
   const text = readBody(cwd);
   if (text === null) return { error: 'state_missing', reason: 'state.md not found; run `pan-tools state init` first' };
   const r = fn(stripFrontmatter(text));
   if (r.error) return r;
-  writeStateMd(statePathOf(cwd), r.text, cwd);
+  writeStateMd(statePathOf(cwd), r.text, cwd, { owns: owns || FM_KEYS.position });
   const { text: _t, ...rest } = r;
   return { written: true, ...rest };
 }
@@ -188,7 +190,7 @@ function withStateLocked(cwd, fn) {
 function stateSection(cwd, name, op) {
   if (!name) return { error: 'section_required', reason: 'Usage: state section <name> (--append <line> | --set <text>) [--under <section>]' };
   if (op.append == null && op.set == null) return { error: 'op_required', reason: 'pass --append <line> or --set <text>' };
-  return withState(cwd, (t) => ({ text: editSection(t, name, op, op.under), section: name }));
+  return withState(cwd, (t) => ({ text: editSection(t, name, op, op.under), section: name }), FM_KEYS.touch);
 }
 
 function stateQuickTask(cwd, o) {
@@ -222,7 +224,7 @@ function stateQuickTask(cwd, o) {
     lines.splice(lastTable + 1, 0, row);
     const tail = s.bodyEnd < t.length ? '\n\n' : '\n';
     return { text: `${t.slice(0, s.bodyStart)}${lines.join('\n')}${tail}${t.slice(s.bodyEnd).replace(/^\n*/, '')}`, row: n };
-  });
+  }, FM_KEYS.touch);
 }
 
 function stateApply(cwd, batch) {
