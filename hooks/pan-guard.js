@@ -161,12 +161,15 @@ function isTestFile(r) {
 function declaredFiles(projectDir, planningRel) {
   let state;
   try { state = fs.readFileSync(path.join(projectDir, planningRel, 'state.md'), 'utf8'); } catch { return null; }
-  const m = state.match(/\*\*Current Phase:\*\*[ \t]*([0-9]+(?:\.[0-9]+)?)/i) || state.match(/^Phase:[ \t]*([0-9]+(?:\.[0-9]+)?)/m);
+  // Every decimal level and a letter suffix (29.4.1, 12A): a nested phase is a phase of its own,
+  // and parseFloat made 29.10 and 29.1 the same phase.
+  const m = state.match(/\*\*Current Phase:\*\*[ \t]*([0-9]+[A-Z]?(?:\.[0-9]+)*)/i) || state.match(/^Phase:[ \t]*([0-9]+[A-Z]?(?:\.[0-9]+)*)/m);
   if (!m) return null;
-  const want = String(parseFloat(m[1]));
+  const canon = (n) => n.toUpperCase().split('.').map((seg, i) => (i === 0 ? seg.replace(/^0+(?=\d)/, '') : String(parseInt(seg, 10)))).join('.');
+  const want = canon(m[1]);
   const phasesDir = path.join(projectDir, planningRel, 'phases');
   let dir;
-  try { dir = fs.readdirSync(phasesDir).find((d) => { const n = d.match(/^(\d+(?:\.\d+)?)-/); return n && String(parseFloat(n[1])) === want; }); } catch { return null; }
+  try { dir = fs.readdirSync(phasesDir).find((d) => { const n = d.match(/^(\d+[A-Z]?(?:\.\d+)*)-/i); return n && canon(n[1]) === want; }); } catch { return null; }
   if (!dir) return null;
   const full = path.join(phasesDir, dir);
   const names = fs.readdirSync(full);

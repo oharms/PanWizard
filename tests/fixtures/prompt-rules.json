@@ -2731,6 +2731,12 @@
    "baseline": false
   },
   {
+   "id": "pan-wizard-core/workflows/progress:cd619841",
+   "file": "pan-wizard-core/workflows/progress.md",
+   "text": "**Step 2: What the route means** (route on the router's `action` above, never on this table; it explains the action to the user)",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/quick:4387c189",
    "file": "pan-wizard-core/workflows/quick.md",
    "text": "Record the task through the engine. It creates the \"### Quick Tasks Completed\" table after \"### Blockers/Concerns\" when it is missing, numbers the row, and keeps an existing table's columns. Pass `description_cell` exactly as init returned it, never `$DESCRIPTION`: init escapes `|` and folds line breaks, and a raw `|` would split the row.",

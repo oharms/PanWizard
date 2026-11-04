@@ -987,7 +987,7 @@ function checkStateFile(cwd, addIssue, repairs) {
     // template to "fix" a mention of an archived phase.
     for (const [key, ref] of phaseRefs) {
       if (!diskPhases.has(key) && activePhases.size > 0) {
-        addIssue('warning', 'W002', `${STATE_FILE} references phase ${ref}, but only phases ${[...activePhases].sort(comparePhaseNum).join(', ')} exist`, `Check the phase number in ${STATE_FILE}, or create the phase directory`, false);
+        addIssue('warning', 'W002', `${STATE_FILE} references phase ${ref}, but only phases ${[...activePhases].sort(comparePhaseNum).join(', ')} exist`, `Check the phase number in ${STATE_FILE}, or add the phase with /pan:add-phase or /pan:insert-phase`, false);
       }
     }
   }

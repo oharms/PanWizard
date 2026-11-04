@@ -102,7 +102,7 @@ A class the user declines is not touched.
 ## Warnings
 
 - [W002] state.md references phase 5, but only phases 01, 02, 03 exist
-  Fix: Check the phase number in state.md, or create the phase directory
+  Fix: Check the phase number in state.md, or add the phase with /pan:add-phase or /pan:insert-phase (never create its directory by hand)
 
 - [W005] Phase directory "1-setup" doesn't follow NN-name format
   Fix: Rename to match pattern (e.g., 01-setup)

@@ -143,3 +143,23 @@ describe('an upper-case -PLAN.md is in flight for open work, the guard and hygie
     assert.equal(findings.length, 1, r.output);
   });
 });
+
+// Doc-audit pass 13 (3.42.0): the guard read one decimal level of the current phase, so a nested
+// 29.4.1 picked 29.4's plans, and parseFloat made 29.10 and 29.1 the same phase.
+describe('the guard finds the current phase at every decimal level', () => {
+  let dir;
+  beforeEach(() => { dir = createTempProject(); });
+  afterEach(() => { cleanup(dir); });
+
+  test('29.4.1 reads its own plans, not 29.4\'s; 29.10 is not 29.1', () => {
+    write(dir, '.planning/phases/29.4-parent/29.4-01-plan.md', '---\nfiles_modified: [src/parent.js]\n---\n');
+    write(dir, '.planning/phases/29.4.1-nested/29.4.1-01-plan.md', '---\nfiles_modified: [src/nested.js]\n---\n');
+    write(dir, '.planning/state.md', '# State\n\n**Current Phase:** 29.4.1\n');
+    const nested = G.declaredFiles(dir, '.planning');
+    assert.ok(nested && [...(nested.files || nested)].some((f) => /nested\.js/.test(String(f))), JSON.stringify(nested && [...(nested.files || nested)]));
+    assert.ok(![...(nested.files || nested)].some((f) => /parent\.js/.test(String(f))));
+    write(dir, '.planning/phases/29.1-one/29.1-01-plan.md', '---\nfiles_modified: [src/one.js]\n---\n');
+    write(dir, '.planning/state.md', '# State\n\n**Current Phase:** 29.10\n');
+    assert.equal(G.declaredFiles(dir, '.planning'), null, 'no 29.10 directory: 29.1 is not it');
+  });
+});

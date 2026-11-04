@@ -167,14 +167,14 @@ grep -l "status: diagnosed" .planning/phases/[current-phase-dir]/*-uat.md 2>/dev
 Track:
 - `uat_with_gaps`: uat.md files with status "diagnosed" (gaps need fixing)
 
-**Step 2: Route based on counts**
+**Step 2: What the route means** (route on the router's `action` above, never on this table; it explains the action to the user)
 
-| Condition | Meaning | Action |
+| Router `action` | What Step 1 shows | Route |
 |-----------|---------|--------|
-| uat_with_gaps > 0 | UAT gaps need fix plans | Go to **Route E** |
-| `incomplete_plans` not empty | Unexecuted plans exist | Go to **Route A** |
-| `incomplete_plans` empty AND plans > 0 | Phase complete | Go to Step 3 |
-| plans = 0 | Phase not yet planned | Go to **Route B** |
+| `plan_gaps` | a UAT file with status `diagnosed` | **Route E** |
+| `execute` | `incomplete_plans` not empty | **Route A** |
+| `complete_phase` / `verify` | `incomplete_plans` empty and plans > 0 | Step 3 |
+| `plan` | no plans yet | **Route B** |
 
 ---
 
