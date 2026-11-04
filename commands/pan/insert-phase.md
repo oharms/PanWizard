@@ -10,7 +10,7 @@ allowed-tools:
 ---
 
 <objective>
-Insert a decimal phase for urgent work discovered mid-milestone that must be completed between existing integer phases.
+Insert a decimal phase for urgent work discovered mid-milestone that must be completed between existing phases. The after-phase may itself be a decimal (`72.1` gives `72.2`).
 
 Uses decimal numbering (72.1, 72.2, etc.) to preserve the logical sequence of planned phases while accommodating urgent insertions.
 
