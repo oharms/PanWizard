@@ -355,7 +355,7 @@ git commit -m "{type}({phase}-{plan}): {concise task description}
 PAN-Step: {phase}-{plan}/task-N
 "
 ```
-Only the commit that finishes a task carries its `PAN-Step` line: a TDD RED commit does not. A coalesced commit carries one line per task it holds. Put any other trailer (such as `Co-Authored-By`) in the same final block as the `PAN-Step` line, with no blank line between, so git reads them all as trailers. PAN finds the line anywhere in the message, so do not amend a commit just to move it.
+Only the commit that finishes a task carries its `PAN-Step` line: a TDD RED commit does not. A coalesced commit carries one line per task it holds. Start the final trailer block with the `PAN-Step` line(s); put `Co-Authored-By` and any other trailers after them, with no blank line between, so git reads them all as trailers. PAN finds the line anywhere in the message, so do not amend a commit only to move it.
 
 **5. Record hash:** `TASK_COMMIT=$(git rev-parse --short HEAD)` — track for SUMMARY.
 

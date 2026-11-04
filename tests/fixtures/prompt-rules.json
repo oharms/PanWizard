@@ -463,9 +463,9 @@
    "baseline": true
   },
   {
-   "id": "agents/pan-executor:3a51de50",
+   "id": "agents/pan-executor:6ec88a3d",
    "file": "agents/pan-executor.md",
-   "text": "Only the commit that finishes a task carries its `PAN-Step` line: a TDD RED commit does not. A coalesced commit carries one line per task it holds. Put any other trailer (such as `Co-Authored-By`) in the same final block as the `PAN-Step` line, with no blank line between, so git reads them all as trailers. PAN finds the line anywhere in the message, so do not amend a commit just to move it.",
+   "text": "Only the commit that finishes a task carries its `PAN-Step` line: a TDD RED commit does not. A coalesced commit carries one line per task it holds. Start the final trailer block with the `PAN-Step` line(s); put `Co-Authored-By` and any other trailers after them, with no blank line between, so git reads them all as trailers. PAN finds the line anywhere in the message, so do not amend a commit only to move it.",
    "baseline": false
   },
   {
@@ -2101,9 +2101,9 @@
    "baseline": true
   },
   {
-   "id": "pan-wizard-core/workflows/execute-plan:c717c482",
+   "id": "pan-wizard-core/workflows/execute-plan:65fe3017",
    "file": "pan-wizard-core/workflows/execute-plan.md",
-   "text": "**4. Format:** `{type}({phase}-{plan}): {description}` with bullet points for key changes, and the message ends with `PAN-Step: ${PHASE}-${PLAN}/task-${TASK_NUM}` on its own line. The commit is the task's record: a crashed run resumes after it. Only the commit that finishes a task carries the line (a TDD RED commit does not); a coalesced commit carries one line per task. Any other trailer (such as `Co-Authored-By`) goes in the same final block, no blank line between; PAN finds the line anywhere in the message, so do not amend a commit just to move it.",
+   "text": "**4. Format:** `{type}({phase}-{plan}): {description}` with bullet points for key changes, and the message ends with `PAN-Step: ${PHASE}-${PLAN}/task-${TASK_NUM}` on its own line. The commit is the task's record: a crashed run resumes after it. Only the commit that finishes a task carries the line (a TDD RED commit does not); a coalesced commit carries one line per task. Start the final trailer block with the `PAN-Step` line(s); put `Co-Authored-By` and any other trailers after them, with no blank line between. PAN finds the line anywhere in the message, so do not amend a commit only to move it.",
    "baseline": false
   },
   {

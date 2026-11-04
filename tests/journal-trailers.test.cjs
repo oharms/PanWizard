@@ -265,3 +265,82 @@ describe('hygiene H-15 with trailer evidence', () => {
     assert.equal(f.length, 0);
   });
 });
+
+describe('large histories and failed scans (PAN-25, DD-11)', () => {
+  test('a log of bodies over 1 MiB still indexes the trailers', () => {
+    task('03-02', 'task-1');
+    const big = 'x'.repeat(120 * 1024);
+    // A message file: a 120 KB argument is past Windows' command-line limit.
+    const msg = path.join(dir, '..', `${path.basename(dir)}-msg.txt`);
+    try {
+      for (let i = 0; i < 10; i++) {
+        fs.writeFileSync(msg, `docs: long note ${i}\n\n${big}\n`);
+        n++; write(`src/f${n}.js`, `module.exports = ${n};\n`); git('add', '.'); git('commit', '-q', '-F', msg);
+      }
+    } finally { fs.rmSync(msg, { force: true }); }
+    task('03-02', 'task-2');
+    const total = execFileSync('git', ['log', '--format=%B', 'HEAD'], { cwd: dir, maxBuffer: 64 * 1024 * 1024 }).length;
+    assert.ok(total > 1024 * 1024, `history bodies are ${total} bytes`);
+    const rp = J.resumePoint(dir, '03-02');
+    assert.equal(rp.trailer_scan, undefined);
+    assert.equal(rp.resume_at, 'task-3');
+    assert.deepEqual(rp.completed.map((c) => c.step), ['task-1', 'task-2']);
+  });
+
+  test('the window still lists every commit, not only the matching ones', () => {
+    task('03-02', 'task-1');
+    commit('chore: a');
+    assert.equal(J.trailerIndex(dir).shas.length, 3, 'init, the task and the chore');
+  });
+
+  test('a scan that overruns its buffer reports trailer_scan_failed', () => {
+    task('03-02', 'task-1');
+    const idx = J.trailerIndex(dir, { maxBuffer: 16 });
+    assert.equal(idx.error, 'trailer_scan_failed');
+    assert.match(idx.reason, /ENOBUFS/);
+    assert.equal(J.resumePoint(dir, '03-02', { maxBuffer: 16 }).trailer_scan.error, 'trailer_scan_failed');
+  });
+
+  /** Break the history below HEAD: rev-parse still answers, git log does not. */
+  const breakHistory = () => {
+    const root = git('rev-list', '--max-parents=0', 'HEAD');
+    fs.rmSync(path.join(dir, '.git', 'objects', root.slice(0, 2), root.slice(2)), { force: true });
+  };
+
+  test('a failed scan surfaces through resume-point, open_work and hygiene, not as nothing done', () => {
+    task('03-02', 'task-1');
+    task('03-02', 'task-2');
+    breakHistory();
+    const r = tools('journal', 'resume-point', '--plan', '03-02');
+    assert.equal(r.json.trailer_scan.error, 'trailer_scan_failed');
+    const raw = spawnSync(process.execPath, [TOOLS, 'journal', 'resume-point', '--plan', '03-02', '--raw'], { cwd: dir, encoding: 'utf-8' });
+    assert.equal(raw.stdout.trim(), 'trailer_scan_failed');
+    const plans = openWork(dir).phase_plans;
+    assert.equal(plans.length, 1);
+    assert.equal(plans[0].trailer_scan.error, 'trailer_scan_failed');
+    const f = H.checkDurableState(dir, Date.now()).findings.filter((x) => x.check === 'trailer-scan-failed');
+    assert.equal(f.length, 1);
+    assert.equal(f[0].severity, 'warn');
+  });
+
+  test('the grep still finds indented squash trailers and reverts', () => {
+    commit('squashed (#7)\n\n* feat(03-02): a\n\n    PAN-Step: 03-02/task-1\n\n* feat(03-02): b\n\n    PAN-Step: 03-02/task-2');
+    const s3 = task('03-02', 'task-3');
+    git('revert', '--no-edit', s3);
+    const rp = J.resumePoint(dir, '03-02');
+    assert.deepEqual(rp.completed.map((c) => c.step), ['task-1', 'task-2']);
+    assert.equal(rp.resume_at, 'task-3');
+  });
+});
+
+describe('trailer order (DD-13)', () => {
+  test('PAN-Step after Co-Authored-By counts', () => {
+    commit('feat(03-02): a\n\n- change\n\nCo-Authored-By: Someone <s@example.com>\nPAN-Step: 03-02/task-1');
+    assert.equal(J.resumePoint(dir, '03-02').resume_at, 'task-2');
+  });
+
+  test('PAN-Step first, Co-Authored-By after, counts', () => {
+    commit('feat(03-02): a\n\n- change\n\nPAN-Step: 03-02/task-1\nPAN-Step: 03-02/task-2\nCo-Authored-By: Someone <s@example.com>');
+    assert.equal(J.resumePoint(dir, '03-02').resume_at, 'task-3');
+  });
+});

@@ -464,7 +464,13 @@ function checkDurableState(cwd, now = Date.now()) {
       const rows = names.includes(j) ? J.readJournal(planningPath(cwd, 'phases', ph, j)) : [];
       // A task commit's PAN-Step trailer is evidence too: the plan's latest
       // evidence is the newer of its last journal row and its newest trailer.
-      if (!idx) idx = J.trailerIndex(cwd);
+      if (!idx) {
+        idx = J.trailerIndex(cwd);
+        if (idx.error) {
+          findings.push(mkFinding('trailer-scan-failed', 'warn', planningRel('phases'),
+            `PAN-Step task commits could not be read (${idx.reason}); resume points and abandoned-plan ages use the journals only`, null));
+        }
+      }
       let latest = null;
       const last = rows[rows.length - 1];
       if (last) latest = { at: Date.parse(last.ts), what: `recorded ${last.event} ${last.step}` };

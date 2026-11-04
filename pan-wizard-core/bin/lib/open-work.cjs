@@ -61,6 +61,8 @@ function openWork(cwd) {
       phasePlans.push({
         phase: dir, plan: planningRel(PHASES_DIR, dir, plan), current: n[1] !== null && String(parseFloat(n[1])) === current,
         ...(j ? { resume_at: j.resume_at, completed_steps: j.completed, unverified_steps: j.unverified } : {}),
+        // The task commits could not be read: done steps are unknown, not none.
+        ...(j && j.trailer_scan ? { trailer_scan: j.trailer_scan } : {}),
       });
     }
     for (const f of list(full).filter((x) => x.startsWith('.continue-here') && x.endsWith('.md'))) {
