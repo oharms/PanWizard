@@ -65,15 +65,10 @@ Note accumulated context that may need updating after transition.
 Check current phase has all plan summaries:
 
 ```bash
-ls .planning/phases/XX-current/*-plan.md 2>/dev/null | sort
-ls .planning/phases/XX-current/*-summary.md 2>/dev/null | sort
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase "${current_phase}"
 ```
 
-**Verification logic:**
-
-- A plan is complete when its own `{id}-summary.md` exists
-- The phase is complete when every plan has one (a summary with no plan, such as a research summary, does not count)
-- Otherwise: incomplete
+**Verification logic:** the phase is complete when `incomplete_plans` is empty and `plans` is not. Never count or pair the files yourself: the engine pairs each plan with its own summary, in any case, and a summary with no plan (a research summary) finishes nothing.
 
 <config-check>
 
@@ -356,7 +351,7 @@ After (if database indexing was addressed in Phase 2):
 
 Update Session Continuity section in state.md to reflect transition completion.
 
-**P-1804 fix (v3.7.8):** the "Stopped at" line is mirrored into the frontmatter `stopped_at:` field by `syncStateFrontmatter()`. Direct `Edit` on the body alone leaves frontmatter and body out of sync — that's why the wookie run's frontmatter still showed `"Phase 1 plan 01-01 executed, awaiting verification"` after Phase 5 completed. **Use `pan-tools state update` for "Stopped at"** so the frontmatter resyncs automatically; the other two lines (Last session, Resume file) have no frontmatter mirror and can be edited directly.
+**Use `pan-tools state update` for "Stopped at"** (never a raw Edit of state.md): it writes the body under state.md's lock and patches only the frontmatter keys it owns. The frontmatter has no live `stopped_at` mirror. The other two lines (Last session, Resume file) can be edited directly.
 
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state update "Stopped at" "Phase ${current_phase} complete, ready to plan Phase ${next_phase}"
@@ -375,7 +370,7 @@ Then fold the other two lines into the batched `state apply` call at the end of 
 **Step complete when:**
 
 - [ ] Last session timestamp updated to current date and time
-- [ ] Stopped at field updated **via `pan-tools state update`** (not raw Edit) so the frontmatter `stopped_at` field stays in sync
+- [ ] Stopped at field updated **via `pan-tools state update`** (not raw Edit)
 - [ ] Resume file confirmed as None (transitions don't use resume files)
 
 </step>

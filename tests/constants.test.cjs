@@ -105,8 +105,12 @@ describe('isPlanFile', () => {
     assert.equal(C.isPlanFile('README.md'), false);
   });
 
-  it('rejects PLAN.md (wrong case)', () => {
-    assert.equal(C.isPlanFile('PLAN.md'), false);
+  // 3.42.0: any case matches. An older layout wrote -PLAN.md; a case-sensitive match left those
+  // plans invisible to find-phase, init and the phase gate while state.md's count saw them.
+  it('matches PLAN.md and -PLAN.md in any case', () => {
+    assert.equal(C.isPlanFile('PLAN.md'), true);
+    assert.equal(C.isPlanFile('05-01-PLAN.md'), true);
+    assert.equal(C.getPlanId('05-01-PLAN.md'), '05-01');
   });
 
   it('rejects partial match plan.md.bak', () => {
@@ -129,8 +133,11 @@ describe('isSummaryFile', () => {
     assert.equal(C.isSummaryFile('plan.md'), false);
   });
 
-  it('rejects SUMMARY.md (wrong case)', () => {
-    assert.equal(C.isSummaryFile('SUMMARY.md'), false);
+  // 3.42.0: any case matches (see isPlanFile).
+  it('matches SUMMARY.md and -SUMMARY.md in any case', () => {
+    assert.equal(C.isSummaryFile('SUMMARY.md'), true);
+    assert.equal(C.isSummaryFile('05-01-SUMMARY.md'), true);
+    assert.equal(C.getSummaryId('05-01-SUMMARY.md'), '05-01');
   });
 });
 

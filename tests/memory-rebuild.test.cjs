@@ -129,6 +129,16 @@ describe('memory rebuild — command (dispatcher)', () => {
     assert.equal(out2.changed_count, 0, 'nothing left to rebuild');
     assert.ok(out2.rebuilt.every((t) => t.action === 'unchanged'));
   });
+
+  // 3.42.0: the rebuild restamped state.md's last_updated, so state.md never converged.
+  test('idempotent with a state.md: its last_updated is not restamped', () => {
+    const state = '---\n# kept\nstatus: executing\nlast_updated: "2026-01-01T00:00:00.000Z"\n---\n\n# State\n\n## Current Position\n**Status:** executing\n';
+    fs.writeFileSync(path.join(cwd, '.planning', 'state.md'), state);
+    run('--apply');
+    const out2 = run('--apply');
+    assert.equal(out2.rebuilt.find((t) => t.file === '.planning/state.md').action, 'unchanged');
+    assert.match(fs.readFileSync(path.join(cwd, '.planning', 'state.md'), 'utf-8'), /last_updated: "2026-01-01T00:00:00\.000Z"/);
+  });
 });
 
 describe('memory rebuild — procedural-memory directive warnings (ADR-0040)', () => {

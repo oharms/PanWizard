@@ -40,14 +40,16 @@ const ROADMAP_SLICE_SUFFIX = '-roadmap-slice.md';
 
 // ─── File matching helpers ───────────────────────────────────────────────────
 
-/** Check if a filename is a plan file (plan.md or *-plan.md) */
+/** Check if a filename is a plan file (plan.md or *-plan.md, any case: an older layout wrote -PLAN.md) */
 function isPlanFile(f) {
-  return f.endsWith(PLAN_SUFFIX) || f === 'plan.md';
+  const l = String(f).toLowerCase();
+  return l.endsWith(PLAN_SUFFIX) || l === 'plan.md';
 }
 
-/** Check if a filename is a summary file (summary.md or *-summary.md) */
+/** Check if a filename is a summary file (summary.md or *-summary.md, any case) */
 function isSummaryFile(f) {
-  return f.endsWith(SUMMARY_SUFFIX) || f === 'summary.md';
+  const l = String(f).toLowerCase();
+  return l.endsWith(SUMMARY_SUFFIX) || l === 'summary.md';
 }
 
 /** Check if a filename is a research file (research.md or *-research.md) */
@@ -72,7 +74,7 @@ function isVerificationFile(f) {
  * e.g. "01-plan.md" → "01", "plan.md" → ""
  */
 function getPlanId(filename) {
-  return filename.replace(PLAN_SUFFIX, '').replace('plan.md', '');
+  return filename.replace(/-plan.md$/i, '').replace(/^plan.md$/i, '');
 }
 
 /**
@@ -80,7 +82,7 @@ function getPlanId(filename) {
  * e.g. "01-summary.md" → "01", "summary.md" → ""
  */
 function getSummaryId(filename) {
-  return filename.replace(SUMMARY_SUFFIX, '').replace('summary.md', '');
+  return filename.replace(/-summary.md$/i, '').replace(/^summary.md$/i, '');
 }
 
 // ─── Regex patterns (precompiled) ────────────────────────────────────────────

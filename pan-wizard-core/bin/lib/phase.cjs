@@ -8,7 +8,7 @@ const { escapeRegex, normalizePhaseName, comparePhaseNum, findPhaseInternal, get
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { writeStateMd, readStateSafe } = require('./state.cjs');
 const { enumerateRoadmapPhases, roadmapRequirementIds, insertProgressTableRow } = require('./roadmap.cjs');
-const { PHASES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, STATE_FILE, isPlanFile, isSummaryFile, getPlanId, PHASE_DIR_RE, ARCHIVE_DIR_RE } = require('./constants.cjs');
+const { PHASES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, STATE_FILE, isPlanFile, isSummaryFile, getPlanId, getSummaryId, PHASE_DIR_RE, ARCHIVE_DIR_RE } = require('./constants.cjs');
 const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, parsePhaseDir, fileAccessible, planningRel } = require('./utils.cjs');
 // Phase removal lives in phase-remove.cjs; re-exported below so consumers of
 // phase.cjs are unaffected by the decomposition.
@@ -212,6 +212,10 @@ function cmdFindPhase(cwd, phase, raw) {
     const phaseFiles = fs.readdirSync(phaseDir);
     const plans = filterPlanFiles(phaseFiles);
     const summaries = filterSummaryFiles(phaseFiles);
+    // The plans with no summary of their own (PAN-02): the workflows route on this rather than
+    // on file counts, so an orphan summary (a research summary) finishes nothing.
+    const summarized = new Set(summaries.map((f) => getSummaryId(f).toLowerCase()));
+    const incomplete_plans = plans.filter((f) => !summarized.has(getPlanId(f).toLowerCase()));
 
     const result = {
       found: true,
@@ -220,6 +224,7 @@ function cmdFindPhase(cwd, phase, raw) {
       phase_name: phaseName,
       plans,
       summaries,
+      incomplete_plans,
     };
 
     output(result, raw, result.directory);

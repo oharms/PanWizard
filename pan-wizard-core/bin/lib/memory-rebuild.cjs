@@ -26,7 +26,7 @@ const fs = require('fs');
 const path = require('path');
 const { output, safeReadFile } = require('./core.cjs');
 const { planningPath } = require('./utils.cjs');
-const { syncStateFrontmatter } = require('./state.cjs');
+const { syncStateFrontmatter, FM_KEYS } = require('./state.cjs');
 const {
   buildAgentsMdSection,
   upsertAgentsMdSection,
@@ -175,14 +175,15 @@ function cmdMemoryRebuild(cwd, opts = {}, raw) {
     scanForDirectives('CLAUDE.md', desired, warnings);
   }
 
-  // 3. state.md — re-derive YAML frontmatter from the body (progress/status).
+  // 3. state.md — patch the position keys from the body. Not last_updated: a rebuild is
+  // not a state write, and stamping it made state.md differ on every run (never unchanged).
   if (opts.only !== 'agents-md') {
     const p = path.join(planningPath(cwd), 'state.md');
     const existing = safeReadFile(p);
     if (existing != null) {
       let desired = null;
       try {
-        desired = syncStateFrontmatter(existing, cwd);
+        desired = syncStateFrontmatter(existing, cwd, undefined, { owns: FM_KEYS.position.filter((k) => k !== 'last_updated') });
       } catch (err) {
         // A state.md PAN refuses to re-derive (stacked front matter) is reported,
         // never rewritten on a guess.

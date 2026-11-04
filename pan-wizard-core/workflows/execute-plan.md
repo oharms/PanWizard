@@ -38,13 +38,7 @@ If `.planning/` missing: error.
 </step>
 
 <step name="identify_plan">
-```bash
-# Use plans/summaries from INIT JSON, or list files
-ls .planning/phases/XX-name/*-plan.md 2>/dev/null | sort
-ls .planning/phases/XX-name/*-summary.md 2>/dev/null | sort
-```
-
-Find first PLAN without matching SUMMARY. Decimal phases supported (`01.1-hotfix/`). If that plan has a step journal, `pan-tools journal resume-point --plan <phase>-<plan>` names the task to start from (`resume_at`) and the tasks already done with their commits; execute from `resume_at` and treat the `completed` tasks as done (Pattern C, continuation):
+Take the first entry of `incomplete_plans` from the INIT JSON (or from `pan-tools find-phase "${PHASE}"`): the plans with no summary of their own. Do not pair plan and summary files yourself. Decimal phases supported (`01.1-hotfix/`). If that plan has a step journal, `pan-tools journal resume-point --plan <phase>-<plan>` names the task to start from (`resume_at`) and the tasks already done with their commits; execute from `resume_at` and treat the `completed` tasks as done (Pattern C, continuation):
 
 ```bash
 PHASE=$(basename "$PLAN_PATH" | grep -oE '^[0-9]+(\.[0-9]+)?')

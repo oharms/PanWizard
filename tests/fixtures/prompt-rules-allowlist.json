@@ -274,5 +274,17 @@
   {
     "id": "pan-wizard-core/references/decimal-phase-calculation:bbedaed9",
     "reason": "Decimal insertion (3.42.0, PAN-23): phase next-decimal and phase insert share nextInsertNumber (29.4 then 29.5, nested only when taken; roadmap headings count as taken), pinned by tests/phase.test.cjs. The reference tells the model to insert with phase insert rather than mkdir; a model-tier insert-phase scenario is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/workflows/execute-plan:c853f4d2",
+    "reason": "Completion by pairing (3.42.0, PAN-02): find-phase and init report incomplete_plans (plans with no summary of their own, any case), pinned by tests/state-integrity.test.cjs, tests/roadmap.test.cjs and tests/core.test.cjs. The line tells the model to take that instead of pairing files; a model-tier scenario with an orphan research summary is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/workflows/transition:98fbed54",
+    "reason": "Completion by pairing (3.42.0, PAN-02): find-phase and init report incomplete_plans (plans with no summary of their own, any case), pinned by tests/state-integrity.test.cjs, tests/roadmap.test.cjs and tests/core.test.cjs. The line tells the model to take that instead of pairing files; a model-tier scenario with an orphan research summary is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/workflows/transition:20ae468f",
+    "reason": "State writes through the CLI (3.42.0, DD-1): state update writes the body under state.md's lock and patches only its owned frontmatter keys (no stopped_at mirror), pinned by tests/state-integrity.test.cjs. A model-tier transition scenario is what can claim it."
   }
 ]

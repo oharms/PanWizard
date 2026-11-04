@@ -2071,6 +2071,12 @@
    "baseline": true
   },
   {
+   "id": "pan-wizard-core/workflows/execute-plan:c853f4d2",
+   "file": "pan-wizard-core/workflows/execute-plan.md",
+   "text": "Take the first entry of `incomplete_plans` from the INIT JSON (or from `pan-tools find-phase \"${PHASE}\"`): the plans with no summary of their own. Do not pair plan and summary files yourself. Decimal phases supported (`01.1-hotfix/`). If that plan has a step journal, `pan-tools journal resume-point --plan <phase>-<plan>` names the task to start from (`resume_at`) and the tasks already done with their commits; execute from `resume_at` and treat the `completed` tasks as done (Pattern C, continuation):",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/execute-plan:3c3d430c",
    "file": "pan-wizard-core/workflows/execute-plan.md",
    "text": "**Tracking protocol:** On spawn: write agent_id to `current-agent-id.txt`, append to agent-history.json: `{\"agent_id\":\"[id]\",\"task_description\":\"[desc]\",\"phase\":\"[phase]\",\"plan\":\"[plan]\",\"segment\":[num|null],\"timestamp\":\"[ISO]\",\"status\":\"spawned\",\"completion_timestamp\":null}`. On completion: status → \"completed\", set completion_timestamp, delete current-agent-id.txt. Prune: if entries > max_entries, remove oldest \"completed\" (never \"spawned\").",
@@ -2809,10 +2815,22 @@
    "baseline": true
   },
   {
+   "id": "pan-wizard-core/workflows/transition:98fbed54",
+   "file": "pan-wizard-core/workflows/transition.md",
+   "text": "**Verification logic:** the phase is complete when `incomplete_plans` is empty and `plans` is not. Never count or pair the files yourself: the engine pairs each plan with its own summary, in any case, and a summary with no plan (a research summary) finishes nothing.",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/transition:378445a8",
    "file": "pan-wizard-core/workflows/transition.md",
    "text": "**P-1807 (2026-08, PanLoop finding 0):** these gates were previously `mode: yolo` alone. This file never read `--auto` or `workflow.auto_advance`, so on the template-default `mode: interactive`, exec-phase would announce \"AUTO-ADVANCING → TRANSITION\", this workflow would update state to the next phase, then route to the interactive \"Next Up\" menu and exit cleanly — the P-1801 Task spawn below was unreachable, and every autonomous run built exactly one phase while reporting success. Do not narrow these gates back to `mode` alone.",
    "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/transition:20ae468f",
+   "file": "pan-wizard-core/workflows/transition.md",
+   "text": "**Use `pan-tools state update` for \"Stopped at\"** (never a raw Edit of state.md): it writes the body under state.md's lock and patches only the frontmatter keys it owns. The frontmatter has no live `stopped_at` mirror. The other two lines (Last session, Resume file) can be edited directly.",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/workflows/transition:78961f9e",

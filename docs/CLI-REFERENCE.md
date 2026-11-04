@@ -1161,9 +1161,12 @@ pan-tools find-phase 12A.1 [--raw]
   "phase_number": "05",
   "phase_name": "setup",
   "plans": ["05-01-plan.md", "05-02-plan.md"],
-  "summaries": ["05-01-summary.md"]
+  "summaries": ["05-01-summary.md"],
+  "incomplete_plans": ["05-02-plan.md"]
 }
 ```
+
+Plan and summary files match in any case (an older layout wrote `-PLAN.md`). `incomplete_plans` lists the plans with no summary of their own: a summary with no plan, such as a research summary, finishes nothing. The workflows route on it instead of counting files.
 
 **`--raw` output:** The directory path (e.g., `.planning/phases/05-setup`) or empty string if not found.
 

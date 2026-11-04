@@ -2296,3 +2296,21 @@ describe('next-decimal agrees with insert; phase complete finds the table column
     assert.match(roadmap, /\| 3\. Auth \| v1\.0 \| 1\/1 \| Complete \| \d{4}-\d{2}-\d{2} \|/);
   });
 });
+
+// Doc-audit pass 7 (3.42.0): isPlanFile and isSummaryFile were case-sensitive, so a plan an
+// older layout wrote as `-PLAN.md` was invisible to find-phase, init and the phase gate, while
+// state.md's count saw it. The prompts route on find-phase's incomplete_plans.
+describe('find-phase sees upper-case plans and pairs them with their own summaries', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('an upper-case plan without a summary is incomplete; an orphan summary finishes nothing', () => {
+    const dir = path.join(tmpDir, '.planning', 'phases', '05-api');
+    fs.mkdirSync(dir, { recursive: true });
+    for (const f of ['05-01-plan.md', '05-01-summary.md', '05-02-PLAN.md', '05-research-summary.md']) fs.writeFileSync(path.join(dir, f), '# x\n');
+    const out = JSON.parse(runPanTools('find-phase 5', tmpDir).output);
+    assert.deepStrictEqual(out.plans.slice().sort(), ['05-01-plan.md', '05-02-PLAN.md']);
+    assert.deepStrictEqual(out.incomplete_plans, ['05-02-PLAN.md']);
+  });
+});
