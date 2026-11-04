@@ -27,7 +27,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { withFileLock, holdLock, writeFileAtomic, lockPathFor } = require('./lock.cjs');
+const { withFileLock, holdLock, writeFileAtomic, lockPathFor, describeLock } = require('./lock.cjs');
 const { planningPath } = require('./utils.cjs');
 const transitions = require('./transitions.cjs');
 
@@ -55,12 +55,31 @@ function strictConfigured(cwd) {
   return Boolean(c && c.strict === true);
 }
 
-const lockTimeout = (file) => ({
-  error: 'lock_timeout',
-  file,
-  lock: lockPathFor(file),
-  reason: 'another PAN process holds the lock; retry when it finishes, or delete the lock file if no PAN process is running',
-});
+/**
+ * The lock_timeout refusal, naming who holds the lock and how old it is (DD-17). It
+ * advises deleting the lock file only when the holder is gone (a dead pid on this
+ * host, or a lock past the stale age); a live holder is named, never deleted under.
+ */
+function lockTimeout(file) {
+  const lock = lockPathFor(file);
+  const d = describeLock(lock);
+  const base = { error: 'lock_timeout', file, lock };
+  if (!d.exists) {
+    return { ...base, holder: null, reason: 'the lock was held and has just been released; retry now' };
+  }
+  const who = d.holder ? `process ${d.holder.pid}${d.holder.host ? ` on ${d.holder.host}` : ''}` : 'an unknown holder';
+  const age = `${Math.round(d.age_ms / 1000)}s`;
+  const facts = { holder: d.holder, lock_age_ms: d.age_ms, holder_alive: d.alive, holder_gone: d.gone };
+  if (d.gone) {
+    return { ...base, ...facts, reason: `${who} took this lock ${age} ago and is gone; delete ${lock} and retry` };
+  }
+  return {
+    ...base, ...facts,
+    reason: d.this_host
+      ? `${who} holds this lock (taken ${age} ago) and is still running; retry when it finishes. Do not delete the lock file while it runs`
+      : `${who} holds this lock (taken ${age} ago); retry when it finishes. Do not delete the lock file unless that process has stopped`,
+  };
+}
 
 /**
  * Run fn holding file's lock, for a writer that reads and writes the file in

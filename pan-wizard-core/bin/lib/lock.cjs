@@ -103,6 +103,34 @@ function holderGone(content) {
   try { process.kill(pid, 0); return false; } catch (e) { return e.code !== 'EPERM'; }
 }
 
+/**
+ * Who holds a lock, for a message a person acts on (DD-17): the holder named in the
+ * lock file, how old the lock is, and whether its holder is gone, the only case in
+ * which deleting the file is safe. A holder on this host is gone when its pid is not
+ * alive; one on another host (or an unreadable lock) when the lock is older than
+ * staleMs, the same rule a waiter steals by.
+ * @param {string} lockPath
+ * @param {{staleMs?: number, now?: number}} [opts]
+ * @returns {{exists: false} | {exists: true, holder: {pid: number, host: string|null}|null, this_host: boolean, age_ms: number, alive: boolean|null, gone: boolean}}
+ */
+function describeLock(lockPath, opts = {}) {
+  const staleMs = opts.staleMs ?? DEFAULT_STALE_MS;
+  let content;
+  let mtimeMs;
+  try {
+    content = fs.readFileSync(lockPath, 'utf-8');
+    mtimeMs = fs.statSync(lockPath).mtimeMs;
+  } catch { return { exists: false }; }
+  const age = Math.max(0, Math.round((opts.now ?? Date.now()) - mtimeMs));
+  const m = /^(\d+)(?:@(.*))?$/.exec(String(content).trim());
+  const holder = m ? { pid: Number(m[1]), host: m[2] || null } : null;
+  const thisHost = Boolean(holder && (!holder.host || holder.host === HOST));
+  // Alive is known only for a holder on this host.
+  const alive = thisHost ? !holderGone(content) : null;
+  const gone = thisHost ? !alive : age > staleMs;
+  return { exists: true, holder, this_host: thisHost, age_ms: age, alive, gone };
+}
+
 // The errors that mean "someone else has it" rather than "this cannot work":
 // Windows answers EPERM/EBUSY/EACCES while a released lock file is still being
 // deleted. On POSIX an EACCES is a directory this user cannot write: give up.
@@ -282,6 +310,8 @@ module.exports = {
   lockPathFor,
   lockDir,
   holderGone,
+  describeLock,
+  DEFAULT_STALE_MS,
   writeFileAtomic,
   sleepSync,
 };
