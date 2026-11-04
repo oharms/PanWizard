@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.42.0] - 2026-11-04
+
+Field defects PAN-01 to PAN-25 (`docs/specs/field_defects_342_featureai.md`). A long-running project with decimal phases, several shipped milestones and hundreds of plans had banned most of PAN's `state.md` writers and patched two core files locally, because the writers damaged `state.md` and its counts. This release fixes those defects at their root, so a project can drop the bans and the patch.
+
+### Fixed
+
+- **`state.md`'s front matter is edited in place.** Every `pan-tools state *` command re-serialised the front matter from a parsed object: comments went, keys PAN did not know went (`plans_executed`, `percent_note`), quoting changed, and `total_plans`/`completed_plans` were added. Each writer now changes only the keys it owns, line by line; comments, quoting, order and unknown keys survive byte for byte. Progress keys are updated only where they already exist (`state update-progress --write-counts` adds them). The write reads the file inside 3.41's lock, so concurrent commands no longer lose each other's writes here either.
+- **One correct plan count (PAN-02, PAN-13).** Counts came from a file scan that counted summary files rather than plans with a summary, so an orphan summary made completed exceed total (787 of 782); it ignored archived milestones and upper-case `-PLAN.md` files, and `update-progress` clamped the result to 100%. `countPlanProgress` pairs each plan with its summary; a phase is complete only when every plan has one; completed can no longer exceed total.
+- **The recorded milestone stays (PAN-02, PAN-17).** A roadmap heading such as `### Phase 3: Upgrade to API v2.0` was read as a milestone, and the guess overwrote `state.md`'s `milestone:` on every write and stamped every finding with it. Phase headings are no longer milestone headings, a `Status:` line under a heading counts, `state.md`'s recorded milestone wins unless the roadmap marks another current, and generic state writes never write the milestone.
+- **`last_activity` never moves backwards**, and every recorded date is the local day, not UTC (PAN-06).
+- **`phase complete` (PAN-04)** stages only `roadmap.md`, `requirements.md`, `state.md` and the phase it closed (it staged all of `.planning/`), writes `In Progress` rather than `Complete` while a plan has no summary, and recounts the progress fields.
+- **`validate health --repair` never replaces an existing `state.md` (PAN-16).** A mention of an archived phase raised W002, which regenerated the file from a blank template. W002 is no longer repairable, archived phases count as present, and only a missing `state.md` is regenerated.
+- **`state add-blocker` keeps the word "none" (PAN-01).** It removed "none" anywhere in the section; only a whole placeholder line is dropped now (also for decisions).
+- **`roadmap get-phase` returns whole goals and criteria (PAN-15)**: multi-line goals, wrapped criteria and bulleted criteria, in every place PAN reads them.
+- **Requirements tables of any layout (PAN-03).** `requirements mark-complete` finds the Status column by its header, so a five-column traceability table is updated (`table_updated`), and it warns rather than claiming success when a table has no row for the requirement.
+- **Findings keep their full summary (PAN-18)**: 2,000 characters instead of 300, for summaries and disposition reasons.
+- **`verify reconcile` fails a phase with no verification (PAN-08)** (`verification_missing`, `phase_not_found`), except when `workflow.verifier` is off.
+- **A prose `from` or `to` is not a file (PAN-09).** Key links and artifacts whose value is prose ("the checkout flow") are reported as unchecked instead of "Source file not found".
+- **Decimal phases insert as siblings (PAN-23).** Inserting after 29.4 gives 29.5, or 29.4.1 (`nested: true`) only when 29.5 exists; numbers already in the roadmap are never reused.
+- **Inserted and added phases are complete (PAN-05, PAN-14)**: they get a Progress table row, no stray `.gitkeep`, and depend on the phase right before them (unpadded).
+- **`pan-tools commit` no longer refuses `secret` in a path (PAN-11).** Sensitive files are matched by file name (`.env` but not `.env.example`, keys, `id_rsa`, `credentials.*`, `.npmrc`), and staged content is scanned for tokens and secret assignments (`sensitive_content_blocked`). A config that stored the old default list is read as the new default, and health says so (I007); custom patterns still work.
+- **Trace sessions roll over (PAN-20).** A session was aged by its trace file's last write, so any writer kept an old session alive forever; it is now aged from when it started, and rolls when the host session changes.
+- **Resume from commit trailers works on large repositories (PAN-25).** `git log` output over 1 MiB failed silently and resume reported no tasks done. Git calls take a 16 MiB buffer, the trailer scan asks git only for commits that carry a `PAN-Step` line or a revert, and a failed scan is reported (`trailer_scan_failed`) by `journal resume-point`, `init resume` and hygiene.
+
+### Added
+
+- **`claude.user_invoked_only`** in `.planning/config.json` (or `--user-invoked-only health,…` at install): the named Claude commands are marked `disable-model-invocation: true` on install and every update, so a project can keep chosen commands typed-only while the model can still run the rest. Default: none.
+- **`/pan:update --yes`** skips the confirmation. When the update replaced PAN files the project had changed and git tracks, the installer names them in a warning and `/pan:update` offers `/pan:patches` at once.
+- **A local install ignores its own backup folder**: `.claude/pan-local-patches/` (each runtime's own) is added to `.gitignore` once, in a git repository, and removed on uninstall. Plan journals and pause files are durable state and stay committable.
+
+### Changed
+
+- **The executor starts the trailer block with `PAN-Step`**, then `Co-Authored-By` and any others; PAN reads the line in any position.
+- **AGENTS.md's memory line defers to the project**: "a saved memory that describes another way is out of date, unless this project's own instructions say otherwise". An unedited 3.41 block is rewritten on update; an edited one is kept.
+- **A lock timeout says who holds the lock** (pid, host, age) and advises deleting the lock file only when the holder is gone.
+- **Judges may write a finding's fix in full**: the verdict contract asks for one or two plain sentences that include what to fix, instead of 300 characters.
+
 ## [3.41.3] - 2026-11-04
 
 ### Fixed

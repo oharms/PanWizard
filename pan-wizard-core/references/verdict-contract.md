@@ -8,7 +8,7 @@ A judging agent ends its report with one fenced `pan-verdict` block. The block i
 2. **Valid JSON only.** No comments and no trailing commas. One line or pretty-printed are both fine.
 3. **Same verdict as the prose.** `verdict` is the word your report already uses, and `outcome` is what that word means (see the table below). The block never disagrees with the report.
 4. **One finding per issue.** List the findings the report lists, each as its own entry, most severe first. A clean pass has `"findings": []`.
-5. **Plain summaries.** State each finding in one sentence of 300 characters or fewer. Put the location in `where`, not in `summary`.
+5. **Plain summaries.** State each finding plainly, in one or two sentences that include what to fix; the engine keeps up to 2,000 characters, so do not cut the fix short. Put the location in `where`, not in `summary`.
 
 ````markdown
 ```pan-verdict

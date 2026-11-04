@@ -94,7 +94,7 @@ Run the roadmap unattended — a deterministic loop that plans, executes, verifi
 
 **Tools:** Read, Bash  
 **Group:** Phase Lifecycle  
-**Lines:** 76
+**Lines:** 78
 
 #### /pan:design-phase
 
@@ -427,7 +427,7 @@ Resume work from previous session with full context restoration
 | `/pan:settings` | Read, Write, Bash, AskUserQuestion | Configure PAN workflow toggles and model profile |
 | `/pan:todo-add` | Read, Write, Bash, AskUserQuestion | Capture idea or task as todo from current conversation context |
 | `/pan:todo-check` | Read, Write, Bash, AskUserQuestion | List pending todos and select one to work on |
-| `/pan:update` | Bash, AskUserQuestion | Update PAN to latest version with changelog display |
+| `/pan:update` | Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion | Update PAN to latest version with changelog display |
 
 #### /pan:debug
 
@@ -542,12 +542,12 @@ List pending todos and select one to work on
 Update PAN to latest version with changelog display
 
 ```text
-/pan:update
+/pan:update [--yes]
 ```
 
-**Tools:** Bash, AskUserQuestion  
+**Tools:** Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion  
 **Group:** System  
-**Lines:** 38
+**Lines:** 47
 
 ---
 
@@ -666,7 +666,7 @@ Safe, phase-aware git workflow commands — commit, branch, push, status, log, s
 
 **Tools:** Read, Write, Edit, Glob, Grep, Bash  
 **Group:** Git Workflow  
-**Lines:** 223
+**Lines:** 224
 
 ---
 
@@ -1027,7 +1027,7 @@ Which tools each shipped skill can use:
 | settings | x | x |  | x |  |  |  |  |  | x |  |  |  |  |
 | todo-add | x | x |  | x |  |  |  |  |  | x |  |  |  |  |
 | todo-check | x | x |  | x |  |  |  |  |  | x |  |  |  |  |
-| update |  |  |  | x |  |  |  |  |  | x |  |  |  |  |
+| update | x | x | x | x | x | x |  |  |  | x |  |  |  |  |
 | verify-phase | x | x | x | x | x | x |  | x |  |  |  |  |  |  |
 | what-if | x | x | x | x | x | x |  | x |  |  |  |  |  |  |
 

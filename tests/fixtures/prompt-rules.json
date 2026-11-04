@@ -3133,6 +3133,12 @@
    "baseline": true
   },
   {
+   "id": "pan-wizard-core/references/verdict-contract:52f63581",
+   "file": "pan-wizard-core/references/verdict-contract.md",
+   "text": "**Plain summaries.** State each finding plainly, in one or two sentences that include what to fix; the engine keeps up to 2,000 characters, so do not cut the fix short. Put the location in `where`, not in `summary`.",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/references/verdict-contract:6557f807",
    "file": "pan-wizard-core/references/verdict-contract.md",
    "text": "**Findings close on evidence, never on silence.** An earlier finding closes only when the judge answers it `resolved` with evidence (a `resolutions` entry, or a truth in the verifier's `re_verification.gaps_closed`), or, for a `code-fact:` finding, when that fact passes. A finding the new report neither repeats nor answers stays open and is listed as `unaddressed`. A reworded report of an earlier finding (same class family, where `missing` and `partial` count as one; same file; same truth or a similar summary) keeps the earlier id.",

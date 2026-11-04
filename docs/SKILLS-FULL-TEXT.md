@@ -365,7 +365,7 @@ GOOD: "Assumption: The project uses Express for routing — Evidence: require('e
 
 ---
 
-### /pan:autodev (76 lines)
+### /pan:autodev (78 lines)
 
 ````markdown
 ---
@@ -435,9 +435,11 @@ A failed session is classified before anything else happens: a compile or assert
 
    `report` writes `dossier.md` (a PR body) and `dossier.html` beside the ledger: per phase, the requirements, plans, units and commits, test gate, verdict, findings and cost. `replay` re-runs the stop logic over the recorded decisions and says whether it decides the same; `identical: false` means the record and the code disagree, so say so.
 
+   A run that does not start returns `error` instead of `stop`: `pause_open` (an earlier `human_needed` stop is still waiting for the user's answer: show its question and the answer command, and let the user run it), `run_busy` (another process is driving an autodev run: say which, and wait for it), `focus_active` (focus is working the project: show its next step).
+
 5. **Report** the result: `stop.reason` and `stop.detail`, the units run, `spent_usd`, and the ledger path (`.planning/autodev/<run>/ledger.jsonl`, one `started` and one `finished` row per unit with its argv, exit, cost and commits). Then route on the reason:
    - `done` → `/pan:milestone-audit`
-   - `human_needed` → show the phase's verification and the human checks it lists
+   - `human_needed` → show the phase's verification and the human checks it lists. The stop opened an `autodev-human` pause: no run starts until the user says what they did, and the user answers it, not you (`pan-tools pause answer <id> --value "<what they did>"`, the id from `pan-tools pause list --open`)
    - `ci_failed` → show the failing checks and the last fix round from the ledger
    - `gate_failed` → show the gate's reasons (`pan-tools phase gate <N>`), then `/pan:plan-phase <N> --gaps`
    - `budget_usd`, `turns` → offer `autodev resume` with a higher cap
@@ -3389,7 +3391,7 @@ The old `focus-doc-audit` and `focus-sync` names run this command as aliases.
 
 ---
 
-### /pan:git (223 lines)
+### /pan:git (224 lines)
 
 ````markdown
 ---
@@ -3465,7 +3467,8 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs git commit \
 | Check | Blocks on | Override |
 |-------|-----------|---------|
 | Deleted files | A deletion anywhere in the repository (`git status --porcelain`, staged or not) | `--force` |
-| Sensitive files | A staged path ending `.env`, `.pem` or `.key`, or containing `credentials`, `secret`, `password` or `token` (PAN's own `.planning/metrics/tokens.jsonl` is exempt) | None: narrow `commit.sensitive_patterns` in `.planning/config.json`, or commit the file yourself |
+| Sensitive files | A staged file named like a secret store: `.env`/`.env.*` (not `.env.example`), `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa` and kin, `credentials.*`, `.npmrc`, `.netrc`, `.pypirc`, `secrets.yaml`/`json`/`env` (PAN's own `.planning/metrics/tokens.jsonl` is exempt) | None: narrow `commit.sensitive_patterns` in `.planning/config.json`, or commit the file yourself |
+| Sensitive content | A staged file containing a credential: a provider token or private key, or `api_key = "…"`-style secret (reported as `sensitive_content_detected`, the value never printed) | None: remove the secret, or commit the file yourself if it is a placeholder |
 
 **Output:** `{committed, hash, type, safety_checks}`
 
@@ -3885,7 +3888,7 @@ allowed-tools:
 ---
 
 <objective>
-Insert a decimal phase for urgent work discovered mid-milestone that must be completed between existing integer phases.
+Insert a decimal phase for urgent work discovered mid-milestone that must be completed between existing phases. The after-phase may itself be a decimal (`72.1` gives `72.2`).
 
 Uses decimal numbering (72.1, 72.2, etc.) to preserve the logical sequence of planned phases while accommodating urgent insertions.
 
@@ -6024,15 +6027,21 @@ The workflow handles all logic including:
 
 ---
 
-### /pan:update (38 lines)
+### /pan:update (47 lines)
 
 ```markdown
 ---
 name: pan:update
 group: System
 description: Update PAN to latest version with changelog display
+argument-hint: "[--yes]"
 allowed-tools:
+  - Read
+  - Write
+  - Edit
   - Bash
+  - Glob
+  - Grep
   - AskUserQuestion
 ---
 
@@ -6055,15 +6064,18 @@ Routes to the update workflow which handles:
 <process>
 **Follow the update workflow** from `@~/.claude/pan-wizard-core/workflows/update.md`.
 
+Arguments: $ARGUMENTS. Pass them to the workflow: `--yes` (or `-y`) skips the confirmation question; the clean-install warning is still shown.
+
 The workflow handles all logic including:
 1. Installed version detection (local/global)
 2. Latest version checking via npm
 3. Version comparison
 4. Changelog fetching and extraction
 5. Clean install warning display
-6. User confirmation
+6. User confirmation (skipped with `--yes`)
 7. Update execution
 8. Cache clearing
+9. An offer to reapply backed-up local patches (`/pan:patches`) at once
 </process>
 ```
 

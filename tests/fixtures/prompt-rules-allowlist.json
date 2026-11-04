@@ -246,5 +246,9 @@
   {
     "id": "pan-wizard-core/workflows/update:37758c07",
     "reason": "DD-15 patches offer after /pan:update: tracked files named, /pan:patches offered and never run unasked. The installer half (tracked flag in backup-meta, the red warning) is enforced in code and tested in tests/install-eol-hash.test.cjs; the prompt text is pinned by tests/prompt-runnable.test.cjs. No harness scenario runs /pan:update (live npm install, model time); a scenario that runs it claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/references/verdict-contract:52f63581",
+    "reason": "Summary length (3.42.0, PAN-18): the engine keeps a finding summary up to 2,000 characters (verdict.cjs LIMITS.summary, findings.cjs REASON_MAX), pinned by tests/verdict.test.cjs and tests/findings.test.cjs (a 1,200-character summary survives into findings list). The line is judge style guidance read by every reviewer; a model-tier scenario that inspects a judge summary is what can claim it."
   }
 ]
