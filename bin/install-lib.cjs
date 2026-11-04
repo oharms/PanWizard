@@ -130,6 +130,135 @@ function extractFrontmatterAndBody(content) {
   };
 }
 
+/**
+ * Mark a Claude Code command or skill as user-invoked only: add
+ * `disable-model-invocation: true` to its frontmatter. Claude Code then keeps it out
+ * of the listing it sends the model and the model cannot start it; it still runs as
+ * /pan:<name>. Since 3.41.3 no command is marked by default (it kept the model from
+ * starting or chaining PAN's commands); a project names the ones it wants
+ * (`claude.user_invoked_only`, `--user-invoked-only`, DD-12). Claude only. Idempotent,
+ * keeps the line ending; content without frontmatter is returned unchanged.
+ * @param {string} content
+ * @returns {string}
+ */
+function withClaudeUserInvokedOnly(content) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+  if (!m || /^disable-model-invocation:/m.test(m[1])) return content;
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const end = m.index + m[0].length - 3; // the closing ---
+  return content.slice(0, end) + 'disable-model-invocation: true' + eol + content.slice(end);
+}
+
+/** A command name a project may keep user-invoked only (the `<name>` of /pan:<name>). */
+const USER_INVOKED_NAME = /^[a-z0-9-]+$/;
+
+/**
+ * The commands a project keeps user-invoked only on Claude Code:
+ * `.planning/config.json` → `claude.user_invoked_only` (string[]). Read-only; names
+ * that are not `[a-z0-9-]+` are dropped, and any error (no file, bad JSON, not a list)
+ * gives [].
+ * @param {string} projectRoot
+ * @returns {string[]}
+ */
+function readUserInvokedOnly(projectRoot) {
+  try {
+    const cfg = JSON.parse(require('fs').readFileSync(path.join(projectRoot, '.planning', 'config.json'), 'utf8'));
+    const list = cfg && cfg.claude && cfg.claude.user_invoked_only;
+    if (!Array.isArray(list)) return [];
+    return [...new Set(list.filter((n) => typeof n === 'string' && USER_INVOKED_NAME.test(n)))];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The names given by `--user-invoked-only a,b` (or `--user-invoked-only=a,b`).
+ * @param {string[]} argv
+ * @param {string} [flag]
+ * @returns {{names: string[], invalid: string[], missing: boolean}}
+ */
+function parseUserInvokedOnlyFlag(argv, flag = '--user-invoked-only') {
+  const out = { names: [], invalid: [], missing: false };
+  for (let i = 0; i < argv.length; i++) {
+    let value = null;
+    if (argv[i] === flag) {
+      value = argv[i + 1];
+      if (!value || value.startsWith('-')) { out.missing = true; continue; }
+      i++;
+    } else if (argv[i].startsWith(`${flag}=`)) {
+      value = argv[i].slice(flag.length + 1);
+      if (!value) { out.missing = true; continue; }
+    } else {
+      continue;
+    }
+    for (const n of value.split(',').map((s) => s.trim()).filter(Boolean)) {
+      (USER_INVOKED_NAME.test(n) ? out.names : out.invalid).push(n);
+    }
+  }
+  out.names = [...new Set(out.names)];
+  return out;
+}
+
+/** The comment a local install writes above the ignore lines it adds (DD-14). */
+const GITIGNORE_MARKER = '# PAN Wizard: machine-local backups of locally edited PAN files';
+
+/**
+ * Add `line` to a .gitignore's text under PAN's marker comment, once. Keeps the
+ * existing text and its line ending. Returns null when the line is already there
+ * (in any position, with or without the marker), so the caller writes nothing.
+ * @param {string} content - current .gitignore text ('' for none)
+ * @param {string} line - e.g. '.claude/pan-local-patches/'
+ * @returns {string|null}
+ */
+function addGitignoreEntry(content, line) {
+  const text = String(content || '');
+  const lines = text.split(/\r?\n/).map((l) => l.trim());
+  if (lines.includes(line)) return null;
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  let out = text;
+  if (out && !/\r?\n$/.test(out)) out += eol;
+  if (lines.includes(GITIGNORE_MARKER)) {
+    // Our block exists (another runtime's line): add this one right under the marker.
+    const parts = out.split(/\r?\n/);
+    const at = parts.findIndex((l) => l.trim() === GITIGNORE_MARKER);
+    parts.splice(at + 1, 0, line);
+    return parts.join(eol);
+  }
+  if (out) out += eol;
+  return out + GITIGNORE_MARKER + eol + line + eol;
+}
+
+/**
+ * Remove a line a local install added under PAN's marker comment (uninstall). The
+ * marker goes too once no PAN line is left under it, with the blank line written
+ * before it. A line the user wrote elsewhere (no marker above its block) is kept.
+ * Returns null when nothing changes.
+ * @param {string} content
+ * @param {string} line
+ * @returns {string|null}
+ */
+function removeGitignoreEntry(content, line) {
+  const text = String(content || '');
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const parts = text.split(/\r?\n/);
+  const at = parts.findIndex((l) => l.trim() === GITIGNORE_MARKER);
+  if (at === -1) return null;
+  let end = at + 1;
+  while (end < parts.length && /\/pan-local-patches\/$/.test(parts[end].trim())) end++;
+  const block = parts.slice(at + 1, end);
+  const idx = block.findIndex((l) => l.trim() === line);
+  if (idx === -1) return null;
+  block.splice(idx, 1);
+  if (block.length > 0) {
+    parts.splice(at + 1, end - at - 1, ...block);
+  } else {
+    let start = at;
+    if (start > 0 && parts[start - 1].trim() === '') start--;
+    parts.splice(start, end - start);
+  }
+  return parts.join(eol);
+}
+
 /** Extract a field value from YAML frontmatter string */
 function extractFrontmatterField(frontmatter, fieldName) {
   const regex = new RegExp(`^${fieldName}:\\s*(.+)$`, 'm');
@@ -2758,6 +2887,12 @@ const {
 // ─── Exports ────────────────────────────────────────────────────────────────
 
 module.exports = {
+  withClaudeUserInvokedOnly,
+  readUserInvokedOnly,
+  parseUserInvokedOnlyFlag,
+  GITIGNORE_MARKER,
+  addGitignoreEntry,
+  removeGitignoreEntry,
   renderCommandAlias,
   // Constants
   colorNameToHex,

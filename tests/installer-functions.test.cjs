@@ -2018,3 +2018,74 @@ describe('an install that copied no hook scripts registers none (M24)', () => {
     });
   }
 });
+
+describe('the .gitignore line for patch backups (DD-14)', () => {
+  const M = lib.GITIGNORE_MARKER;
+  const C = '.claude/pan-local-patches/';
+  const X = '.codex/pan-local-patches/';
+  test('added once under the marker, keeping the text and its line ending', () => {
+    assert.equal(lib.addGitignoreEntry('', C), `${M}\n${C}\n`);
+    const once = lib.addGitignoreEntry('dist/', C);
+    assert.equal(once, `dist/\n\n${M}\n${C}\n`);
+    assert.equal(lib.addGitignoreEntry(once, C), null, 'idempotent');
+    assert.equal(lib.addGitignoreEntry(`${C}\n`, C), null, 'a line the user wrote counts');
+    assert.equal(lib.addGitignoreEntry('dist/\r\n', C), `dist/\r\n\r\n${M}\r\n${C}\r\n`);
+    assert.equal(lib.addGitignoreEntry(once, X), `dist/\n\n${M}\n${X}\n${C}\n`, 'a second runtime joins the block');
+  });
+
+  test('removed with its marker once the block is empty; a user line is kept', () => {
+    const two = lib.addGitignoreEntry(lib.addGitignoreEntry('dist/\n', C), X);
+    const one = lib.removeGitignoreEntry(two, X);
+    assert.equal(one, `dist/\n\n${M}\n${C}\n`);
+    assert.equal(lib.removeGitignoreEntry(one, C), 'dist/\n');
+    assert.equal(lib.removeGitignoreEntry(`dist/\n${C}\n`, C), null, 'no marker: the user\'s own line');
+    assert.equal(lib.removeGitignoreEntry('dist/\n', C), null);
+  });
+});
+
+describe('user-invoked-only Claude commands a project chooses (DD-12)', () => {
+  // Claude Code keeps a command marked disable-model-invocation out of the model's
+  // listing; it still runs as /pan:<name>. Since 3.41.3 none is marked by default.
+  test('withClaudeUserInvokedOnly adds the field once, keeping the line ending', () => {
+    const md = '---\nname: pan:help\ndescription: Show help\n---\nBody\n';
+    const out = lib.withClaudeUserInvokedOnly(md);
+    assert.equal(out, '---\nname: pan:help\ndescription: Show help\ndisable-model-invocation: true\n---\nBody\n');
+    assert.equal(lib.withClaudeUserInvokedOnly(out), out, 'idempotent');
+    assert.match(lib.withClaudeUserInvokedOnly(md.replace(/\n/g, '\r\n')), /description: Show help\r\ndisable-model-invocation: true\r\n---/);
+  });
+
+  test('content without frontmatter, or already marked, is unchanged', () => {
+    assert.equal(lib.withClaudeUserInvokedOnly('plain body\n'), 'plain body\n');
+    const marked = '---\nname: x\ndisable-model-invocation: false\n---\nB\n';
+    assert.equal(lib.withClaudeUserInvokedOnly(marked), marked, 'an explicit value is the author\'s');
+  });
+
+  test('readUserInvokedOnly reads claude.user_invoked_only, and [] on any error', () => {
+    const fs = require('fs');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-uio-'));
+    try {
+      assert.deepEqual(lib.readUserInvokedOnly(dir), [], 'no config');
+      fs.mkdirSync(path.join(dir, '.planning'));
+      const cfg = (v) => fs.writeFileSync(path.join(dir, '.planning', 'config.json'), typeof v === 'string' ? v : JSON.stringify(v));
+      cfg('{ bad');
+      assert.deepEqual(lib.readUserInvokedOnly(dir), [], 'bad JSON');
+      cfg({ claude: { user_invoked_only: 'health' } });
+      assert.deepEqual(lib.readUserInvokedOnly(dir), [], 'not a list');
+      cfg({ claude: { user_invoked_only: ['health', 'health', '../x', 'Cost', 7, 'phase-budget'] } });
+      assert.deepEqual(lib.readUserInvokedOnly(dir), ['health', 'phase-budget']);
+    } finally { cleanup(dir); }
+    // config-set and health know the key, so neither warns that PAN does not read it.
+    const { isKnownConfigPath } = require('../pan-wizard-core/bin/lib/config.cjs');
+    assert.equal(isKnownConfigPath('claude.user_invoked_only'), true);
+    assert.equal(isKnownConfigPath('claude.user_invoked'), false);
+  });
+
+  test('parseUserInvokedOnlyFlag takes both forms and reports bad names', () => {
+    assert.deepEqual(lib.parseUserInvokedOnlyFlag(['--claude']), { names: [], invalid: [], missing: false });
+    assert.deepEqual(lib.parseUserInvokedOnlyFlag(['--user-invoked-only', 'health, cost', '--local']).names, ['health', 'cost']);
+    assert.deepEqual(lib.parseUserInvokedOnlyFlag(['--user-invoked-only=health']).names, ['health']);
+    assert.equal(lib.parseUserInvokedOnlyFlag(['--user-invoked-only']).missing, true);
+    assert.equal(lib.parseUserInvokedOnlyFlag(['--user-invoked-only', '--local']).missing, true);
+    assert.deepEqual(lib.parseUserInvokedOnlyFlag(['--user-invoked-only', 'He alth']).invalid, ['He alth']);
+  });
+});

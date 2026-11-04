@@ -40,12 +40,20 @@ const TRAILER_WINDOW = 1000;
 // merge indents the bodies it folds in). One line per task a commit finishes.
 const TRAILER_RE = /^\s*PAN-Step:\s*(\S+?)\/(task-\d+)\s*$/i;
 const REVERT_RE = /This reverts commit ([0-9a-f]{7,40})/i;
+// The same two lines in git's own --grep dialect (-E, POSIX classes: the same
+// on every platform's git), ORed: git returns only the bodies that can matter,
+// so a history of large messages never fills the read buffer.
+const TRAILER_GREP = '^[[:space:]]*PAN-Step:';
+const REVERT_GREP = 'This reverts commit [0-9a-f]';
 
 /**
  * The task trailers in HEAD's newest `window` commits, newest commit per step.
  * Commits a later reachable commit reverted (net of reverts of reverts) do not
- * count. Memoised per directory and HEAD: one git call however many plans ask.
- * @returns {{head: string|null, steps: Map<string, {sha, time}>, plans: Set<string>, shas: string[], reverted: string[]}}
+ * count. Memoised per directory and HEAD: two git calls however many plans ask
+ * (the window's ids, then only the commits whose message has a trailer or a
+ * revert line). A failed scan is reported (`error: 'trailer_scan_failed'`,
+ * `reason`), never read as "no task committed".
+ * @returns {{head: string|null, steps: Map<string, {sha, time}>, plans: Set<string>, shas: string[], reverted: string[], error?: string, reason?: string}}
  */
 const trailerMemo = new Map();
 function trailerIndex(cwd, opts = {}) {
@@ -53,14 +61,21 @@ function trailerIndex(cwd, opts = {}) {
   const empty = { head: null, steps: new Map(), plans: new Set(), shas: [], reverted: [] };
   const head = execGit(cwd, ['rev-parse', 'HEAD']);
   if (head.exitCode !== 0 || !head.stdout) return empty;
-  const key = `${path.resolve(cwd)}\0${head.stdout}\0${window}`;
+  const key = `${path.resolve(cwd)}\0${head.stdout}\0${window}\0${opts.maxBuffer || 0}`;
   if (trailerMemo.has(key)) return trailerMemo.get(key);
-  const log = execGit(cwd, ['log', '-n', String(window), '--format=%H%x1f%ct%x1f%B%x1e', 'HEAD']);
-  if (log.exitCode !== 0) return empty;
+  const failed = (r) => ({ ...empty, head: head.stdout, error: 'trailer_scan_failed', reason: (r.stderr || `git log exited ${r.exitCode}`).slice(0, 500) });
+  const ids = execGit(cwd, ['log', '-n', String(window), '--format=%H', 'HEAD']);
+  if (ids.exitCode !== 0) return failed(ids);
+  const shas = ids.stdout.split('\n').map((s) => s.trim().toLowerCase()).filter((s) => /^[0-9a-f]{40}$/.test(s));
+  const inWindow = new Set(shas);
+  // Matching commits inside the window are among the first `window` matches.
+  const log = execGit(cwd, ['log', '-n', String(window), '-i', '-E', `--grep=${TRAILER_GREP}`, `--grep=${REVERT_GREP}`,
+    '--format=%H%x1f%ct%x1f%B%x1e', 'HEAD'], opts.maxBuffer ? { maxBuffer: opts.maxBuffer } : {});
+  if (log.exitCode !== 0) return failed(log);
   const commits = [];
   for (const rec of log.stdout.split('\x1e')) {
     const [sha, ct, body = ''] = rec.replace(/^\s+/, '').split('\x1f');
-    if (/^[0-9a-f]{40}$/i.test(sha || '')) commits.push({ sha: sha.toLowerCase(), time: Number(ct) || 0, body });
+    if (/^[0-9a-f]{40}$/i.test(sha || '') && inWindow.has(sha.toLowerCase())) commits.push({ sha: sha.toLowerCase(), time: Number(ct) || 0, body });
   }
   // Newest first: a commit that is itself reverted undoes nothing.
   const reverted = [];
@@ -82,7 +97,7 @@ function trailerIndex(cwd, opts = {}) {
       if (!steps.has(k)) steps.set(k, { sha: c.sha.slice(0, 7), time: c.time });
     }
   }
-  const idx = { head: head.stdout, steps, plans, shas: commits.map((c) => c.sha), reverted };
+  const idx = { head: head.stdout, steps, plans, shas, reverted };
   trailerMemo.set(key, idx);
   return idx;
 }
@@ -249,6 +264,8 @@ function resumePoint(cwd, planArg, opts = {}) {
     unverified,
     resume_at: evidence ? firstOpen : null,
     all_done: evidence && tasks.length > 0 && tasks.every((s) => done.has(s)),
+    // The commits could not be read: what is done is unknown, not "nothing".
+    ...(idx.error ? { trailer_scan: { error: idx.error, reason: idx.reason } } : {}),
   };
 }
 
@@ -266,7 +283,8 @@ function journalsIn(cwd, phaseDir) {
     const id = n.replace(/-plan\.md$/i, '');
     const plan = path.join(phaseDir, n);
     if (names.includes(`${id}-summary.md`)) continue;
-    if (!names.includes(`${id}${JOURNAL_SUFFIX}`) && !idx.plans.has(id)) continue;
+    // A failed scan cannot rule a plan out: every unfinished plan carries the error.
+    if (!names.includes(`${id}${JOURNAL_SUFFIX}`) && !idx.plans.has(id) && !idx.error) continue;
     const rp = resumePoint(cwd, toPosix(path.relative(cwd, plan)));
     if (!rp.error) out[n] = rp;
   }
@@ -288,7 +306,8 @@ function cmdJournal(cwd, sub, opts, raw) {
   }
   if (sub === 'resume-point') {
     r = resumePoint(cwd, opts.plan);
-    return output(r, raw, r.error ? 'error' : (r.resume_at || (r.all_done ? 'done' : 'start')));
+    const unknown = r.trailer_scan && !r.journal ? r.trailer_scan.error : null;
+    return output(r, raw, r.error ? 'error' : (r.resume_at || (r.all_done ? 'done' : (unknown || 'start'))));
   }
   return output({ error: 'unknown_subcommand', reason: `unknown journal subcommand: ${sub}` }, raw);
 }

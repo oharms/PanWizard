@@ -577,23 +577,28 @@ function isGitRepo(cwd) {
  * full trim cuts off the first line).
  * @param {string} cwd - Working directory for git
  * @param {string[]} args - Git arguments (e.g., ['add', 'file.md'])
- * @param {{keepLeading?: boolean}} [opts]
+ * `maxBuffer` caps the bytes read from git (default 16 MiB; Node's own 1 MiB cut long
+ * logs): past it the call fails with ENOBUFS, named in stderr, never a silently cut log.
+ * @param {{keepLeading?: boolean, maxBuffer?: number}} [opts]
  * @returns {{exitCode: number, stdout: string, stderr: string}}
  */
 function execGit(cwd, args, opts = {}) {
   const clean = (s) => (opts.keepLeading ? String(s).replace(/\s+$/, '') : String(s).trim());
+  const maxBuffer = opts.maxBuffer || 16 * 1024 * 1024;
   try {
     const stdout = execFileSync('git', args, {
       cwd,
       stdio: 'pipe',
       encoding: 'utf-8',
+      maxBuffer,
     });
     return { exitCode: 0, stdout: clean(stdout), stderr: '' };
   } catch (err) {
+    const stderr = (err.stderr ?? '').toString().trim();
     return {
       exitCode: err.status ?? 1,
       stdout: clean((err.stdout ?? '').toString()),
-      stderr: (err.stderr ?? '').toString().trim(),
+      stderr: stderr || (err.code === 'ENOBUFS' ? `git output exceeded ${maxBuffer} bytes (ENOBUFS)` : ''),
     };
   }
 }

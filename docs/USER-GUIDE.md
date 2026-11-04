@@ -356,7 +356,7 @@ Some commands were folded into flags of another command. The old names keep work
 | `/pan:resume` | Restore full context from last session | Starting a new session |
 | `/pan:pause` | Save context handoff | Stopping mid-phase |
 | `/pan:help` | Show all commands | Quick reference |
-| `/pan:update` | Update PAN with changelog preview, reinstalling the runtime it runs in (for a `--config-dir` or `--unified-skills` install, re-run the installer with your original flags) | Check for new versions |
+| `/pan:update` | Update PAN with changelog preview, reinstalling the runtime it runs in (for a `--config-dir` or `--unified-skills` install, re-run the installer with your original flags). `--yes` skips the confirmation; backed-up local edits are offered to `/pan:patches` at once | Check for new versions |
 
 ### Phase Management
 
@@ -637,6 +637,12 @@ Disable these to speed up phases in familiar domains or when conserving tokens.
 | `execution.default_mode` | `wave_order` | `wave_order` | Reserved — `init execute-phase` reports it as `execution_mode`, which no workflow reads; plans always run in wave order |
 | `execution.rollback_snapshots` | `true`, `false` | `true` | Reserved — written by the defaults but not read; no workflow creates rollback tags, so run `pan-tools rollback-snapshot <phase>` yourself before a risky phase |
 | `execution.error_pattern_learning` | `true`, `false` | `true` | Tool-failure capture: the trace hook records the failed tool calls in each subagent's own transcript (redacted) as `error/tool_error` events for `/pan:learn`. `false` turns the capture off (see [The evidence loop](#the-evidence-loop)) |
+
+### Claude Code Settings
+
+| Setting | Options | Default | What it Controls |
+|---------|---------|---------|------------------|
+| `claude.user_invoked_only` | array of command names, e.g. `["health", "update"]` | none (not written) | Claude Code commands the model may not start: the installer marks each named `/pan:<name>` command (or `pan-<name>` skill after `--unified-skills`) `disable-model-invocation: true`, so it runs only when you type it. Read by a local install and by every `/pan:update` of it; a global install takes the `--user-invoked-only a,b` flag instead (a local install merges the flag with this list). Names are `a-z`, `0-9` and `-`; anything else is ignored. Other runtimes are not affected |
 
 ### Git Branching
 
@@ -1223,7 +1229,13 @@ Set `commit_docs: false` during `/pan:new-project` or with `pan-tools config-set
 
 ### PAN Update Overwrote My Local Changes
 
-The installer backs up locally modified files to `pan-local-patches/`. Run `/pan:patches` to merge your changes back.
+The installer backs up locally modified files to `pan-local-patches/`. Run `/pan:patches` to merge your changes back; `/pan:update` offers to run it as soon as it finds backups. When git tracks a file PAN replaced, the installer names it in a red warning, because your working tree now differs from your commits there: run `/pan:patches` before you commit.
+
+A local install adds `.claude/pan-local-patches/` (the runtime's own directory for other runtimes) to the project's `.gitignore` once, under a `# PAN Wizard` comment, since the backups belong to one machine; it creates `.gitignore` only in a git repository, and uninstalling removes the line.
+
+Plan journals (`.planning/phases/<phase>/<plan>-journal.jsonl`) are durable project state, not machine-local: commit them, so a run resumed on another machine knows which tasks are done.
+
+Pause files (`.planning/pauses/<id>.json`) are durable too: commit them, so an open question and its answer survive a clone or another machine.
 
 ### Subagent Appears to Fail but Work Was Done
 

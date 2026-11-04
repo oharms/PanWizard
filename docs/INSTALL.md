@@ -63,6 +63,10 @@ Add `--unified-skills` to install commands as one shared `.agents/skills/` tree 
 
 > **Gemini CLI note:** from June 18, 2026, Google's Gemini CLI serves Gemini Code Assist (Standard/Enterprise) customers; individual free / AI Pro / Ultra accounts are directed to Antigravity CLI instead. PAN's `--gemini` target installs for Gemini CLI. Antigravity CLI is not yet a PAN install target, but it reads the shared `.agents/skills/` tree natively — install with `--unified-skills` and PAN's commands are usable from Antigravity in the same project.
 
+### Commands only you can start (`--user-invoked-only`)
+
+On Claude Code the model may start any PAN command. To keep some for yourself, name them: `--user-invoked-only health,update` marks `/pan:health` and `/pan:update` (or `/pan-health` and `/pan-update` after `--unified-skills`) `disable-model-invocation: true`, so they run only when you type them. A local install also reads `claude.user_invoked_only` from the project's `.planning/config.json` and applies it on every reinstall and `/pan:update`; a global install uses the flag only. Other runtimes ignore it.
+
 ### Docker and containers
 
 If Claude Code in the container reads its config from somewhere other than the installing user's `~/.claude`, set `CLAUDE_CONFIG_DIR` to that directory before installing (`--global --config-dir <path>` does the same):

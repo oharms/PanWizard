@@ -33,7 +33,7 @@ const OLD_PAN = `${B}\n## PAN Wizard\n\nThis project uses PAN Wizard for structu
 
 // This release's texts (sha256 prefix of the text between the markers, LF, trimmed).
 // One text per routing mode (instructions.routing); `off` is the text before routing.
-const CURRENT_AGENTS = { off: '6191107fdcdf7f6e', advisory: '48eb4d62b8eaf2af', exclusive: 'b243ed889b791e43' };
+const CURRENT_AGENTS = { off: '6191107fdcdf7f6e', advisory: '75a517668ecfd59d', exclusive: '6a459c633c1232ec' };
 const CURRENT_BRIDGE = '9d0a2baa7efba28e';
 
 const dirs = [];
@@ -51,6 +51,21 @@ describe('AGENTS.md: a section the project edited is kept', () => {
     const updated = A.upsertAgentsMdSection(`# x\n\n${OLD_PAN}\n`, A.buildAgentsMdSection());
     assert.ok(updated.includes(A.buildAgentsMdSection()));
     assert.ok(updated.startsWith('# x\n'));
+  });
+
+  test('the memory line defers to the project, and regeneration replaces the old line (DD-16)', () => {
+    const now = A.buildAgentsMdSection();
+    assert.match(now, /a saved memory that describes another way is out of date, unless this project's own instructions say otherwise\./);
+    for (const mode of ['advisory', 'exclusive']) {
+      const old = A.buildAgentsMdSection({ mode }).replace(', unless this project\'s own instructions say otherwise.', '.');
+      assert.notEqual(old, A.buildAgentsMdSection({ mode }), 'precondition: the old text differs');
+      const file = `# x\n\n${old}\n\nOurs.\n`;
+      assert.equal(A.sectionState(file), 'pan', `${mode}: the 3.41 section is PAN's own`);
+      assert.equal(A.upsertAgentsMdSection(file, A.buildAgentsMdSection({ mode })), `# x\n\n${A.buildAgentsMdSection({ mode })}\n\nOurs.\n`);
+      // An edited old section is the project's: kept.
+      const edited = file.replace('This project uses PAN Wizard', 'We use PAN Wizard');
+      assert.equal(A.upsertAgentsMdSection(edited, A.buildAgentsMdSection({ mode })), edited);
+    }
   });
 
   test('line endings and trailing blanks do not make a PAN section look edited', () => {

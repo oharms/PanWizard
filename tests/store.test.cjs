@@ -122,6 +122,50 @@ describe('updateRecord', () => {
     assert.equal(store.readRecord(f).data.v, 1);
   });
 
+  describe('lock_timeout explains itself (DD-17)', () => {
+    const timeoutWith = (t, owner, ageMs = 0) => {
+      process.env.PAN_LOCK_WAIT_MS = '300';
+      t.after(() => { delete process.env.PAN_LOCK_WAIT_MS; });
+      const f = path.join(tmp, 'run.json');
+      store.updateRecord(f, () => ({ v: 1 }));
+      fs.writeFileSync(lk(f), owner);
+      if (ageMs) { const old = new Date(Date.now() - ageMs); fs.utimesSync(lk(f), old, old); }
+      return store.updateRecord(f, (cur) => ({ ...cur, v: 2 }));
+    };
+
+    test('a live holder on this host is named, with the lock\'s age, and no delete advice', (t) => {
+      // The test runner that started this process: alive for the whole test.
+      const r = timeoutWith(t, `${process.ppid}@${os.hostname()}`);
+      assert.equal(r.error, 'lock_timeout');
+      assert.deepEqual(r.holder, { pid: process.ppid, host: os.hostname() });
+      assert.equal(r.holder_alive, true);
+      assert.equal(r.holder_gone, false);
+      assert.equal(typeof r.lock_age_ms, 'number');
+      assert.match(r.reason, new RegExp(`process ${process.ppid} on .* holds this lock \\(taken \\d+s ago\\) and is still running`));
+      assert.match(r.reason, /Do not delete the lock file while it runs/);
+      assert.doesNotMatch(r.reason, /delete \S+ and retry/);
+    });
+
+    test('a holder whose pid is gone gets the delete advice, naming the lock file', (t) => {
+      // A pid far above any this host has given out: not alive.
+      const r = timeoutWith(t, `2147483646@${os.hostname()}`);
+      assert.equal(r.error, 'lock_timeout');
+      assert.equal(r.holder_alive, false);
+      assert.equal(r.holder_gone, true);
+      assert.ok(r.reason.includes(`delete ${r.lock} and retry`), r.reason);
+    });
+
+    test('a holder on another host is judged by age: fresh is kept, past the stale age is gone', (t) => {
+      const fresh = timeoutWith(t, '4242@some-other-host');
+      assert.equal(fresh.holder_alive, null, 'liveness is unknown across hosts');
+      assert.equal(fresh.holder_gone, false);
+      assert.match(fresh.reason, /process 4242 on some-other-host holds this lock/);
+      assert.match(fresh.reason, /Do not delete the lock file unless that process has stopped/);
+      const d = lock.describeLock(fresh.lock, { now: Date.now() + lock.DEFAULT_STALE_MS + 1000 });
+      assert.equal(d.gone, true);
+    });
+  });
+
   test('a stale lock (crashed holder) is stolen and the write goes through', () => {
     const f = path.join(tmp, 'run.json');
     fs.writeFileSync(lk(f), '99999');

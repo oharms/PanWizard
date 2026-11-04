@@ -153,6 +153,37 @@ describe('/pan:update reads its runtime and scope from its own install path', ()
   });
 });
 
+describe('/pan:update --yes and the patches offer (DD-15)', () => {
+  const wf = read('pan-wizard-core/workflows/update.md');
+  const cmd = read('commands/pan/update.md');
+  const step = (name) => {
+    const m = wf.match(new RegExp(`<step name="${name}">([\\s\\S]*?)</step>`));
+    assert.ok(m, `step ${name} must exist`);
+    return m[1];
+  };
+
+  test('the command documents --yes and passes its arguments to the workflow', () => {
+    assert.match(extractFrontmatter(cmd)['argument-hint'], /--yes/);
+    assert.match(cmd, /\$ARGUMENTS/);
+  });
+
+  test('the confirmation is asked only without --yes, after the clean-install warning', () => {
+    const s = step('show_changes_and_confirm');
+    const yes = s.indexOf('`--yes` or `-y`');
+    const ask = s.indexOf('"Proceed with update?"');
+    assert.ok(yes > -1 && ask > yes, 'the --yes branch must come before the question');
+    assert.match(s.slice(yes, ask), /Print the warning above, do not ask/);
+    assert.match(s.slice(ask - 200, ask), /\*\*Otherwise\*\* use AskUserQuestion/);
+  });
+
+  test('backed-up patches are offered for reapply at once, never applied unasked', () => {
+    const s = step('check_local_patches');
+    assert.match(s, /"Reapply your local patches now with \/pan:patches\?"/);
+    assert.match(s, /do not reapply anything without an answer, even with `--yes`/);
+    assert.match(s, /`tracked`/);
+  });
+});
+
 describe('the previous phase, computed the same way by verify-phase and the verifier', () => {
   const CASES = [['08', '7'], ['2.1', '2'], ['12A', '12'], ['12A.1', '12A'], ['10', '9']];
   const lines = [

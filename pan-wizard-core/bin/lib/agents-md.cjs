@@ -34,6 +34,8 @@ const PRIOR_AGENTS_SECTIONS = Object.freeze([
   '6191107fdcdf7f6e', // 2026-10-21 to 2026-10-31: no routing table (today's `off` mode)
   'a44ee4bda30af482', // 2026-10-31 to 2026-11-01: routing table without focus-design (advisory)
   'f491ae17890fa48b', // 2026-10-31 to 2026-11-01: routing table without focus-design (exclusive)
+  '48eb4d62b8eaf2af', // 2026-11-01 to 3.42.0: memory line without the project's own say (advisory)
+  'b243ed889b791e43', // 2026-11-01 to 3.42.0: memory line without the project's own say (exclusive)
 ]);
 const PRIOR_CLAUDE_BRIDGES = Object.freeze([
   '918b1c90559355ef', // the @AGENTS.md import alone
@@ -84,7 +86,7 @@ function readRoutingMode(projectDir, planningDir = '.planning') {
 function buildRoutingLines(mode, routes = ROUTES) {
   if (mode !== 'advisory' && mode !== 'exclusive') return [];
   return [
-    '- How this project plans, builds, checks and commits work is recorded here and in `.planning/`; a saved memory that describes another way is out of date.',
+    '- How this project plans, builds, checks and commits work is recorded here and in `.planning/`; a saved memory that describes another way is out of date, unless this project\'s own instructions say otherwise.',
     '',
     '### When to use PAN in this project',
     '',

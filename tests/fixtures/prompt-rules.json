@@ -463,9 +463,9 @@
    "baseline": true
   },
   {
-   "id": "agents/pan-executor:3a51de50",
+   "id": "agents/pan-executor:6ec88a3d",
    "file": "agents/pan-executor.md",
-   "text": "Only the commit that finishes a task carries its `PAN-Step` line: a TDD RED commit does not. A coalesced commit carries one line per task it holds. Put any other trailer (such as `Co-Authored-By`) in the same final block as the `PAN-Step` line, with no blank line between, so git reads them all as trailers. PAN finds the line anywhere in the message, so do not amend a commit just to move it.",
+   "text": "Only the commit that finishes a task carries its `PAN-Step` line: a TDD RED commit does not. A coalesced commit carries one line per task it holds. Start the final trailer block with the `PAN-Step` line(s); put `Co-Authored-By` and any other trailers after them, with no blank line between, so git reads them all as trailers. PAN finds the line anywhere in the message, so do not amend a commit only to move it.",
    "baseline": false
   },
   {
@@ -2101,9 +2101,9 @@
    "baseline": true
   },
   {
-   "id": "pan-wizard-core/workflows/execute-plan:c717c482",
+   "id": "pan-wizard-core/workflows/execute-plan:65fe3017",
    "file": "pan-wizard-core/workflows/execute-plan.md",
-   "text": "**4. Format:** `{type}({phase}-{plan}): {description}` with bullet points for key changes, and the message ends with `PAN-Step: ${PHASE}-${PLAN}/task-${TASK_NUM}` on its own line. The commit is the task's record: a crashed run resumes after it. Only the commit that finishes a task carries the line (a TDD RED commit does not); a coalesced commit carries one line per task. Any other trailer (such as `Co-Authored-By`) goes in the same final block, no blank line between; PAN finds the line anywhere in the message, so do not amend a commit just to move it.",
+   "text": "**4. Format:** `{type}({phase}-{plan}): {description}` with bullet points for key changes, and the message ends with `PAN-Step: ${PHASE}-${PLAN}/task-${TASK_NUM}` on its own line. The commit is the task's record: a crashed run resumes after it. Only the commit that finishes a task carries the line (a TDD RED commit does not); a coalesced commit carries one line per task. Start the final trailer block with the `PAN-Step` line(s); put `Co-Authored-By` and any other trailers after them, with no blank line between. PAN finds the line anywhere in the message, so do not amend a commit only to move it.",
    "baseline": false
   },
   {
@@ -2837,6 +2837,18 @@
    "file": "pan-wizard-core/workflows/uat-walkthrough.md",
    "text": "The user is the oracle here. You present what they should be able to observe, they say whether they observed it, and the engine writes it down. Never mark a test passed on their behalf, and never rephrase their report: an issue is recorded in their words.",
    "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/update:c8870c67",
+   "file": "pan-wizard-core/workflows/update.md",
+   "text": "**If the arguments include `--yes` or `-y`:** the user has already confirmed. Print the warning above, do not ask, and go on to run_update.",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/update:37758c07",
+   "file": "pan-wizard-core/workflows/update.md",
+   "text": "**If patches found:** list the backed-up files (`files`). Name every file its `tracked` map marks `true` as a file git tracks that PAN just replaced: the project's working tree now differs from its commits there, so it must be merged back or committed on purpose. Then ask; do not reapply anything without an answer, even with `--yes` (that flag confirms the update, not a merge):",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/workflows/verify-phase:6396e8c8",
