@@ -616,7 +616,9 @@ function execGit(cwd, args, opts = {}) {
   } catch (err) {
     const stderr = (err.stderr ?? '').toString().trim();
     return {
-      exitCode: err.status ?? 1,
+      // A thrown call never counts as success: on Linux git can exit 0 before Node sees the
+      // buffer overrun, so ENOBUFS arrives with status 0 and the output cut short (PAN-25).
+      exitCode: err.status || 1,
       stdout: clean((err.stdout ?? '').toString()),
       stderr: stderr || (err.code === 'ENOBUFS' ? `git output exceeded ${maxBuffer} bytes (ENOBUFS)` : ''),
     };
