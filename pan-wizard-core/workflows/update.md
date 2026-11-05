@@ -209,7 +209,11 @@ After update completes, check if the installer detected and backed up any locall
 
 Check for pan-local-patches/backup-meta.json in the config directory.
 
-**If patches found:** list the backed-up files (`files`). Name every file its `tracked` map marks `true` as a file git tracks that PAN just replaced: the project's working tree now differs from its commits there, so it must be merged back or committed on purpose. Then ask; do not reapply anything without an answer, even with `--yes` (that flag confirms the update, not a merge):
+The installer has already cleared any backup whose changes the new version contains, so a `backup-meta.json` that remains lists only files that still differ.
+
+**If it has `stale: true`:** this backup was made by an earlier update (`from_version`, `backed_up_at`), not by this one. Do not offer to reapply it: merging copies from that old version can undo fixes made since. Tell the user it is an old backup, list its `files`, and say that deleting `pan-local-patches/` clears it, or that `/pan:patches` compares each file against this version if they still want something from it. Then continue.
+
+**If patches found (not stale):** list the backed-up files (`files`). Name every file its `tracked` map marks `true` as a file git tracks that PAN just replaced: the project's working tree now differs from its commits there, so it must be merged back or committed on purpose. Then ask; do not reapply anything without an answer, even with `--yes` (that flag confirms the update, not a merge):
 
 Use AskUserQuestion:
 - Question: "Reapply your local patches now with /pan:patches?"

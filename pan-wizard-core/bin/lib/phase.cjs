@@ -835,6 +835,7 @@ function markPhaseCompleteInRoadmap(cwd, phaseNum, _phaseName, planCount, summar
   const reqResult = markRequirementsCompleteForPhase(cwd, phaseNum, roadmapContent);
   return {
     requirements_warning: reqResult && reqResult.error ? reqResult.error : null,
+    requirements_held: reqResult && reqResult.held && reqResult.held.length ? reqResult.held : null,
     roadmap_warning: roadmapWarning,
     roadmap_status: done ? 'Complete' : 'In Progress',
   };
@@ -854,7 +855,11 @@ function markRequirementsCompleteForPhase(cwd, phaseNum, roadmapContent) {
     const reqReadContent = fs.readFileSync(reqPath, 'utf-8');
     // The phase's own requirements, matched padded or not (roadmapRequirementIds): a
     // bare `Phase N … Requirements` search ticked phase 1's when completing phase 5.
-    const reqIds = roadmapRequirementIds(roadmapContent, phaseNum);
+    // A requirement reopened onto this phase (`requirements reopen --phase`) is
+    // ticked by its completion even when the roadmap line does not name it.
+    const ms = require('./milestone.cjs');
+    const holds = ms.requirementHolds(reqReadContent);
+    const reqIds = [...new Set([...roadmapRequirementIds(roadmapContent, phaseNum), ...ms.reopenedForPhase(holds, phaseNum)])];
     if (reqIds.length === 0) return;
     let reqContent = reqReadContent;
     // V8: a requirement with EARS criteria is ticked only when its mapped tests pass;
@@ -863,6 +868,10 @@ function markRequirementsCompleteForPhase(cwd, phaseNum, roadmapContent) {
     const held = [];
 
     for (const reqId of reqIds) {
+      // A ruling recorded in the traceability Status (Held, or Reopened onto
+      // another phase) outranks the roadmap line: completion never ticks it.
+      const ruling = ms.completionHold(holds, reqId, phaseNum);
+      if (ruling) { held.push({ id: reqId, status: ruling.reason, ...(ruling.phases ? { phases: ruling.phases } : {}) }); continue; }
       const d = decisions.get(reqId);
       if (d && !d.allowed) { held.push({ id: reqId, status: d.status }); continue; }
       const reqEscaped = escapeRegex(reqId);
@@ -872,7 +881,7 @@ function markRequirementsCompleteForPhase(cwd, phaseNum, roadmapContent) {
       );
       // PAN-03: the Status column is found by its header, so a traceability table of any
       // layout is updated (a three-column `Pending` regex left a five-column table stale).
-      reqContent = require('./milestone.cjs').markTraceabilityRows(reqContent, reqId).content;
+      reqContent = ms.markTraceabilityRows(reqContent, reqId).content;
     }
 
     try {
@@ -1072,6 +1081,8 @@ function cmdPhaseComplete(cwd, phaseNum, raw, opts) {
   if (roadmapResult && roadmapResult.requirements_warning) {
     result.requirements_warning = roadmapResult.requirements_warning;
   }
+  // Requirements this completion left open: a Held or moved ruling, or mapped tests not passing.
+  if (roadmapResult && roadmapResult.requirements_held) result.requirements_held = roadmapResult.requirements_held;
   if (roadmapResult && roadmapResult.roadmap_warning) {
     // roadmap_updated previously meant "roadmap.md exists", which reads as
     // "the tick landed" and masked a silently missed checkbox (finding 8).

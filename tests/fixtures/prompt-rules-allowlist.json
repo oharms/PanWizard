@@ -244,7 +244,7 @@
     "reason": "DD-15 /pan:update --yes: the confirmation is conditional on --yes/-y and the clean-install warning is still printed. Pinned as prompt text by tests/prompt-runnable.test.cjs ('/pan:update --yes and the patches offer'); no harness scenario runs /pan:update, since a live update installs from npm and spends model time; a scenario that runs it claims this rule."
   },
   {
-    "id": "pan-wizard-core/workflows/update:37758c07",
+    "id": "pan-wizard-core/workflows/update:e8fddb46",
     "reason": "DD-15 patches offer after /pan:update: tracked files named, /pan:patches offered and never run unasked. The installer half (tracked flag in backup-meta, the red warning) is enforced in code and tested in tests/install-eol-hash.test.cjs; the prompt text is pinned by tests/prompt-runnable.test.cjs. No harness scenario runs /pan:update (live npm install, model time); a scenario that runs it claims this rule."
   },
   {
@@ -302,5 +302,21 @@
   {
     "id": "pan-wizard-core/workflows/progress:cd619841",
     "reason": "Routing by the engine (3.42.0): next-action routes on countSummarizedPlans and diagnosed UAT (plan_gaps), pinned by tests/consolidate-surfaces.test.cjs (an orphan summary does not finish a plan). The line keeps the model on the router's action; a model-tier progress scenario is what can claim it."
+  },
+  {
+    "id": "agents/pan-executor:810c6add",
+    "reason": "Held rulings (field report on 3.42.0, item 2): requirements mark-complete skips an id whose traceability Status says Held and lists it under held unless --release (milestone.cjs cmdRequirementsMarkComplete), pinned by tests/requirements-reopen.test.cjs. The line tells the executor to name the id and never pass --release; a model-tier execute scenario with a held requirement is what can claim it."
+  },
+  {
+    "id": "pan-wizard-core/workflows/execute-plan:562fc557",
+    "reason": "Held rulings (field report on 3.42.0, item 2): requirements mark-complete skips an id whose traceability Status says Held and lists it under held unless --release (milestone.cjs cmdRequirementsMarkComplete), pinned by tests/requirements-reopen.test.cjs. The line tells the executor to name the id and never pass --release; a model-tier execute scenario with a held requirement is what can claim it."
+  },
+  {
+    "id": "commands/pan/patches:067e0979",
+    "reason": "Old patch backups (field report on 3.42.0, item 5): the installer clears backed-up files the new version already matches and marks a backup an earlier update made stale: true (install-lib classifyPatchBackups, install.js reportLocalPatches), pinned by tests/requirements-reopen.test.cjs. The line keeps the model from merging an old copy wholesale; no harness scenario runs /pan:update or /pan:patches (live npm install, model time)."
+  },
+  {
+    "id": "pan-wizard-core/workflows/update:cf18d27d",
+    "reason": "Old patch backups (field report on 3.42.0, item 5): the installer clears backed-up files the new version already matches and marks a backup an earlier update made stale: true (install-lib classifyPatchBackups, install.js reportLocalPatches), pinned by tests/requirements-reopen.test.cjs. The line keeps the model from merging an old copy wholesale; no harness scenario runs /pan:update or /pan:patches (live npm install, model time)."
   }
 ]

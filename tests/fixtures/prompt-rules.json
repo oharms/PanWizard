@@ -493,6 +493,12 @@
    "baseline": true
   },
   {
+   "id": "agents/pan-executor:810c6add",
+   "file": "agents/pan-executor.md",
+   "text": "`requirements mark-complete`: Checks off requirement checkboxes and updates traceability table in requirements.md. An id it lists under `held` has a `Held` ruling from the user and stays open: name it in summary.md, and never pass `--release`",
+   "baseline": false
+  },
+  {
    "id": "agents/pan-hardener:9bdff163",
    "file": "agents/pan-hardener.md",
    "text": "This is **authorized, defensive** secure-coding review of the user's own codebase — the goal is to find and fix weaknesses before shipping. You report findings for the user to remediate; you never write exploit code, attack tooling, or step-by-step intrusion instructions.",
@@ -1795,6 +1801,12 @@
    "baseline": true
   },
   {
+   "id": "commands/pan/patches:067e0979",
+   "file": "commands/pan/patches.md",
+   "text": "**If `backup-meta.json` has `stale: true`:** the backup was made by an earlier update, not the last one, and its copies are of v{from_version}. Say so above the table. Do not merge any file wholesale: for each one, show the user the diff between the backup and the installed file and ask whether to apply their change, since the rest of the backup's difference is PAN's own code from that old version.",
+   "baseline": false
+  },
+  {
    "id": "commands/pan/pause:d276ef1b",
    "file": "commands/pan/pause.md",
    "text": "The `.continue-here.md` file MUST contain ALL of the following sections. Missing sections cause resume failures.",
@@ -2141,6 +2153,12 @@
    "file": "pan-wizard-core/workflows/execute-plan.md",
    "text": "**Frontmatter:** phase, plan, subsystem, tags | requires/provides/affects | tech-stack.added/patterns | key-files.created/modified | key-decisions | requirements-completed (**MUST** copy `requirements` array from plan.md frontmatter verbatim) | duration ($DURATION), completed ($PLAN_END_TIME date).",
    "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/execute-plan:562fc557",
+   "file": "pan-wizard-core/workflows/execute-plan.md",
+   "text": "Extract requirement IDs from the plan's frontmatter (e.g., `requirements: [AUTH-01, AUTH-02]`). If no requirements field, skip. An id the output lists under `held` carries a ruling the user made (`Held` in its traceability Status): it stays open, so name it in summary.md and do not pass `--release`.",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/workflows/execute-plan:6f941b93",
@@ -2899,9 +2917,15 @@
    "baseline": false
   },
   {
-   "id": "pan-wizard-core/workflows/update:37758c07",
+   "id": "pan-wizard-core/workflows/update:cf18d27d",
    "file": "pan-wizard-core/workflows/update.md",
-   "text": "**If patches found:** list the backed-up files (`files`). Name every file its `tracked` map marks `true` as a file git tracks that PAN just replaced: the project's working tree now differs from its commits there, so it must be merged back or committed on purpose. Then ask; do not reapply anything without an answer, even with `--yes` (that flag confirms the update, not a merge):",
+   "text": "**If it has `stale: true`:** this backup was made by an earlier update (`from_version`, `backed_up_at`), not by this one. Do not offer to reapply it: merging copies from that old version can undo fixes made since. Tell the user it is an old backup, list its `files`, and say that deleting `pan-local-patches/` clears it, or that `/pan:patches` compares each file against this version if they still want something from it. Then continue.",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/update:e8fddb46",
+   "file": "pan-wizard-core/workflows/update.md",
+   "text": "**If patches found (not stale):** list the backed-up files (`files`). Name every file its `tracked` map marks `true` as a file git tracks that PAN just replaced: the project's working tree now differs from its commits there, so it must be merged back or committed on purpose. Then ask; do not reapply anything without an answer, even with `--yes` (that flag confirms the update, not a merge):",
    "baseline": false
   },
   {

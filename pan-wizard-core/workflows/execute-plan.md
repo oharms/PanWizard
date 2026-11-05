@@ -407,7 +407,7 @@ Mark completed requirements from the plan.md frontmatter `requirements:` field:
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs requirements mark-complete ${REQ_IDS}
 ```
 
-Extract requirement IDs from the plan's frontmatter (e.g., `requirements: [AUTH-01, AUTH-02]`). If no requirements field, skip.
+Extract requirement IDs from the plan's frontmatter (e.g., `requirements: [AUTH-01, AUTH-02]`). If no requirements field, skip. An id the output lists under `held` carries a ruling the user made (`Held` in its traceability Status): it stays open, so name it in summary.md and do not pass `--release`.
 </step>
 
 <step name="git_commit_metadata">

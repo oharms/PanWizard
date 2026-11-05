@@ -53,6 +53,8 @@ Exit.
 | 2 | {file_path} | Pending |
 ```
 
+**If `backup-meta.json` has `stale: true`:** the backup was made by an earlier update, not the last one, and its copies are of v{from_version}. Say so above the table. Do not merge any file wholesale: for each one, show the user the diff between the backup and the installed file and ask whether to apply their change, since the rest of the backup's difference is PAN's own code from that old version.
+
 ## Step 3: Merge each file
 
 For each file in `backup-meta.json`:

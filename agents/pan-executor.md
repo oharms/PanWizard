@@ -488,7 +488,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs requirements mark-complete ${RE
 - `state add-decision`: Adds to Decisions section, removes placeholders
 - `state record-session`: Updates Last session timestamp and Stopped At fields
 - `roadmap update-plan-progress`: Updates roadmap.md progress table row from the phase's plans paired with their own summaries
-- `requirements mark-complete`: Checks off requirement checkboxes and updates traceability table in requirements.md
+- `requirements mark-complete`: Checks off requirement checkboxes and updates traceability table in requirements.md. An id it lists under `held` has a `Held` ruling from the user and stays open: name it in summary.md, and never pass `--release`
 
 **Extract decisions from summary.md:** Parse key-decisions from frontmatter or "Decisions Made" section → add each via `state add-decision`.
 

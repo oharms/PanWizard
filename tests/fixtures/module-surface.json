@@ -815,9 +815,14 @@
     "cmdMergeRequest:function"
   ],
   "milestone.cjs": [
+    "addRequirementToRoadmapPhase:function",
     "cmdMilestoneComplete:function",
     "cmdRequirementsMarkComplete:function",
-    "markTraceabilityRows:function"
+    "cmdRequirementsReopen:function",
+    "completionHold:function",
+    "markTraceabilityRows:function",
+    "reopenedForPhase:function",
+    "requirementHolds:function"
   ],
   "mutate.cjs": [
     "DEFAULT_FLOOR:number",
@@ -1078,6 +1083,7 @@
     "phaseDependencies:function",
     "phaseRequirementIds:function",
     "requirementLines:function",
+    "roadmapPhaseSection:function",
     "roadmapRequirementIds:function",
     "syncRequirementCheckboxes:function",
     "updateProgressTableRow:function"

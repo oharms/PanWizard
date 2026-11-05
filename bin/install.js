@@ -2180,13 +2180,53 @@ function saveLocalPatches(configDir) {
 /**
  * After install, report backed-up patches for user to reapply.
  */
-function reportLocalPatches(configDir, runtime = 'claude') {
+/** Remove `dir` and its subdirectories when they hold no files; a directory with a file stays. */
+function removeEmptyDirs(dir) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  for (const e of entries) if (e.isDirectory()) removeEmptyDirs(path.join(dir, e.name));
+  try { if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir); } catch { /* non-fatal */ }
+}
+
+function reportLocalPatches(configDir, runtime = 'claude', opts = {}) {
   const patchesDir = path.join(configDir, PATCHES_DIR_NAME);
   const metaPath = path.join(patchesDir, 'backup-meta.json');
   if (!fs.existsSync(metaPath)) return [];
 
   let meta;
   try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return []; }
+
+  // A backup whose changes this version already has is cleared, and one an earlier
+  // update made is reported as old, not as a fresh merge to run (field: a 3.27.0
+  // backup announced on every install since, its changes long upstream).
+  const read = (p) => { try { return fs.readFileSync(p); } catch { return null; } };
+  const sorted = lib.classifyPatchBackups(meta,
+    (rel) => read(path.join(patchesDir, rel)),
+    (rel) => read(path.join(configDir, rel)),
+    { savedThisRun: !!opts.savedThisRun });
+  if (sorted.resolved.length > 0) {
+    for (const f of sorted.resolved) {
+      const rel = (meta.external_files && meta.external_files[f]) || f;
+      const target = path.resolve(patchesDir, rel);
+      if (target.startsWith(path.resolve(patchesDir) + path.sep)) { try { fs.rmSync(target, { force: true }); } catch { /* left in place */ } }
+    }
+    const keep = new Set(sorted.pending);
+    meta.files = sorted.pending;
+    if (meta.tracked) meta.tracked = Object.fromEntries(Object.entries(meta.tracked).filter(([f]) => keep.has(f)));
+    if (meta.external_files) meta.external_files = Object.fromEntries(Object.entries(meta.external_files).filter(([f]) => keep.has(f)));
+  }
+  if (sorted.pending.length === 0) {
+    try { fs.rmSync(metaPath, { force: true }); } catch { /* non-fatal */ }
+    removeEmptyDirs(patchesDir);
+    if (sorted.resolved.length > 0) {
+      console.log('  ' + green + '✓' + reset + ' Cleared the patch backup from v' + meta.from_version + ': this version already has its changes');
+    }
+    return [];
+  }
+  if (sorted.stale) { meta.stale = true; meta.stale_checked_by = pkg.version; }
+  if (sorted.resolved.length > 0 || sorted.stale) {
+    try { fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2)); } catch { /* non-fatal */ }
+  }
 
   if (meta.files && meta.files.length > 0) {
     // Copilot uses the same flat /pan-<name> form as OpenCode; it previously fell
@@ -2196,6 +2236,17 @@ function reportLocalPatches(configDir, runtime = 'claude') {
       : runtime === 'codex'
         ? '$pan-patches'
         : '/pan:patches';
+    if (sorted.stale) {
+      const saved = meta.backed_up_at ? ' on ' + String(meta.backed_up_at).slice(0, 10) : '';
+      console.log('');
+      console.log('  ' + yellow + 'Old patch backup' + reset + ' (from v' + meta.from_version + ', saved' + saved + ' by an earlier update, never cleared):');
+      for (const f of meta.files) console.log('     ' + dim + f + reset);
+      console.log('  These differ from v' + pkg.version + '. If you merged them by hand or no longer want them,');
+      console.log('  delete ' + cyan + PATCHES_DIR_NAME + '/' + reset + ' and this note stops. Merging v' + meta.from_version + ' copies into');
+      console.log('  this version can undo fixes made since; compare first (' + reapplyCommand + ' shows each diff).');
+      console.log('');
+      return meta.files;
+    }
     console.log('');
     console.log('  ' + yellow + 'Local patches detected' + reset + ' (from v' + meta.from_version + '):');
     for (const f of meta.files) {
@@ -2379,7 +2430,7 @@ function install(isGlobal, runtime = 'claude') {
   const failures = [];
 
   // Save any locally modified PAN files before they get wiped
-  saveLocalPatches(targetDir);
+  const patchesSavedThisRun = saveLocalPatches(targetDir).length > 0;
 
   // Clean up orphaned files from previous versions
   cleanupOrphanedFiles(targetDir);
@@ -2863,7 +2914,7 @@ function install(isGlobal, runtime = 'claude') {
   if (!isGlobal) ignoreLocalPatchesDir(process.cwd(), dirName);
 
   // Report any backed-up local patches
-  reportLocalPatches(targetDir, runtime);
+  reportLocalPatches(targetDir, runtime, { savedThisRun: patchesSavedThisRun });
 
   // Post-install verification: walk every manifest entry, assert file present.
   // Catches silent copy/write failures from earlier stages (IMPROVEMENT-TODO P0).

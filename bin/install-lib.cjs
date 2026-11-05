@@ -3070,3 +3070,32 @@ function bytesMatchHashIgnoringEol(buf, expectedHash) {
   return sha(Buffer.from(lf.replace(/\n/g, '\r\n'), 'latin1')) === expectedHash;
 }
 module.exports.bytesMatchHashIgnoringEol = bytesMatchHashIgnoringEol;
+
+/**
+ * Sort a patch backup's files into those whose changes the installed version
+ * already has (the backup and the installed file match, line endings aside) and
+ * those still to merge. A backup the installer did not make in this run is
+ * `stale`: it was offered at an earlier update and is either merged by hand,
+ * abandoned, or older than the code it would be merged into. Pure: the caller
+ * passes readers. The field case was a 3.27.0 backup reported on every install
+ * since, its changes long upstream, pointing at a merge that would only revert.
+ * @param {{files?: string[], external_files?: Object<string,string>}} meta - backup-meta.json
+ * @param {(backupRel: string) => Buffer|null} readBackup - a file under pan-local-patches/
+ * @param {(installedRel: string) => Buffer|null} readInstalled - the same file as installed now
+ * @param {{savedThisRun?: boolean}} [opts]
+ * @returns {{resolved: string[], pending: string[], stale: boolean}}
+ */
+function classifyPatchBackups(meta, readBackup, readInstalled, opts = {}) {
+  const lf = (b) => (b.includes(0) ? b.toString('latin1') : b.toString('latin1').replace(/\r\n/g, '\n'));
+  const resolved = [], pending = [];
+  for (const f of (meta && Array.isArray(meta.files) ? meta.files : [])) {
+    const ext = meta.external_files && meta.external_files[f];
+    const backup = readBackup(ext || f);
+    const installed = readInstalled(f);
+    if (backup && installed && lf(backup) === lf(installed)) resolved.push(f);
+    else if (!backup) resolved.push(f); // the backup itself is gone: nothing left to merge
+    else pending.push(f);
+  }
+  return { resolved, pending, stale: !opts.savedThisRun };
+}
+module.exports.classifyPatchBackups = classifyPatchBackups;

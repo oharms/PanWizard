@@ -1149,6 +1149,8 @@ requirements.md (checklist + traceability table)
 
 When each plan completes, the executor runs `pan-tools requirements mark-complete` for that plan's requirement IDs, updating both the checklist and the traceability table.
 
+To take a tick back, run `pan-tools requirements reopen <id> --reason "..."`. With `--phase N` the requirement moves to phase N: completing the phase it came from leaves it open, and completing N ticks it. With `--hold` it stays open whatever completes, until `requirements mark-complete <id> --release`. Both are recorded in the traceability Status (`Reopened: …`, `Held: …`), so editing that cell by hand works too.
+
 ### Global Defaults
 
 PAN supports global defaults at `~/.pan-wizard/defaults.json`. They seed each new project's `config.json` (when `config-ensure-section` creates it, or when you accept them in `/pan:new-project`); an existing project's config is not changed, and a key missing from a project's config falls back to the hardcoded default.

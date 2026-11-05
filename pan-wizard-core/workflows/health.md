@@ -72,7 +72,7 @@ Status: HEALTHY | DEGRADED | BROKEN
 Errors: N | Warnings: N | Info: N
 ```
 
-**Ask per repair class before repairing.** With `--repair`, run `validate health` without it first and read `repairs_available` (for example `resetConfig`, `regenerateState`, `syncRequirements`, `syncRoadmap`). Ask about each class on its own, saying what it rewrites (state.md is created only when it is missing; config.json is reset to defaults). Then repair only the classes the user accepted:
+**Ask per repair class before repairing.** With `--repair`, run `validate health` without it first and read `repairs_available` (for example `resetConfig`, `regenerateState`, `recountProgress`, `syncRequirements`, `syncRoadmap`). Ask about each class on its own, saying what it rewrites (state.md is created only when it is missing; config.json is reset to defaults). Then repair only the classes the user accepted:
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs validate health --repair --only <class>,<class>
 ```
@@ -167,7 +167,8 @@ Report final status.
 | I005 | info | The planning tree is gitignored while commit_docs is true — planning commits commit nothing | No |
 | I006 | info | config.json holds keys PAN's code does not read (usually a typo); the fix names the nearest known key. It also lists `gates` and `safety` from templates/config.json: the `custom`-mode conditions in transition.md and execute-plan.md read `gates`; nothing reads `safety` (transition.md asks before skipping plans in every mode) | No |
 | I007 | info | config.json stores the pre-3.42 default `commit.sensitive_patterns`; PAN already reads it as the current basename defaults, so this only says so. Fix: remove the key or set your own list | No |
-| STATE_REQ_DRIFT | warning | state.md complete but requirements.md has unchecked boxes | Yes |
+| STATE_PROGRESS_IMPOSSIBLE | warning | state.md progress counts completed above total (an older writer mixed this milestone with all-time counts) | Yes |
+| STATE_REQ_DRIFT | warning | state.md complete but requirements.md has unchecked boxes (a requirement whose traceability Status says Held or Reopened is not counted) | Yes |
 | STATE_ROADMAP_DRIFT | warning | state.md complete but roadmap.md has unchecked plan boxes | Yes |
 | VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record | No |
 
@@ -198,7 +199,8 @@ or behind the current position warns.
 | createConfig | Create config.json with defaults | None |
 | resetConfig | Delete + recreate config.json | Loses custom settings |
 | regenerateState | Create a missing state.md from ROADMAP structure; an existing state.md is never rewritten | None |
-| syncRequirements | Tick requirements.md boxes when state.md says every plan is done (STATE_REQ_DRIFT) | Edits requirements.md checkboxes |
+| recountProgress | Recount state.md's progress.* front-matter keys from the phase directories (STATE_PROGRESS_IMPOSSIBLE) | Edits those keys only |
+| syncRequirements | Tick requirements.md boxes when state.md says every plan is done (STATE_REQ_DRIFT); never one whose Status says Held, or Reopened onto another phase | Edits requirements.md checkboxes |
 | syncRoadmap | Tick roadmap.md plan boxes when state.md says every plan is done (STATE_ROADMAP_DRIFT) | Edits roadmap.md checkboxes |
 
 **Not repairable (too risky):**

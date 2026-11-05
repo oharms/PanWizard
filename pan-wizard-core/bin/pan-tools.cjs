@@ -59,7 +59,8 @@
  *   roadmap update-plan-progress <N>   Update progress table row from disk (PLAN vs SUMMARY counts)
  *
  * Requirements Operations:
- *   requirements mark-complete <ids>   Mark requirement IDs as complete in requirements.md
+ *   requirements mark-complete <ids> [--release]  Mark requirement IDs as complete (--release lifts a Held ruling)
+ *   requirements reopen <ids> --reason R [--phase N] [--hold]  Untick a requirement and record why
  *                                      Accepts: REQ-01,REQ-02 or REQ-01 REQ-02 or [REQ-01, REQ-02]
  *
  * Milestone Operations:
@@ -305,6 +306,35 @@ const stateCompact = require('./lib/state-compact.cjs');
  * @param {*} [defaultVal=null] - Default if flag missing or no value follows
  * @returns {string|null} The value after the flag, or defaultVal
  */
+/**
+ * The usage lines this file's header gives for one command (and subcommand), or
+ * null when it lists none. The header is the per-command reference that ships
+ * with every install; docs/CLI-REFERENCE.md is the full one.
+ * @param {string} command
+ * @param {string|null} sub
+ * @returns {string|null}
+ */
+function commandHelp(command, sub) {
+  let header = '';
+  try { const src = require('fs').readFileSync(__filename, 'utf8'); header = src.slice(0, src.indexOf('*/')); } catch { return null; }
+  // An entry is a `*   <command> …` line plus its deeper-indented continuation lines.
+  const entries = [];
+  for (const l of header.split('\n')) {
+    if (/^\s*\*\s{3}[a-z]/.test(l)) entries.push([l.replace(/^\s*\*\s{3}/, '').trimEnd()]);
+    else if (entries.length && /^\s*\*\s{4,}\S/.test(l)) entries[entries.length - 1].push(l.replace(/^\s*\*\s{3}/, '').trimEnd());
+    else if (entries.length) entries.push(null);
+  }
+  const listed = entries.filter(Boolean);
+  const starts = (e, prefix) => e[0] === prefix || e[0].startsWith(prefix + ' ') || e[0].startsWith(prefix + '|');
+  let pick = sub ? listed.filter((e) => starts(e, `${command} ${sub}`)) : [];
+  const exact = pick.length > 0;
+  if (!exact) pick = listed.filter((e) => starts(e, command));
+  if (pick.length === 0) return null;
+  return `Usage (pan-tools ${command}${exact ? ' ' + sub : ''}):\n`
+    + pick.map((e) => e.map((l) => '  ' + l).join('\n')).join('\n')
+    + '\n\nNothing was run. Full reference: docs/CLI-REFERENCE.md';
+}
+
 function getArgValue(args, flag, defaultVal = null) {
   const idx = args.indexOf(flag);
   if (idx === -1 || idx + 1 >= args.length) return defaultVal;
@@ -419,6 +449,14 @@ async function main() {
   // an explicit request for help is a success.
   if (command === '--help' || command === '-h' || command === 'help') {
     console.log(USAGE);
+    process.exit(0);
+  }
+
+  // `<command> [sub] --help` prints that command's usage and runs nothing: `test run
+  // --help` used to start the whole test suite, and a writer given --help would
+  // write. `-h` counts only in the subcommand slots, where it cannot be a value.
+  if (args.slice(1).includes('--help') || args[1] === '-h' || args[2] === '-h') {
+    console.log(commandHelp(command, args[1] && !args[1].startsWith('-') ? args[1] : null) || USAGE);
     process.exit(0);
   }
 
@@ -860,9 +898,20 @@ async function main() {
     case 'requirements': {
       const subcommand = args[1];
       if (subcommand === 'mark-complete') {
-        milestone.cmdRequirementsMarkComplete(cwd, args.slice(2), raw);
+        milestone.cmdRequirementsMarkComplete(cwd, args.slice(2).filter((a) => a !== '--release'), raw, { release: args.includes('--release') });
+      } else if (subcommand === 'reopen') {
+        const rest = args.slice(2);
+        const ids = [];
+        for (let i = 0; i < rest.length; i++) {
+          if (rest[i] === '--reason' || rest[i] === '--phase') { i++; continue; }
+          if (rest[i] === '--hold') continue;
+          ids.push(rest[i]);
+        }
+        milestone.cmdRequirementsReopen(cwd, ids, {
+          reason: getArgValue(args, '--reason'), phase: getArgValue(args, '--phase'), hold: args.includes('--hold'),
+        }, raw);
       } else {
-        error('Unknown requirements subcommand. Available: mark-complete');
+        error('Unknown requirements subcommand. Available: mark-complete, reopen');
       }
       break;
     }

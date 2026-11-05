@@ -216,6 +216,7 @@
     "report index",
     "report phase",
     "requirements mark-complete",
+    "requirements reopen",
     "research check",
     "research lint",
     "review cross-family",

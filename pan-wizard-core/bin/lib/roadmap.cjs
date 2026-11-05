@@ -826,6 +826,7 @@ module.exports = {
   computeRoadmapStats,
   buildRoadmapSlice,
   roadmapRequirementIds,
+  roadmapPhaseSection,
   phaseRequirementIds,
   phaseDependencies,
   requirementLines,

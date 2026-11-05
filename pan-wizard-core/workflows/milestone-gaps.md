@@ -120,13 +120,13 @@ Then edit the new section: set **Goal:** to {derived from gaps being closed}, **
 
 ## 7. Update requirements.md Traceability Table (REQUIRED)
 
-For each REQ-ID assigned to a gap closure phase:
-- Update the Phase column to reflect the new gap closure phase
-- Reset Status to `Pending`
+Reopen each REQ-ID assigned to a gap closure phase with the engine, not by hand. It clears the checkbox, sets the traceability Status to `Reopened: <reason>` and the Phase cell to the new phase, and adds the id to that phase's `**Requirements:**` line if step 6 left it off; completing the gap phase ticks it again, and completing any other phase leaves it open:
 
-Reset checked-off requirements the audit found unsatisfied:
-- Change `[x]` → `[ ]` for any requirement marked unsatisfied in the audit
-- Update coverage count at top of requirements.md
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs requirements reopen {REQ-ID} --phase {gap phase} --reason "milestone audit: {one-line gap}"
+```
+
+A requirement the user rules must stay open whatever completes takes `--hold` instead of `--phase`; only `requirements mark-complete {REQ-ID} --release` ticks it after that. Then update the coverage count at the top of requirements.md.
 
 ```bash
 # Verify traceability table reflects gap closure assignments

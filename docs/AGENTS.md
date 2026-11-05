@@ -914,4 +914,4 @@ Agent files are installed alongside commands. Location depends on runtime and in
 
 ### Preserving Customizations
 
-After a PAN update (`npx pan-wizard@latest`), local modifications may be overwritten. The installer backs up modified files to `pan-local-patches/` before overwriting. Run `/pan:patches` to restore your changes.
+After a PAN update (`npx pan-wizard@latest`), local modifications may be overwritten. The installer backs up modified files to `pan-local-patches/` before overwriting. Run `/pan:patches` to restore your changes. At the next update the installer clears any backed-up file this version already matches, and reports a backup an earlier update made as old rather than as a fresh merge: merging an old copy can undo fixes made since, so compare it first, or delete `pan-local-patches/` when you no longer need it.

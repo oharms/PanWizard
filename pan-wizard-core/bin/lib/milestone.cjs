@@ -15,9 +15,10 @@ const { writeStateMd } = require('./state.cjs');
  * @param {string} cwd - Working directory path
  * @param {string[]} reqIdsRaw - Array of requirement ID strings (e.g., ["REQ-01", "REQ-02"])
  * @param {boolean} raw - If true, output raw value instead of JSON
+ * @param {{release?: boolean}} [opts] - release: tick a requirement whose Status says Held
  * @returns {void}
  */
-function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
+function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw, opts = {}) {
   if (!reqIdsRaw || reqIdsRaw.length === 0) {
     error('requirement IDs required. Usage: requirements mark-complete REQ-01,REQ-02 or REQ-01 REQ-02');
   }
@@ -48,8 +49,14 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
   const notFound = [];
   const tableUpdated = [];
   const warnings = [];
+  // A Held ruling (requirements reopen --hold) is not lifted by a plan that lists
+  // the id: the executor calls this after every plan. --release lifts it.
+  const holds = requirementHolds(reqContent);
+  const held = [];
 
   for (const reqId of reqIds) {
+    const h = holds.get(reqId.toLowerCase());
+    if (h && h.kind === 'hold' && !opts.release) { held.push({ id: reqId, status: h.status }); continue; }
     let found = false;
     // Escape the requirement ID before interpolating into RegExp — an ID with
     // regex metacharacters otherwise crashes or mis-matches (M22, ADR audit
@@ -95,6 +102,7 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
     total: reqIds.length,
     table_updated: tableUpdated.length > 0,
     table_marked: tableUpdated,
+    ...(held.length ? { held } : {}),
     ...(warnings.length ? { warnings } : {}),
   }, raw, `${updated.length}/${reqIds.length} requirements marked complete`);
 }
@@ -131,6 +139,206 @@ function markTraceabilityRows(content, reqId) {
     }
   }
   return { content: changed ? lines.join('\n') : content, rowFound, changed, noStatusColumn };
+}
+
+// --- Requirement holds and reopening -----------------------------------------
+//
+// The traceability Status cell is the record of a ruling: `Held: <reason>` keeps a
+// requirement open whatever completes, `Reopened: <reason>` with a Phase cell
+// naming another phase keeps it open until that phase completes. `phase complete`
+// and `validate health --repair` read these before they tick anything; an explicit
+// `requirements mark-complete` still ticks (that is how a hold is released).
+
+/** A Status value that keeps a requirement open whatever completes. */
+const HOLD_STATUS_RE = /^(?:held|on[\s-]*hold|deferred|blocked)\b/i;
+/** A Status value that hands a requirement to the phase its Phase cell names. */
+const REOPEN_STATUS_RE = /^(?:reopened|moved)\b/i;
+
+const unpadPhaseId = (n) => String(n).trim().replace(/^0+(?=\d)/, '').toLowerCase();
+
+/** The column indexes of a traceability table: id, status and phase (-1 when absent). */
+function traceabilityColumns(table) {
+  let idCol = table.headers.findIndex((h) => /^(?:req(?:uirement)?s?(?:[\s-]*id)?|id)$/i.test(h));
+  if (idCol < 0) idCol = 0;
+  return {
+    idCol,
+    statusCol: table.headers.findIndex((h) => /^status$/i.test(h)),
+    phaseCol: table.headers.findIndex((h) => /^phases?$/i.test(h)),
+  };
+}
+
+/**
+ * The phase numbers a Phase cell names ("Phase 3" → ['3'], "03, 5.1" → ['3', '5.1']),
+ * unpadded and lower-cased, or null when it names none or a range ("3-5"), which
+ * is never read as a move.
+ */
+function phaseCellNumbers(cell) {
+  const text = tableCellText(cell);
+  if (/\d\s*[-–]\s*\d/.test(text)) return null;
+  const nums = [...text.matchAll(/(?<![A-Za-z0-9.])(\d+[A-Za-z]?(?:\.\d+)*)(?![\d])/g)].map((m) => unpadPhaseId(m[1]));
+  return nums.length ? [...new Set(nums)] : null;
+}
+
+/**
+ * Every requirement whose traceability Status records a hold or a reopening.
+ * @param {string} content - requirements.md
+ * @returns {Map<string, {id: string, kind: 'hold'|'reopened', status: string, phases: string[]|null}>} keyed by lower-cased id
+ */
+function requirementHolds(content) {
+  const holds = new Map();
+  for (const table of readMarkdownTables(String(content || ''))) {
+    const { idCol, statusCol, phaseCol } = traceabilityColumns(table);
+    if (statusCol < 0) continue;
+    for (const row of table.rows) {
+      const id = tableCellText(row.cells[idCol]);
+      const status = tableCellText(row.cells[statusCol]);
+      if (!id) continue;
+      const kind = HOLD_STATUS_RE.test(status) ? 'hold' : REOPEN_STATUS_RE.test(status) ? 'reopened' : null;
+      if (!kind) continue;
+      holds.set(id.toLowerCase(), { id, kind, status, phases: phaseCol >= 0 ? phaseCellNumbers(row.cells[phaseCol]) : null });
+    }
+  }
+  return holds;
+}
+
+/**
+ * Why completing `phaseNum` must not tick `reqId`, or null when it may.
+ * @returns {null|{reason: 'on_hold'|'moved', status: string, phases?: string[]}}
+ */
+function completionHold(holds, reqId, phaseNum) {
+  const h = holds.get(String(reqId).toLowerCase());
+  if (!h) return null;
+  if (h.kind === 'hold') return { reason: 'on_hold', status: h.status };
+  if (h.phases && !h.phases.includes(unpadPhaseId(phaseNum))) return { reason: 'moved', status: h.status, phases: h.phases };
+  return null;
+}
+
+/** The reopened requirements whose Phase cell names `phaseNum`: completing it ticks them too. */
+function reopenedForPhase(holds, phaseNum) {
+  const want = unpadPhaseId(phaseNum);
+  return [...holds.values()].filter((h) => h.kind === 'reopened' && h.phases && h.phases.includes(want)).map((h) => h.id);
+}
+
+/** A cell value from free text: one line, no unescaped pipe. */
+const cellSafe = (s) => String(s).replace(/\s+/g, ' ').trim().replace(/\|/g, '/');
+
+/**
+ * Add `reqId` to the `**Requirements:**` line of phase `phaseNum`'s roadmap section.
+ * @returns {{content: string, updated: boolean, reason?: string}}
+ */
+function addRequirementToRoadmapPhase(roadmap, phaseNum, reqId) {
+  const { roadmapPhaseSection, phaseRequirementIds } = require('./roadmap.cjs');
+  const sec = roadmapPhaseSection(roadmap, phaseNum);
+  if (!sec) return { content: roadmap, updated: false, reason: 'phase_section_not_found' };
+  if (phaseRequirementIds(sec.section).some((x) => x.toLowerCase() === reqId.toLowerCase())) return { content: roadmap, updated: false, reason: 'already_listed' };
+  const at = roadmap.indexOf(sec.section);
+  const lineRe = /^(\*\*Requirements(?::\*\*|\*\*:))([^\S\r\n]*)([^\r\n]*)/m;
+  const m = sec.section.match(lineRe);
+  if (at < 0 || !m) return { content: roadmap, updated: false, reason: 'no_requirements_line' };
+  const value = m[3].trim();
+  const empty = !value || /^(?:none|n\/a|tbd|-+|—)\.?$/i.test(value);
+  const nextLine = m[1] + ' ' + (empty ? reqId : value.replace(/[,\s]+$/, '') + ', ' + reqId);
+  const start = at + m.index;
+  return { content: roadmap.slice(0, start) + nextLine + roadmap.slice(start + m[0].length), updated: true };
+}
+
+/**
+ * `requirements reopen <ids> --reason R [--phase N] [--hold]`: untick a requirement
+ * and record why. The checkbox is cleared; the traceability Status becomes
+ * `Reopened: R` (or `Held: R`), the Phase cell names N, and N's roadmap section
+ * lists the id, so its planner sees it and completing N ticks it again. A held
+ * requirement stays open until `requirements mark-complete` ticks it.
+ * @param {string} cwd
+ * @param {string[]} idArgs - Requirement ids (comma- or space-separated)
+ * @param {{reason?: string|null, phase?: string|null, hold?: boolean}} opts
+ * @param {boolean} raw
+ */
+function cmdRequirementsReopen(cwd, idArgs, opts, raw) {
+  const ids = (idArgs || []).join(' ').replace(/[[\]]/g, '').split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
+  if (ids.length === 0) error('requirement ID required. Usage: requirements reopen <id> --reason "..." [--phase N] [--hold]');
+  const reason = opts.reason == null ? '' : cellSafe(opts.reason);
+  if (!reason) error('--reason is required: requirements.md records why a requirement was reopened');
+  const phase = opts.phase ? unpadPhaseId(String(opts.phase).replace(/^phase\s+/i, '')).toUpperCase() : null;
+  if (opts.phase && !/^\d+[A-Za-z]?(?:\.\d+)*$/.test(phase)) error(`--phase must be a phase number, got "${opts.phase}"`);
+
+  const reqPath = path.join(planningPath(cwd), REQUIREMENTS_FILE);
+  let content;
+  try { content = fs.readFileSync(reqPath, 'utf-8'); } catch {
+    output({ updated: false, error: 'requirements_not_found', ids }, raw, 'no requirements file');
+    return;
+  }
+  const label = opts.hold ? 'Held' : 'Reopened';
+  const status = `${label}: ${reason}`;
+  const reopened = [], unchecked = [], tableUpdated = [], notFound = [], warnings = [];
+  for (const id of ids) {
+    const esc = escapeRegex(id);
+    let found = false;
+    const box = new RegExp(`(-\\s*\\[)[xX](\\]\\s*\\*\\*${esc}\\*\\*)`, 'g');
+    if (box.test(content)) { content = content.replace(box, '$1 $2'); unchecked.push(id); found = true; }
+    else if (checkboxFound(content, esc)) found = true;
+
+    const lines = content.split('\n');
+    let rowFound = false, statusWritten = false;
+    for (const table of readMarkdownTables(content)) {
+      const { idCol, statusCol, phaseCol } = traceabilityColumns(table);
+      for (const row of table.rows) {
+        if (tableCellText(row.cells[idCol]).toLowerCase() !== id.toLowerCase()) continue;
+        rowFound = true;
+        if (statusCol < 0) continue;
+        let line = replaceTableCell(lines[row.line], statusCol, status);
+        if (phase && phaseCol >= 0) {
+          const was = tableCellText(row.cells[phaseCol]);
+          line = replaceTableCell(line, phaseCol, /^phase\b/i.test(was) || !was ? `Phase ${phase}` : phase);
+        } else if (phase) {
+          warnings.push(`${id}: its traceability table has no Phase column, so the move to phase ${phase} is not recorded and completing its old phase ticks it again; use --hold to keep it open`);
+        }
+        lines[row.line] = line;
+        statusWritten = true;
+      }
+    }
+    if (statusWritten) { content = lines.join('\n'); tableUpdated.push(id); found = true; }
+    else if (rowFound) warnings.push(`${id}: its traceability table has no Status column, so the ${label.toLowerCase()} ruling is not recorded and \`phase complete\` may tick it again`);
+    else if (found) warnings.push(`${id}: no traceability table row, so the ${label.toLowerCase()} ruling is not recorded and \`phase complete\` may tick it again`);
+    if (found) reopened.push(id); else notFound.push(id);
+  }
+
+  let roadmapUpdated = [];
+  if (phase && reopened.length > 0) {
+    const roadmapPath = path.join(planningPath(cwd), ROADMAP_FILE);
+    let roadmap = null;
+    try { roadmap = fs.readFileSync(roadmapPath, 'utf-8'); } catch { warnings.push(`${ROADMAP_FILE} not found: phase ${phase} does not list ${reopened.join(', ')}`); }
+    if (roadmap !== null) {
+      for (const id of reopened) {
+        const r = addRequirementToRoadmapPhase(roadmap, phase, id);
+        roadmap = r.content;
+        if (r.updated) roadmapUpdated.push(id);
+        else if (r.reason !== 'already_listed') warnings.push(`${id}: phase ${phase} has no ${r.reason === 'phase_section_not_found' ? 'section' : '**Requirements:** line'} in ${ROADMAP_FILE}; add the id there so its planner sees it`);
+      }
+      if (roadmapUpdated.length > 0) {
+        try { fs.writeFileSync(roadmapPath, roadmap, 'utf-8'); } catch (e) { warnings.push(`${ROADMAP_FILE} could not be written: ${e.message}`); roadmapUpdated = []; }
+      }
+    }
+  }
+
+  if (reopened.length > 0) {
+    try { fs.writeFileSync(reqPath, content, 'utf-8'); } catch (e) {
+      output({ updated: false, error: 'Failed to write requirements.md: ' + e.message }, raw);
+      return;
+    }
+  }
+  output({
+    updated: reopened.length > 0,
+    reopened,
+    held: !!opts.hold,
+    status,
+    phase,
+    unchecked,
+    table_updated: tableUpdated,
+    roadmap_updated: roadmapUpdated,
+    not_found: notFound,
+    ...(reopened.length === 0 ? { error: 'requirement_not_found' } : {}),
+    ...(warnings.length ? { warnings } : {}),
+  }, raw, `${reopened.length}/${ids.length} requirements ${label.toLowerCase()}`);
 }
 
 /**
@@ -324,5 +532,10 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
 module.exports = {
   cmdRequirementsMarkComplete,
   cmdMilestoneComplete,
+  cmdRequirementsReopen,
   markTraceabilityRows,
+  requirementHolds,
+  completionHold,
+  reopenedForPhase,
+  addRequirementToRoadmapPhase,
 };

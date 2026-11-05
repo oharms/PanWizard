@@ -299,6 +299,7 @@ const COMMAND_LOCKS = {
   'roadmap update-plan-progress': [ROADMAP],
   'roadmap slice': { files: [ROADMAP], when: (args) => args.includes('--write') },
   'requirements mark-complete': [REQUIREMENTS],
+  'requirements reopen': [REQUIREMENTS, ROADMAP],
   'milestone complete': [ROADMAP, REQUIREMENTS, STATE],
   'validate health': { files: [CONFIG, ROADMAP, REQUIREMENTS, STATE], when: (args) => args.includes('--repair') },
   'config-set': [CONFIG],

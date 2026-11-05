@@ -137,7 +137,7 @@ fi
 
 A gate whose verdict has no `error` key sets its code explicitly instead: `links validate` (`0` pass / `1` fail), `verify reconcile` (`0` reconciled / `1` contradiction, or no verification to reconcile), `verify stubs --gate`, `campaign due`. Those are documented per command.
 
-**Help:** `pan-tools --help` (also `-h` or `help`) prints the command list and exits `0` — an explicit help request is a success. A *missing* command prints the same usage as an error and exits `1`.
+**Help:** `pan-tools --help` (also `-h` or `help`) prints the command list and exits `0` — an explicit help request is a success. A *missing* command prints the same usage as an error and exits `1`. `pan-tools <command> [subcommand] --help` (or `-h` right after the command or subcommand) prints that command's usage lines and exits `0` without running anything, whatever other flags are given: `test run --help` used to start the test suite.
 
 ### `--cwd <path>`
 
@@ -537,6 +537,7 @@ Quick reference of every CLI command and subcommand, with its category and the m
 | 265 | `pause answer` | Durable orchestration | pause.cjs |
 | 266 | `pause list` | Durable orchestration | pause.cjs |
 | 267 | `pause cancel` | Durable orchestration | pause.cjs |
+| 268 | `requirements reopen` | Requirements | milestone.cjs |
 
 ---
 
@@ -1060,7 +1061,7 @@ pan-tools phase complete 5 [--no-commit]
 }
 ```
 
-`roadmap_status` (`Complete` or `In Progress`), `commit_hash`, `gate_override` (`{reason, refused_by[], disposed[]}`: the `--reason` text, the refusal codes it overrode, and the findings it recorded a `decision` for), `roadmap_warning` and `requirements_warning` are added when they apply. `gate` is `{error}` when the gate itself could not run.
+`roadmap_status` (`Complete` or `In Progress`), `commit_hash`, `gate_override` (`{reason, refused_by[], disposed[]}`: the `--reason` text, the refusal codes it overrode, and the findings it recorded a `decision` for), `roadmap_warning`, `requirements_warning` and `requirements_held` are added when they apply. `requirements_held` lists each requirement the completion left open, `{id, status}`: `on_hold` (its traceability Status says `Held`, `On hold`, `Deferred` or `Blocked`), `moved` (it says `Reopened` or `Moved` and its Phase cell names another phase, listed in `phases`), or the status of its mapped tests. A requirement reopened onto this phase is ticked even when the phase's roadmap line does not name it. `gate` is `{error}` when the gate itself could not run.
 
 **Side effects:** Checks off the phase checkbox in roadmap.md, updates the progress table row, advances `Current Phase` in state.md, and marks the requirements on the phase's own `**Requirements:**` line complete in requirements.md (checkbox and traceability row), reading the phase's section or, in an older roadmap, the line under its checklist entry. Both padded and unpadded phase spellings tick the same lines (`phase complete 01` and `phase complete 1` are equivalent).
 
@@ -1384,6 +1385,33 @@ pan-tools requirements mark-complete "[REQ-01, REQ-02]"
 
 The traceability table is read by its header: the ID column is the one headed `ID`, `Req`, `Requirement` or `Requirement ID` (else the first), and the status cell is the one under `Status` (any case), wherever it sits, in every table that lists the id. Any value other than a done word (`Complete`, `Done`, …) becomes `Complete`, keeping the cell's padding. `updated` says whether anything changed (a checkbox or a row); `table_updated` and `table_marked` say whether, and for which ids, a table row changed. `warnings` (present only when there are any) names an id whose table has no `Status` column (the table is left unchanged) and an id with a checkbox but no table row.
 
+An id whose traceability Status says `Held` (or `On hold`, `Deferred`, `Blocked`) is not ticked: it is listed under `held` as `{id, status}`, because the executor calls this command after every plan and a plan listing the id does not overturn the ruling. `--release` ticks it anyway; that is how a hold is lifted.
+
+### `requirements reopen <ids> --reason "<why>" [--phase N] [--hold]`
+
+Untick a requirement and record why, in the checkbox and the traceability table together.
+
+```bash
+pan-tools requirements reopen NDSB-05 --phase 7 --reason "needs production data"
+pan-tools requirements reopen CIDBT-02 --hold --reason "client ruling: stays open this milestone"
+```
+
+- The checkbox goes back to `[ ]`.
+- The traceability Status becomes `Reopened: <why>` (`Held: <why>` with `--hold`). A pipe in the reason is written as `/` so the table stays a table.
+- With `--phase N`, the Phase cell names phase N, and phase N's `**Requirements:**` line in roadmap.md gets the id if it lacks it (so its planner sees it). The line of the phase it came from is history and is not changed.
+
+`--reason` is required; without it nothing is written. What the ruling then does:
+
+| Status | `phase complete` of its old phase | `phase complete` of phase N | `requirements mark-complete` | `validate health --repair` |
+|---|---|---|---|---|
+| `Reopened` with `--phase N` | leaves it open (`moved`) | ticks it | ticks it | leaves it open |
+| `Reopened` without `--phase` | ticks it again | — | ticks it | ticks it |
+| `Held` | leaves it open (`on_hold`) | leaves it open | only with `--release` | leaves it open |
+
+A Phase cell naming a range (`Phase 3-5`) is never read as a move. Writing these Status values by hand has the same effect.
+
+**JSON output:** `{updated, reopened[], held, status, phase, unchecked[], table_updated[], roadmap_updated[], not_found[], warnings?}`. An id with neither a checkbox nor a table row is listed under `not_found`; when no id was found, `error: "requirement_not_found"` and exit `1`. `warnings` names an id with no table row or no `Status` column (its ruling cannot be recorded, so `phase complete` may tick it again) and a `--phase` with no section or no `**Requirements:**` line in roadmap.md.
+
 ---
 
 ## 7. Milestone Operations
@@ -1474,12 +1502,12 @@ pan-tools validate health --links
 ```
 
 **Flags:**
-- `--repair` — Attempt automatic repairs: create/reset config.json, regenerate a **missing** state.md (E004; an existing state.md is never rewritten, and `regenerateState` on one is reported `skipped`), and tick requirement/plan checkboxes for `STATE_REQ_DRIFT`/`STATE_ROADMAP_DRIFT` (`syncRequirements`/`syncRoadmap`). The `status`, the issue lists and the exit code describe the tree as it was before the repairs ran; run `validate health` again to see the result.
+- `--repair` — Attempt automatic repairs: create/reset config.json, regenerate a **missing** state.md (E004; an existing state.md is never rewritten, and `regenerateState` on one is reported `skipped`), recount state.md's `progress.*` front-matter keys for `STATE_PROGRESS_IMPOSSIBLE` (`recountProgress`; nothing else in the file changes), and tick requirement/plan checkboxes for `STATE_REQ_DRIFT`/`STATE_ROADMAP_DRIFT` (`syncRequirements`/`syncRoadmap`; never a requirement whose Status says `Held`, or `Reopened` onto another phase). The `status`, the issue lists and the exit code describe the tree as it was before the repairs ran; run `validate health` again to see the result.
 - `--standards` — Include standards compliance check (reads standards.md, reports per-standard coverage)
 - `--full` — Run tests and build checks (slower, includes test_status and build_status)
 - `--drift` — Run convention drift analysis (includes drift_status with score and violations)
 - `--links` — Attach `link_graph` summary (ADR-0027). Errors degrade health to a `LINKS_ERR` warning (advisory, non-blocking). Run `pan-tools links validate` standalone for the full finding list.
-- `--only <class>,...` — With `--repair`, run only the named repair classes (`regenerateState`, `createConfig`, `resetConfig`, `syncRequirements`, `syncRoadmap`); the result lists the available classes as `repairs_available`.
+- `--only <class>,...` — With `--repair`, run only the named repair classes (`regenerateState`, `createConfig`, `resetConfig`, `recountProgress`, `syncRequirements`, `syncRoadmap`); the result lists the available classes as `repairs_available`.
 
 **Exit code:** `1` when `status` is `broken` (a missing `.planning/` included), `0` for `healthy` and `degraded` — warnings are not failures. This is a verdict command: it sets the code explicitly instead of deriving it from an `error` key (see "Error Shape" above), so gate on the exit code, not on `errors.length`.
 
@@ -1530,7 +1558,8 @@ pan-tools validate health --links
 | I005 | info | The planning tree is ignored by git while `commit_docs` is true, so planning commits commit nothing. planning-with-files adds `.planning/` to `.gitignore` by default. Fix: remove the entry, or set `commit_docs` to false | No |
 | I006 | info | `config.json` holds keys PAN does not read, usually a typo. The fix names the nearest known key. A key starting with lowercase `x-` is your own metadata and is never reported. Fix: correct the spelling or remove the key | No |
 | I007 | info | `config.json` stores the pre-3.42 default `commit.sensitive_patterns` (bare words such as `secret` and `token` anywhere in a path). PAN already reads it as today's basename defaults. Fix: remove the key, or replace it with your own list | No |
-| STATE_REQ_DRIFT | warning | `state.md` shows all plans complete but `requirements.md` has unchecked boxes | Yes |
+| STATE_PROGRESS_IMPOSSIBLE | warning | `state.md`'s progress counts a completed number above its total (`completed_phases` > `total_phases` or `completed_plans` > `total_plans`), as an older writer left them | Yes |
+| STATE_REQ_DRIFT | warning | `state.md` shows all plans complete but `requirements.md` has unchecked boxes (a requirement held or reopened in its traceability Status is not counted) | Yes |
 | STATE_ROADMAP_DRIFT | warning | `state.md` shows all plans complete but `roadmap.md` has unchecked plan boxes | Yes |
 | VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record (verifier enabled) | No |
 

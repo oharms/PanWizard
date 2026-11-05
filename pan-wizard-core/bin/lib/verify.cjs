@@ -1188,6 +1188,17 @@ function repairIssues(cwd, repairs) {
           repairActions.push({ action: repair, success: true, path: CONFIG_FILE });
           break;
         }
+        case 'recountProgress': {
+          // The front matter's progress.* keys from countPlanProgress; nothing else in the file moves.
+          try {
+            const current = fs.readFileSync(statePath, 'utf-8');
+            writeStateMd(statePath, current, cwd, { owns: [], counts: true, writeCounts: true });
+            repairActions.push({ action: repair, success: true });
+          } catch (e) {
+            repairActions.push({ action: repair, success: false, error: e.message || 'recount_failed' });
+          }
+          break;
+        }
         case 'syncRequirements': {
           const syncResult = syncRequirementCheckboxes(cwd);
           repairActions.push({ action: repair, success: !syncResult.error, fixed: syncResult.fixed, error: syncResult.error || undefined });
@@ -1355,12 +1366,16 @@ function syncRequirementCheckboxes(cwd) {
 
   // For each completed phase, find linked requirement IDs and check their boxes
   let fixed = 0;
+  const ms = require('./milestone.cjs');
+  const holds = ms.requirementHolds(reqContent);
   for (const phaseNum of completedPhases) {
     // The phase's own requirements, as `phase complete` reads them: a bare "Phase N …
     // Requirements" search took the first section's line for every phase when the
     // checklist sits above the sections, as templates/roadmap.md lays it out.
     const reqIds = roadmapRequirementIds(roadmapContent, phaseNum);
     for (const reqId of reqIds) {
+      // A Held or moved ruling is the user's: the repair never ticks over it.
+      if (ms.completionHold(holds, reqId, phaseNum)) continue;
       const escaped = escapeRegex(reqId);
       const re = new RegExp(`(- \\[) (\\]\\s*\\*\\*${escaped}\\*\\*)`, 'gi');
       const before = reqContent;
@@ -1446,11 +1461,27 @@ function checkStateConsistency(cwd, addIssue, repairs) {
   } catch { return; } // No state file — other checks handle this
   if (!stateFm || !stateFm.progress) return;
 
+  // Counts no single count can produce (completed above total): an older writer
+  // mixed the milestone's phases with every phase ever completed (field: total 6,
+  // completed 51). The repair recounts them from disk, as update-progress does.
+  const pr = stateFm.progress;
+  const over = [['completed_phases', 'total_phases'], ['completed_plans', 'total_plans']]
+    .filter(([c, t]) => pr[c] != null && pr[t] != null && Number(pr[c]) > Number(pr[t]));
+  if (over.length > 0) {
+    addIssue('warning', 'STATE_PROGRESS_IMPOSSIBLE',
+      `STATE.md progress counts cannot be right: ${over.map(([c, t]) => `${c} ${pr[c]} > ${t} ${pr[t]}`).join(', ')}`,
+      'Run /pan:health --repair (or pan-tools state update-progress) to recount them from the phase directories', true);
+    if (repairs) repairs.push('recountProgress');
+  }
+
   // Check REQUIREMENTS.md checkbox count vs STATE expectations
   try {
     const reqContent = fs.readFileSync(reqPath, 'utf-8');
     const checkedBoxes = (reqContent.match(/- \[x\]/gi) || []).length;
-    const uncheckedBoxes = (reqContent.match(/- \[ \]/g) || []).length;
+    // A requirement held or reopened on purpose is not drift.
+    const ruled = require('./milestone.cjs').requirementHolds(reqContent);
+    const uncheckedBoxes = [...reqContent.matchAll(/- \[ \]\s*(?:\*\*([^*\n]+)\*\*)?/g)]
+      .filter((m) => !(m[1] && ruled.has(m[1].trim().toLowerCase()))).length;
     const totalBoxes = checkedBoxes + uncheckedBoxes;
     if (totalBoxes > 0 && uncheckedBoxes > 0) {
       const completedPlans = Number(stateFm.progress.completed_plans) || 0;

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Five items from the field report on 3.42.0.
+
+### Added
+
+- **`requirements reopen <ids> --reason "..." [--phase N] [--hold]`.** PAN could only tick a requirement, so reopening one meant editing its checkbox and its traceability row by hand. `reopen` clears the checkbox and records the ruling in the traceability Status (`Reopened: <reason>`, or `Held: <reason>`). With `--phase N` it also sets the Phase cell to N and adds the id to phase N's `**Requirements:**` line. `/pan:milestone-gaps` now uses it instead of telling the agent to edit both by hand.
+
+### Fixed
+
+- **`phase complete` respects a hold or a move.** It ticked every requirement on the phase's roadmap line, including one ruled to stay open or moved to another phase. A `Held`, `On hold`, `Deferred` or `Blocked` Status keeps a requirement open. A `Reopened` or `Moved` Status whose Phase cell names another phase does the same until that phase completes, and completing that phase ticks it even when its roadmap line does not name it. The result lists what was left open as `requirements_held`, which `phase complete` computed before but never printed. Two other paths now respect a hold too:
+  - `requirements mark-complete`, which the executor calls after every plan, skips a `Held` id unless `--release` is given.
+  - The `validate health --repair` requirements sync never ticks over a hold or a move.
+- **Impossible progress counts in `state.md`.** A file written by an older release could record `completed_phases: 51` against `total_phases: 6`, mixing all-time counts with this milestone's. 3.42.0's writers cannot produce that, but they kept an existing bad value until a counted write. `validate health` now reports it as `STATE_PROGRESS_IMPOSSIBLE`, and its `recountProgress` repair recounts only the `progress.*` keys.
+- **`pan-tools <command> --help` runs nothing.** `test run --help` ignored the flag and started the test suite, and a writer given `--help` wrote. Any command or subcommand given `--help` now prints its usage lines and exits `0`.
+- **Old patch backups.** A backup in `pan-local-patches/` was announced as "Local patches detected … run /pan:patches" on every install until it was deleted by hand (a 3.27.0 backup was still announced in 3.42.0), and merging it would have reverted upstream fixes. The installer now:
+  - drops each backed-up file the installed version already matches, and removes the backup once nothing is left;
+  - reports a backup an earlier update made as an old backup (`stale: true` in `backup-meta.json`) and says to compare before merging, or to delete it.
+
+  `/pan:update` and `/pan:patches` follow the same rule.
+
 ## [3.42.0] - 2026-11-04
 
 Field defects PAN-01 to PAN-25 (`docs/specs/field_defects_342_featureai.md`). A long-running project with decimal phases, several shipped milestones and hundreds of plans had banned most of PAN's `state.md` writers and patched two core files locally, because the writers damaged `state.md` and its counts. This release fixes those defects at their root, so a project can drop the bans and the patch.
