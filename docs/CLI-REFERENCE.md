@@ -236,7 +236,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `phase-gate.cjs` | **(program V1)** `phase gate <N>`: whether a phase may be marked complete, in code. Refuses (one reason code each) on a plan without a summary, no verification, a failed one (with code facts applied), `human_needed` without a recorded approval, a stale verification, a reconcile contradiction, a failed test gate, open critical/high findings, committed stubs, or a test-integrity violation; what it could not check is listed in `not_checked`. `phase complete`, the native `pan-exec-waves` script and the MCP merge request all use it. |
 | `verify-integrity.cjs` | **(program V3)** `verify test-integrity <phase>`: walks the phase's plan commits and reports a deleted test, a skip or only marker added (JS, Python, Go, Rust, Java), assertions dropped, an assertion edited in a test no plan declares, a rewritten snapshot, or an assertion that cannot fail; a renamed test is a warning. Uses verify-scope's `committedFiles()`. |
 | `verify-plan-set.cjs` | **(program V7)** `verify plan-set <phase>`: the plan checks code can make, before the plan checker runs (requirement coverage, same-wave file overlap, missing, self and future references, cycles, wave gaps). `planCheckStatus()` binds a passing plan check to the plans it checked through the `plans_sha` the recorder stores with every plan-checker verdict; `planDrift()` lists planned files changed since a plan's `planned_commit`. `init execute-phase` carries both as `plan_check` and `plan_drift`. |
-| `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. `verify stale <phase>`: whether the files a verification covered changed since its `verified_commit`. `review scope <phase>` (program R1): the files a reviewer reads (the phase's commits plus uncommitted and untracked work) and the plans' intent. Re-exported through verify.cjs. |
+| `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. `verify stale <phase>`: whether the files a verification covered changed since its `verified_commit`. `verify refresh <phase> --reason R`: moves a stale verification to HEAD when only comments changed. `review scope <phase>` (program R1): the files a reviewer reads (the phase's commits plus uncommitted and untracked work) and the plans' intent. Re-exported through verify.cjs. |
 | `plan-lint.cjs` | **(program P4, P2)** `verify review-focus <phase>`: every plan has a `## Review Focus` of at most five items, each naming its owning task and a test, or one `None — <reason>` line. `verify decisions <phase>`: plans cite only `DD-N` decision ids the phase design records, and every recorded decision is cited. `/pan:plan-phase` runs both with `verify plan-set` before the plan checker. `verify gates <phase>`: a task's `<verify>` command that already passes before any work is flagged. |
 | `research-lint.cjs` | **(program P3)** `research lint <phase\|path>`: the research file's `## Claims` table (claim · type · source · checked), or the answered rows of its answers table. A claim with no source or no date is an error; one older than its type's freshness window is `stale`. `research check <questions> <research> [--market]`: at most five questions, each answered with a source or `unknown` with an assumption, at most five comparable products. |
 | `usage.cjs` | **(program L9)** `usage`: a local census of the installed commands and agents against the project's cost ledger and trace sessions: used (calls, last use), never used, and commands started but never finished. Local files only. |
@@ -538,6 +538,7 @@ Quick reference of every CLI command and subcommand, with its category and the m
 | 266 | `pause list` | Durable orchestration | pause.cjs |
 | 267 | `pause cancel` | Durable orchestration | pause.cjs |
 | 268 | `requirements reopen` | Requirements | milestone.cjs |
+| 269 | `verify refresh` | Verification | verify-scope.cjs |
 
 ---
 
@@ -1061,7 +1062,7 @@ pan-tools phase complete 5 [--no-commit]
 }
 ```
 
-`roadmap_status` (`Complete` or `In Progress`), `commit_hash`, `gate_override` (`{reason, refused_by[], disposed[]}`: the `--reason` text, the refusal codes it overrode, and the findings it recorded a `decision` for), `roadmap_warning`, `requirements_warning` and `requirements_held` are added when they apply. `requirements_held` lists each requirement the completion left open, `{id, status}`: `on_hold` (its traceability Status says `Held`, `On hold`, `Deferred` or `Blocked`), `moved` (it says `Reopened` or `Moved` and its Phase cell names another phase, listed in `phases`), or the status of its mapped tests. A requirement reopened onto this phase is ticked even when the phase's roadmap line does not name it. `gate` is `{error}` when the gate itself could not run.
+`roadmap_status` (`Complete` or `In Progress`), `commit_hash`, `gate_override` (`{reason, refused_by[], disposed[]}`: the `--reason` text, the refusal codes it overrode, and the findings it recorded a `decision` for), `roadmap_warning`, `requirements_warning` and `requirements_held` are added when they apply. `requirements_held` lists each requirement the completion left open, `{id, status}`: `on_hold` (its traceability Status says `Held`, `On hold`, `Deferred` or `Blocked`), `moved` (it says `Reopened` or `Moved` and its Phase cell names another phase, listed in `phases`), or the status of its mapped tests; a `not_checked` entry adds `not_checked: [{file, reason}]`, each test no command could run and why (set `workflow.test_file_command` with `{file}` or `{dir}`, or record a passing `test run --phase N`). A requirement reopened onto this phase is ticked even when the phase's roadmap line does not name it. `gate` is `{error}` when the gate itself could not run.
 
 **Side effects:** Checks off the phase checkbox in roadmap.md, updates the progress table row, advances `Current Phase` in state.md, and marks the requirements on the phase's own `**Requirements:**` line complete in requirements.md (checkbox and traceability row), reading the phase's section or, in an older roadmap, the line under its checklist entry. Both padded and unpadded phase spellings tick the same lines (`phase complete 01` and `phase complete 1` are equivalent).
 
@@ -1248,7 +1249,7 @@ pan-tools roadmap analyze
 
 ### `roadmap update-plan-progress <phase>`
 
-Update the progress table row and the `**Plans:**` count in roadmap.md for a specific phase from its plans paired with their own summaries, a summary with no plan counting for nothing (the number matches padded or not); when the phase is complete it also ticks the phase checkbox (with the completion date), and it ticks each plan's own checkbox whose summary exists.
+Update the progress table row and the `**Plans:**` count in roadmap.md for a specific phase from its plans paired with their own summaries, a summary with no plan counting for nothing (the number matches padded or not), and it ticks each plan's own checkbox whose summary exists. Status is `Planned`, `In Progress`, or `Executed` once every plan has a summary. **It does not complete the phase:** before 3.42.2 a fully executed phase was ticked `(completed DATE)` and dated here, before it was verified. Only `phase complete`, past the phase gate, ticks the phase checkbox and writes the date; a phase it already ticked stays `Complete` with its own date.
 
 The table cells are found **by header name**: the row whose first cell names the phase, in a table whose header has a Plans column and a Status column, gets those two cells (and a Completed column's date) rewritten; every other cell is left as it was. A table without Plans and Status columns is not touched — the output says `table_updated: false` with the reason in `table_reason`. The `**Plans:**` line is rewritten only inside the phase's own section, never the next phase's.
 
@@ -1263,13 +1264,15 @@ pan-tools roadmap update-plan-progress 5 [--raw]
   "phase": "5",
   "plan_count": 3,
   "summary_count": 3,
-  "status": "Complete",
-  "complete": true,
+  "status": "Executed",
+  "complete": false,
+  "all_plans_executed": true,
+  "next": "verify the phase; `phase complete` ticks it and dates it",
   "table_updated": true
 }
 ```
 
-**`--raw` output:** `3/3 Complete` (plus ` (progress table not updated)` when no table row was rewritten).
+`complete` is true only for a phase `phase complete` already ticked. **`--raw` output:** `3/3 Executed` (plus ` (progress table not updated)` when no table row was rewritten).
 
 ---
 
@@ -1549,7 +1552,7 @@ pan-tools validate health --links
 | W003 | warning | `config.json` not found | Yes |
 | W004 | warning | `config.json` invalid `model_profile` value | No |
 | W005 | warning | Phase directory naming doesn't match `NN-name` format | No |
-| W006 | warning | Phase in ROADMAP at or behind the current phase, but no directory on disk | No |
+| W006 | warning | Phase in ROADMAP at or behind the current phase, but no directory on disk (a shipped milestone's phase reports as I009) | No |
 | W007 | warning | Phase on disk but not in ROADMAP | No |
 | I001 | info | Plan without SUMMARY (may be in progress) | No |
 | I002 | info | Phase in ROADMAP ahead of the current phase, not planned yet | No |
@@ -1558,10 +1561,12 @@ pan-tools validate health --links
 | I005 | info | The planning tree is ignored by git while `commit_docs` is true, so planning commits commit nothing. planning-with-files adds `.planning/` to `.gitignore` by default. Fix: remove the entry, or set `commit_docs` to false | No |
 | I006 | info | `config.json` holds keys PAN does not read, usually a typo. The fix names the nearest known key. A key starting with lowercase `x-` is your own metadata and is never reported. Fix: correct the spelling or remove the key | No |
 | I007 | info | `config.json` stores the pre-3.42 default `commit.sensitive_patterns` (bare words such as `secret` and `token` anywhere in a path). PAN already reads it as today's basename defaults. Fix: remove the key, or replace it with your own list | No |
+| I008 | info | Phases of shipped milestones that have no verification record, in one line. A phase belongs to a shipped milestone when a line names the version, a shipped marker (✅, shipped, complete) and its phase range (`- ✅ **v1.0 MVP** - Phases 1-4`), or when its heading sits in that milestone's section or collapsed `<details>` block; a line with an open marker (🚧, in progress, planned) is not shipped | No |
+| I009 | info | Phases of shipped milestones listed in the roadmap with no directory, in one line (W006 for the rest). A folder under `milestones/vX-phases/` counts as on disk | No |
 | STATE_PROGRESS_IMPOSSIBLE | warning | `state.md`'s progress counts a completed number above its total (`completed_phases` > `total_phases` or `completed_plans` > `total_plans`), as an older writer left them | Yes |
 | STATE_REQ_DRIFT | warning | `state.md` shows all plans complete but `requirements.md` has unchecked boxes (a requirement held or reopened in its traceability Status is not counted) | Yes |
 | STATE_ROADMAP_DRIFT | warning | `state.md` shows all plans complete but `roadmap.md` has unchecked plan boxes | Yes |
-| VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record (verifier enabled) | No |
+| VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record (verifier enabled). A phase of a shipped milestone reports as I008 instead | No |
 
 Codes emitted only under the corresponding flag:
 
@@ -1867,6 +1872,17 @@ pan-tools verify stale 3 --raw    # fresh | stale | unverified | unknown
 
 `state` is `fresh`, `stale`, `unverified` (no verification file) or `unknown`. `unknown` comes with a `reason`: the verification records no `verified_commit`, the commit is no longer in the repository (rebased or squashed), the phase declares no files, or git is unavailable. `progress json` adds `verification` to each verified phase (and `changed_since_verification` when it is stale), and `progress table` marks a stale phase `Complete (verification stale)`. Exits 1 without a phase or for an unknown one.
 
+### `verify refresh <phase> --reason "<what changed>"`
+
+Move a stale verification to HEAD when nothing but comments changed since its `verified_commit` (field report on 3.42.1: a one-word comment fix made the phase gate refuse, and the only way past was editing `verified_commit` by hand). It reads `git diff -U0` from the verified commit to HEAD over the files `verify stale` lists. In each hunk, the code left on the removed lines, once comments and blank lines are cut away, must equal the code left on the added lines. On success it writes `verified_commit: <HEAD>`, `refreshed_from: <old sha>` and `refresh_reason` into the verification's front matter and logs a `verification_refreshed` decision to the trace.
+
+```bash
+pan-tools verify refresh 3 --reason "typo in a comment"   # {phase, refreshed: true, verification, refreshed_from, verified_commit, files[], reason}
+pan-tools verify refresh 3 --reason "…" --raw             # refreshed | fresh | code_changed | uncommitted_changes | …
+```
+
+Comments are known by file type: `//` and `/* … */` (JavaScript, TypeScript, Go, Java, C, C++, C#, Rust, Kotlin, Swift, Scala, Dart, PHP, …), `#` (Python, shell, Ruby, Perl, R, PowerShell, YAML, TOML, Terraform, Makefile, Dockerfile, …), `--` (SQL, Lua, Haskell), `;` (ini, Lisp), `%` (TeX, Erlang). A token counts at the start of a line or after whitespace, so `http://` is code; a `#` or `//` inside a string after a space reads as a comment, which is why the reason is required and recorded. Refusals, each with an `error` key and nothing written: `reason_required`, `phase_not_found`, `verification_unverified` or `verification_unknown` (nothing to refresh), `uncommitted_changes` (commit the edit first, `files` lists them), `code_changed` (`code_changes: [{file, reason}]`: a changed line of code, a file type with no known comment syntax, or an added, deleted, renamed, binary or mode-changed file; re-verify with `/pan:verify-phase`). A verification that is already fresh returns `refreshed: false`.
+
 ### `verify plan-set <phase>`
 
 The checks a plan set has to pass that code can make (program V7). `/pan:plan-phase` runs it before spawning the plan checker, and also when the checker is skipped (`--skip-verify`, `workflow.plan_check` off), and sends its errors straight back to the planner.
@@ -1913,9 +1929,9 @@ pan-tools verify gates 3 --raw    # valid | invalid
 
 **Module:** `plan-lint.cjs`
 
-### `verify requirements` · `verify traceability [<REQ-ID> ...]` (program V8)
+### `verify requirements` · `verify traceability [<REQ-ID> ...] [--phase N]` (program V8)
 
-`verify requirements` fails a v1 requirement in `requirements.md` with no EARS acceptance criterion (`req_no_scenario`, exit 1). `verify traceability` runs the tests each requirement's `Test:` sub-bullets name: `passed`, `failing` (exit 1; a missing test file counts), `not_checked` (a criterion with no mapped test) or `legacy` (no criteria). Named ids (`AUTH-01`) trace only those requirements; an argument that is not a requirement id (`auth-01`) is an error (exit 1, `not a requirement id`), not a fallback to every requirement. A missing `requirements.md` is `requirements_not_found` (exit 1) for both. `phase complete` ticks a requirement with criteria only when its trace passes.
+`verify requirements` fails a v1 requirement in `requirements.md` with no EARS acceptance criterion (`req_no_scenario`, exit 1). `verify traceability` runs the tests each requirement's `Test:` sub-bullets name: `passed`, `failing` (exit 1; a missing test file counts), `not_checked` (a criterion with no mapped test) or `legacy` (no criteria). Named ids (`AUTH-01`) trace only those requirements; an argument that is not a requirement id (`auth-01`) is an error (exit 1, `not a requirement id`), not a fallback to every requirement. A missing `requirements.md` is `requirements_not_found` (exit 1) for both. `phase complete` ticks a requirement with criteria only when its trace passes. `--phase N` lets a test file no per-file command can run count as passed when the phase's engine test run (`{NN}-test-run.json`) passed, no failing or pre-existing failure names the file or its folder, and the file has not changed since the commit the run tested (`via: suite_run` on that test); `phase complete` always passes its own phase. Each test's own command has `workflow.test_timeout_minutes` as its limit (3 minutes without it).
 
 ```bash
 pan-tools verify requirements        # {ok, requirements: [{id, criteria, tests}], errors[]}; --raw valid | invalid
@@ -2043,7 +2059,7 @@ The **base** is the parent of the phase's oldest plan commit (subjects like `fea
 | `not_green` | fails at HEAD |
 | `not_checked` | no command can run that one file, with the reason |
 
-The one-file command is `workflow.test_file_command` from config.json (a `{file}` placeholder), else derived from the suite's runner: `node --test <file>`, jest, vitest or mocha through `npx --no-install`, `python -m pytest <file>`, or `go test ./<dir>`. Cargo, Maven, Gradle and make have none. Exit 1 when a file is `not_red` or `not_green`; a phase with no plan commits, no changed test or no runnable one is `checked: false` and exits 0.
+The one-file command is `workflow.test_file_command` from config.json (a `{file}` placeholder, the file; or `{dir}`, its folder as `./dir`, for runners that test a folder: `go test {dir}`), else derived from the suite's runner: `node --test <file>`, jest, vitest or mocha through `npx --no-install`, `python -m pytest <file>`, or `go test ./<dir>`. Cargo, Maven, Gradle and make have none. Exit 1 when a file is `not_red` or `not_green`; a phase with no plan commits, no changed test or no runnable one is `checked: false` and exits 0.
 
 ### `verify mutate --phase N [--max <n>] [--seed <n>] [--timeout <ms>]`
 
@@ -2080,10 +2096,12 @@ pan-tools test run --phase 3 --raw         # passed | failed | skipped
 | `status` | When |
 |---|---|
 | `passed` | the suite exited 0; or, against a baseline, every failure was already failing at the baseline (`preexisting_failures`) |
-| `failed` | a failing test the baseline did not have (`regressions`); a failure with no baseline; a runner that exited 0 but reported failures; or the suite did not run: a non-zero exit with no failing test reported, a crash or a build error (`reason: "suite did not run: …"`), or a timeout (`reason: "the suite timed out"`) |
+| `failed` | a failing test the baseline did not have (`regressions`); a failure with no baseline; a runner that exited 0 but reported failures; or the suite did not run: a non-zero exit with no failing test reported, a crash or a build error (`reason: "suite did not run: …"`), or a timeout (`reason: "the suite timed out after …"`) |
 | `skipped` | nothing to run: no test command, or one that ran no tests |
 
-A `--baseline` run keeps an existing baseline (`kept_existing: true`, nothing run) unless `--rebaseline`: a resumed run or a gaps-only round compares against the phase's start. The record holds `version`, `kind` (`run` or `baseline`), `phase`, `command`, `source` (`flag` under `--command`), `head`, `started_at`, `exit`, `timed_out` (only when it did), `duration_ms`, `runner`, `parsed`, `total`, `passed`, `failed`, `skipped`, `failing[]`, `status`, `reason`, `regressions[]`, `preexisting_failures[]`, `baseline` (`{head, status, failing}`, `failing` being its failure count, when compared with one) and `output_tail` (with no test command, `timed_out`, `baseline` and `output_tail` are absent); with `--phase` the printed result adds `record`, the path it wrote. The command exits 0 whatever the `status`: callers read `status` (an unknown `--phase` exits 1). The verifier copies `test_gate` from it, `verify reconcile` reports a verification whose `test_gate` disagrees with it, the verdict recorder lowers a verifier's pass over a failed run, and `phase gate` refuses on it. `validate health --full` runs the same gate.
+**The time limit:** `--timeout <ms>`, else `workflow.test_timeout_minutes` from config.json, else 15 minutes. A run that reaches it is `failed` with `reason: "the suite timed out after N min; raise workflow.test_timeout_minutes …"`, and the record holds `timeout_ms`.
+
+A `--baseline` run keeps an existing baseline (`kept_existing: true`, nothing run) unless `--rebaseline`: a resumed run or a gaps-only round compares against the phase's start. The record holds `version`, `kind` (`run` or `baseline`), `phase`, `command`, `source` (`flag` under `--command`), `head`, `started_at`, `exit`, `timed_out` (only when it did), `timeout_ms`, `duration_ms`, `runner`, `parsed`, `total`, `passed`, `failed`, `skipped`, `failing[]`, `status`, `reason`, `regressions[]`, `preexisting_failures[]`, `baseline` (`{head, status, failing}`, `failing` being its failure count, when compared with one) and `output_tail` (with no test command, `timed_out`, `baseline` and `output_tail` are absent); with `--phase` the printed result adds `record`, the path it wrote. The command exits 0 whatever the `status`: callers read `status` (an unknown `--phase` exits 1). The verifier copies `test_gate` from it, `verify reconcile` reports a verification whose `test_gate` disagrees with it, the verdict recorder lowers a verifier's pass over a failed run, and `phase gate` refuses on it. `validate health --full` runs the same gate.
 
 ### `test detect`
 

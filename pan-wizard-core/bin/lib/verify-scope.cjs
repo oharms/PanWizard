@@ -385,4 +385,144 @@ function cmdVerifyStale(cwd, phase, raw) {
   output(r, raw, r.error ? undefined : r.state);
 }
 
-module.exports = { scopePhase, cmdVerifyScope, reviewScope, cmdReviewScope, workingTreeFiles, sectionBody, verificationFreshness, cmdVerifyStale, coveredFiles, committedFiles, withCommitLogCache, LOCKFILES, TEST_PATH_RE, TEST_FILE_RE };
+// ─── Comment-only refresh (field report on 3.42.1, item 2) ──────────────────
+// A one-word comment fix made a passing verification stale, and the only way past
+// the gate was editing `verified_commit` by hand. `verify refresh` moves it to HEAD
+// when every line that changed since the verified commit is a comment or blank, and
+// records the old commit and the reason. Anything else still needs /pan:verify-phase.
+
+const SLASH = { line: ['//'], block: true };
+const HASH = { line: ['#'] };
+const COMMENT_SYNTAX = {
+  ...Object.fromEntries(['js', 'cjs', 'mjs', 'jsx', 'ts', 'cts', 'mts', 'tsx', 'go', 'java', 'c', 'h', 'cc', 'cpp', 'cxx', 'hpp', 'hh', 'cs', 'rs', 'kt', 'kts', 'swift', 'scala', 'dart', 'groovy', 'gradle', 'proto', 'zig', 'v', 'sol'].map((e) => [e, SLASH])),
+  php: { line: ['//', '#'], block: true },
+  css: { line: [], block: true }, scss: SLASH, less: SLASH,
+  ...Object.fromEntries(['py', 'pyi', 'sh', 'bash', 'zsh', 'fish', 'rb', 'pl', 'pm', 'r', 'ps1', 'psm1', 'yaml', 'yml', 'toml', 'tf', 'hcl', 'cmake', 'nix', 'ex', 'exs', 'jl', 'cr', 'nim', 'conf', 'cfg'].map((e) => [e, HASH])),
+  ...Object.fromEntries(['sql', 'lua', 'hs', 'elm', 'ada'].map((e) => [e, { line: ['--'] }])),
+  ini: { line: [';', '#'] }, clj: { line: [';'] }, lisp: { line: [';'] }, el: { line: [';'] }, asm: { line: [';'] },
+  tex: { line: ['%'] }, erl: { line: ['%'] },
+  vim: { line: ['"'] },
+};
+const COMMENT_SYNTAX_BY_NAME = { makefile: HASH, dockerfile: HASH, 'cmakelists.txt': HASH, gemfile: HASH, rakefile: HASH };
+
+function commentSyntax(file) {
+  const base = path.posix.basename(String(file)).toLowerCase();
+  if (COMMENT_SYNTAX_BY_NAME[base]) return COMMENT_SYNTAX_BY_NAME[base];
+  const ext = base.includes('.') ? base.split('.').pop() : '';
+  return COMMENT_SYNTAX[ext] || null;
+}
+
+/**
+ * The code left on a line once its comment is cut off. A line-comment token counts
+ * at the start or after whitespace (so `http://` is code); a C-family line that
+ * opens with `/*`, or with `*` followed by a space, `/` or nothing, is a
+ * block-comment line. A `#` or `//` inside a string literal after a space is read as
+ * a comment: the reason `verify refresh` records is the check on that. Pure.
+ */
+function codeOfLine(line, syntax) {
+  const t = String(line).trim();
+  if (!t) return '';
+  // ` * text` and ` */` continue a block comment; `*p++` is code.
+  if (syntax.block && (/^\/\*/.test(t) || /^\*(?:\s|\/|$)/.test(t))) {
+    const close = t.indexOf('*/');
+    return close === -1 ? '' : t.slice(close + 2).trim();
+  }
+  let cut = t.length;
+  for (const tok of syntax.line) {
+    const re = new RegExp(`(^|\\s)${tok.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}`);
+    const m = re.exec(t);
+    if (m && m.index + m[1].length < cut) cut = m.index + m[1].length;
+  }
+  if (syntax.block) {
+    const m = /(^|\s)\/\*.*?\*\/\s*$/.exec(t);
+    if (m && m.index < cut) cut = m.index;
+  }
+  return t.slice(0, cut).trim();
+}
+
+/**
+ * Whether a `git diff -U0` changes only comments and blank lines. Per hunk, the code
+ * left on the removed lines must equal the code left on the added lines, in order.
+ * A file with no known comment syntax, a binary file, a rename or a mode change is
+ * never comment-only. Pure.
+ * @returns {{ok: boolean, files: string[], code_changes: Array<{file, reason}>}}
+ */
+function commentOnlyDiff(diffText) {
+  const files = [];
+  const codeChanges = [];
+  let file = null; let syntax = null; let removed = []; let added = []; let flagged = false;
+  const flush = () => {
+    if (!file || flagged) { removed = []; added = []; return; }
+    const a = removed.map((l) => codeOfLine(l, syntax)).filter(Boolean);
+    const b = added.map((l) => codeOfLine(l, syntax)).filter(Boolean);
+    if (a.length !== b.length || a.some((x, i) => x !== b[i])) { codeChanges.push({ file, reason: 'a line of code changed' }); flagged = true; }
+    removed = []; added = [];
+  };
+  const flag = (reason) => { if (file && !flagged) { codeChanges.push({ file, reason }); flagged = true; } };
+  for (const line of String(diffText || '').replace(/\r\n/g, '\n').split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      flush();
+      const m = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
+      file = m ? m[2] : line.slice(11); flagged = false;
+      files.push(file);
+      syntax = commentSyntax(file);
+      if (!syntax) flag('no known comment syntax for this file type');
+      continue;
+    }
+    if (!file) continue;
+    if (/^(new|deleted) file mode|^rename (from|to)|^old mode|^new mode|^Binary files/.test(line)) { flag('added, deleted, renamed, binary or mode change'); continue; }
+    if (line.startsWith('@@')) { flush(); continue; }
+    if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('index ')) continue;
+    if (line.startsWith('-')) removed.push(line.slice(1));
+    else if (line.startsWith('+')) added.push(line.slice(1));
+  }
+  flush();
+  return { ok: files.length > 0 && codeChanges.length === 0, files, code_changes: codeChanges };
+}
+
+/**
+ * `verify refresh <phase> --reason R`: re-point a stale verification at HEAD when
+ * the changes since its commit are comments only. Refuses uncommitted changes (the
+ * new commit must hold them) and any change to code.
+ */
+function refreshVerification(cwd, phase, opts = {}) {
+  const reason = String(opts.reason || '').trim();
+  if (!reason) return { error: 'reason_required', reason: 'Usage: verify refresh <phase> --reason "<what changed>"' };
+  const info = findPhaseInternal(cwd, phase);
+  if (!info) return { error: 'phase_not_found', reason: `no phase directory for phase ${phase}` };
+  const fresh = verificationFreshness(cwd, phase, info);
+  if (fresh.state === 'fresh') return { phase: fresh.phase, refreshed: false, state: 'fresh', verified_commit: fresh.verified_commit, reason: 'the verification already describes the code' };
+  if (fresh.state !== 'stale') return { error: `verification_${fresh.state}`, reason: fresh.reason || 'the phase has no verification; run /pan:verify-phase' };
+  const head = execGit(cwd, ['rev-parse', 'HEAD']);
+  if (head.exitCode !== 0) return { error: 'no_head', reason: 'git rev-parse HEAD failed' };
+  const headSha = head.stdout.trim();
+  const dirty = execGit(cwd, ['-c', 'core.quotepath=off', 'diff', '--name-only', '--relative', 'HEAD', '--', ...fresh.changed_since]);
+  const uncommitted = dirty.stdout.split('\n').map(normalisePath).filter(Boolean);
+  if (uncommitted.length) return { error: 'uncommitted_changes', reason: `commit these first, then refresh: ${uncommitted.join(', ')}`, files: uncommitted };
+  const diff = execGit(cwd, ['-c', 'core.quotepath=off', 'diff', '-U0', '--no-color', '--no-ext-diff', '--relative', fresh.verified_commit, headSha, '--', ...fresh.changed_since]);
+  if (diff.exitCode !== 0) return { error: 'diff_failed', reason: 'git diff failed' };
+  const check = commentOnlyDiff(diff.stdout);
+  if (!check.ok) {
+    return { error: 'code_changed', reason: 'more than comments changed since the verified commit; run /pan:verify-phase', phase: fresh.phase, verified_commit: fresh.verified_commit, code_changes: check.code_changes };
+  }
+  const file = path.join(cwd, fresh.verification);
+  const { patchFrontmatter } = require('./frontmatter.cjs');
+  const text = safeReadFile(file) || '';
+  fs.writeFileSync(file, patchFrontmatter(text, { set: { verified_commit: headSha, refreshed_from: fresh.verified_commit, refresh_reason: reason } }), 'utf-8');
+  try {
+    require('./optimize.cjs').logTraceEvent(cwd, {
+      type: 'decision', category: 'verification_refreshed', agent: 'orchestrator', phase: fresh.phase,
+      description: `phase ${fresh.phase} verification moved from ${fresh.verified_commit.slice(0, 7)} to ${headSha.slice(0, 7)} (comment-only changes): ${reason}`,
+      impact: 'minor', context: { files: check.files, reason },
+    });
+  } catch { /* telemetry is best effort */ }
+  return { phase: fresh.phase, refreshed: true, verification: fresh.verification, refreshed_from: fresh.verified_commit, verified_commit: headSha, files: check.files, reason };
+}
+
+function cmdVerifyRefresh(cwd, phase, opts, raw) {
+  if (!phase) { output({ error: 'phase_required', reason: 'Usage: verify refresh <phase> --reason "<what changed>"' }, raw); return; }
+  const r = refreshVerification(cwd, phase, opts);
+  output(r, raw, r.error ? r.error : (r.refreshed ? 'refreshed' : r.state));
+}
+
+module.exports = { scopePhase, cmdVerifyScope, reviewScope, cmdReviewScope, workingTreeFiles, sectionBody, verificationFreshness, cmdVerifyStale, coveredFiles, committedFiles, withCommitLogCache, LOCKFILES, TEST_PATH_RE, TEST_FILE_RE, commentOnlyDiff, codeOfLine, commentSyntax, refreshVerification, cmdVerifyRefresh };

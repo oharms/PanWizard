@@ -19,7 +19,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { output, toLf } = require('./core.cjs');
+const { output, toLf, execGit } = require('./core.cjs');
 const { planningPath } = require('./utils.cjs');
 const { REQUIREMENTS_FILE } = require('./constants.cjs');
 const TG = require('./test-gate.cjs');
@@ -67,18 +67,42 @@ function lintRequirements(cwd) {
   return { ok: errors.length === 0, requirements: reqs.map((r) => ({ id: r.id, criteria: r.criteria.length, tests: r.tests.length })), errors };
 }
 
+/**
+ * The phase's engine test run as evidence for one test file no per-file command can
+ * run (a shell test, or Go behind a custom suite command): the run passed, no failing
+ * or pre-existing failure names the file or its folder, and the file has not changed
+ * since the commit the run tested. Null when it is no evidence.
+ */
+function suiteRunEvidence(cwd, file, phase) {
+  if (!phase) return null;
+  const run = TG.readTestRun(cwd, phase);
+  if (!run || run.status !== 'passed') return null;
+  const f = String(file).replace(/\\/g, '/').replace(/^\.\//, '');
+  const dir = path.posix.dirname(f);
+  // A failure names the file, or (Go reports packages) its folder as a whole path segment.
+  const dirRe = dir !== '.' ? new RegExp(`(^|[/\\s])${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[/\\s])`) : null;
+  const names = (id) => { const s = String(id).replace(/\\/g, '/'); return s.includes(f) || (dirRe ? dirRe.test(s) : false); };
+  if ([...(run.failing || []), ...(run.preexisting_failures || [])].some(names)) return null;
+  if (run.head) {
+    const changed = execGit(cwd, ['diff', '--name-only', run.head, '--', f]);
+    if (changed.exitCode !== 0 || changed.stdout.trim()) return null;
+  }
+  return { file, result: 'passed', via: 'suite_run', detail: `no per-file command; the phase's test run passed${run.head ? ` at ${String(run.head).slice(0, 7)}` : ''} and the file has not changed since` };
+}
+
 /** Run a requirement's mapped tests: passed | failing | not_checked | legacy. Pure over the cache. */
 function traceOf(cwd, req, cache, opts = {}) {
   if (req.criteria.length === 0) return { id: req.id, status: 'legacy', tests: req.tests };
   if (req.tests.length === 0) return { id: req.id, status: 'not_checked', tests: [], detail: 'no test is mapped to this requirement' };
   const results = [];
+  const timeoutMs = opts.timeoutMs || TG.configuredTimeoutMs(TG.rawConfig(cwd)) || DEFAULT_TEST_TIMEOUT_MS;
   for (const file of req.tests) {
     if (!cache.has(file)) {
       if (!fs.existsSync(path.join(cwd, file))) cache.set(file, { file, result: 'missing' });
       else {
         const fc = TG.fileCommand(cwd, file);
-        if (!fc.command) cache.set(file, { file, result: 'not_checked', detail: fc.reason });
-        else cache.set(file, { file, result: TG.runCommand(cwd, fc.command, opts.timeoutMs || DEFAULT_TEST_TIMEOUT_MS).exit === 0 ? 'passed' : 'failing' });
+        if (!fc.command) cache.set(file, suiteRunEvidence(cwd, file, opts.phase) || { file, result: 'not_checked', detail: fc.reason });
+        else cache.set(file, { file, result: TG.runCommand(cwd, fc.command, timeoutMs).exit === 0 ? 'passed' : 'failing' });
       }
     }
     results.push(cache.get(file));
@@ -99,8 +123,12 @@ function traceMatrix(cwd, opts = {}) {
   return { requirements, passed: count('passed'), failing: count('failing'), not_checked: count('not_checked'), legacy: count('legacy') };
 }
 
-/** Whether `phase complete` may tick each id. Legacy requirements may; the rest need a passing trace. */
-function tickDecisions(cwd, ids) {
+/**
+ * Whether `phase complete` may tick each id. Legacy requirements may; the rest need a
+ * passing trace. With `opts.phase`, a test file no per-file command can run counts as
+ * passed on the phase's passed engine test run (suiteRunEvidence).
+ */
+function tickDecisions(cwd, ids, opts = {}) {
   const text = readRequirements(cwd);
   if (text === null) return new Map(ids.map((id) => [id, { allowed: true, status: 'unknown' }]));
   const byId = new Map(parseRequirements(text).map((r) => [r.id, r]));
@@ -109,8 +137,9 @@ function tickDecisions(cwd, ids) {
   for (const id of ids) {
     const r = byId.get(id);
     if (!r) { out.set(id, { allowed: true, status: 'unknown' }); continue; }
-    const t = traceOf(cwd, r, cache);
-    out.set(id, { allowed: t.status === 'legacy' || t.status === 'passed', status: t.status });
+    const t = traceOf(cwd, r, cache, opts);
+    const unrun = t.tests.filter((x) => x && x.result === 'not_checked').map((x) => ({ file: x.file, reason: x.detail }));
+    out.set(id, { allowed: t.status === 'legacy' || t.status === 'passed', status: t.status, ...(unrun.length ? { not_checked: unrun } : {}) });
   }
   return out;
 }
@@ -121,10 +150,10 @@ function cmdVerifyRequirements(cwd, raw) {
   output(r, raw, r.ok ? 'valid' : 'invalid', r.ok ? 0 : 1);
 }
 
-function cmdVerifyTrace(cwd, ids, raw) {
-  const r = traceMatrix(cwd, { ids });
+function cmdVerifyTrace(cwd, ids, raw, opts = {}) {
+  const r = traceMatrix(cwd, { ids, phase: opts.phase || null });
   if (r.error) { output(r, raw, 'error', 1); return; }
   output(r, raw, r.failing ? 'failing' : (r.not_checked ? 'not_checked' : 'passed'), r.failing ? 1 : 0);
 }
 
-module.exports = { isEars, parseRequirements, lintRequirements, traceMatrix, tickDecisions, cmdVerifyRequirements, cmdVerifyTrace };
+module.exports = { isEars, parseRequirements, lintRequirements, traceMatrix, tickDecisions, suiteRunEvidence, cmdVerifyRequirements, cmdVerifyTrace };

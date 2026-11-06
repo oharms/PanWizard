@@ -167,6 +167,8 @@ Report final status.
 | I005 | info | The planning tree is gitignored while commit_docs is true — planning commits commit nothing | No |
 | I006 | info | config.json holds keys PAN's code does not read (usually a typo); the fix names the nearest known key. It also lists `gates` and `safety` from templates/config.json: the `custom`-mode conditions in transition.md and execute-plan.md read `gates`; nothing reads `safety` (transition.md asks before skipping plans in every mode) | No |
 | I007 | info | config.json stores the pre-3.42 default `commit.sensitive_patterns`; PAN already reads it as the current basename defaults, so this only says so. Fix: remove the key or set your own list | No |
+| I008 | info | Phases of a shipped milestone with no verification record, in one line (they warned as VERIFICATION_GATE_MISSING before) | No |
+| I009 | info | Phases of a shipped milestone in ROADMAP with no directory, in one line (they warned as W006 before; a folder under milestones/vX-phases/ counts as on disk) | No |
 | STATE_PROGRESS_IMPOSSIBLE | warning | state.md progress counts completed above total (an older writer mixed this milestone with all-time counts) | Yes |
 | STATE_REQ_DRIFT | warning | state.md complete but requirements.md has unchecked boxes (a requirement whose traceability Status says Held or Reopened is not counted) | Yes |
 | STATE_ROADMAP_DRIFT | warning | state.md complete but roadmap.md has unchecked plan boxes | Yes |
@@ -189,6 +191,11 @@ Flag-gated codes:
 **I002 vs W006:** a roadmap phase the project has not reached yet is normal progress,
 not a defect — it reports as info and does not degrade health. Only a missing phase at
 or behind the current position warns.
+
+**Shipped milestones:** a phase belongs to a shipped milestone when a line names its
+version, a shipped marker (✅, shipped, complete) and its phase range (`- ✅ **v1.0 MVP** -
+Phases 1-4`), or when its heading sits in a shipped milestone's section or `<details>`
+block. Those phases report as I008 and I009, not as warnings.
 
 </error_codes>
 

@@ -102,6 +102,8 @@
  *   verify commits <h1> [h2] ...      Batch verify commit hashes
  *   verify artifacts <plan-file>       Check must_haves.artifacts
  *   verify key-links <plan-file>       Check must_haves.key_links
+ *   verify refresh <phase> --reason R  Move a stale verification's verified_commit to
+ *                                      HEAD when only comments changed since it
  *   verify red <phase>                 Each test the phase changed fails at the
  *     [--timeout <ms>]                 phase's base and passes at HEAD (V4)
  *   verify mutate --phase N            Mutation report on the phase's changed lines
@@ -123,7 +125,8 @@
  *   test run [--phase N] [--baseline]  Run the project's tests, any language; with
  *     [--command "<cmd>"]              --phase, write {NN}-test-run.json (or the
  *     [--timeout <ms>] [--rebaseline]  --baseline record) to the phase directory; an
- *                                      existing baseline is kept unless --rebaseline
+ *                                      existing baseline is kept unless --rebaseline;
+ *                                      timeout: --timeout, else workflow.test_timeout_minutes
  *   test detect                        The test command the gate would run, and why
  *
  * Template Fill:
@@ -778,6 +781,8 @@ async function main() {
         verify.cmdVerifyScope(cwd, args[2], raw);
       } else if (subcommand === 'stale') {
         verify.cmdVerifyStale(cwd, args[2], raw);
+      } else if (subcommand === 'refresh') {
+        require('./lib/verify-scope.cjs').cmdVerifyRefresh(cwd, args[2] && !args[2].startsWith('--') ? args[2] : null, { reason: getArgValue(args, '--reason') }, raw);
       } else if (subcommand === 'plan-set') {
         verifyPlanSet.cmdVerifyPlanSet(cwd, args[2], raw);
       } else if (subcommand === 'test-integrity') {
@@ -793,11 +798,12 @@ async function main() {
       } else if (subcommand === 'requirements') {
         require('./lib/requirements-lint.cjs').cmdVerifyRequirements(cwd, raw);
       } else if (subcommand === 'traceability') {
-        const named = args.slice(2).filter((a) => !a.startsWith('--'));
+        const tracePhase = getArgValue(args, '--phase');
+        const named = args.slice(2).filter((a, i, all) => !a.startsWith('--') && all[i - 1] !== '--phase');
         const ids = named.filter((a) => /^[A-Z][A-Z0-9]*-\d+$/.test(a));
         // A misspelt id (auth-01) must not silently trace every requirement instead.
         if (ids.length < named.length) error(`verify traceability: not a requirement id: ${named.filter((a) => !ids.includes(a)).join(', ')} (expected e.g. AUTH-01)`);
-        require('./lib/requirements-lint.cjs').cmdVerifyTrace(cwd, ids, raw);
+        require('./lib/requirements-lint.cjs').cmdVerifyTrace(cwd, ids, raw, { phase: tracePhase });
       } else if (subcommand === 'mutate') {
         mutate.cmdVerifyMutate(cwd, {
           phase: getArgValue(args, '--phase') || (args[2] && !args[2].startsWith('--') ? args[2] : null),
@@ -806,7 +812,7 @@ async function main() {
           timeout: getArgValue(args, '--timeout'),
         }, raw);
       } else {
-        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity, red, mutate, review-focus, decisions, gates, requirements, traceability');
+        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, refresh, plan-set, test-integrity, red, mutate, review-focus, decisions, gates, requirements, traceability');
       }
       break;
     }

@@ -85,15 +85,33 @@ function detectTestCommand(cwd, config = rawConfig(cwd)) {
 }
 
 /**
+ * `workflow.test_timeout_minutes` from config.json in milliseconds, or null when it is
+ * absent or not a positive number. A Go suite behind a busy Docker host outran the
+ * fixed 15 minutes, and the phase's baseline was lost (field report on 3.42.1).
+ */
+function configuredTimeoutMs(config = {}) {
+  const v = config && config.workflow ? Number(config.workflow.test_timeout_minutes) : NaN;
+  return Number.isFinite(v) && v > 0 ? Math.round(v * 60 * 1000) : null;
+}
+
+/**
  * The command that runs one test file (V4, V5), or null with a reason. A configured
- * `workflow.test_file_command` with a `{file}` placeholder wins; otherwise it is derived
- * from the suite's runner: node's runner, jest, vitest, mocha, pytest, or go (the file's
- * package). Cargo, Maven, Gradle and make cannot target one file this way.
+ * `workflow.test_file_command` wins when it has a `{file}` placeholder (the file) or a
+ * `{dir}` one (the file's folder as `./dir`, which is how Go runs a package's tests;
+ * the shell is cmd.exe on Windows, so `$(dirname …)` is no substitute). Otherwise it is
+ * derived from the suite's runner: node's runner, jest, vitest, mocha, pytest, or go
+ * (the file's package). Cargo, Maven, Gradle and make cannot target one file this way.
  */
 function fileCommand(cwd, file, config = rawConfig(cwd)) {
-  const quoted = JSON.stringify(String(file).replace(/\\/g, '/'));
+  const posixFile = String(file).replace(/\\/g, '/');
+  const quoted = JSON.stringify(posixFile);
+  const dir = path.posix.dirname(posixFile);
+  const quotedDir = JSON.stringify(dir === '.' ? '.' : `./${dir.replace(/^\.\//, '')}`);
   const configured = config && config.workflow && typeof config.workflow.test_file_command === 'string' ? config.workflow.test_file_command.trim() : '';
-  if (configured) return configured.includes('{file}') ? { command: configured.split('{file}').join(quoted) } : { command: null, reason: 'workflow.test_file_command has no {file} placeholder' };
+  if (configured) {
+    if (!configured.includes('{file}') && !configured.includes('{dir}')) return { command: null, reason: 'workflow.test_file_command has no {file} or {dir} placeholder' };
+    return { command: configured.split('{file}').join(quoted).split('{dir}').join(quotedDir) };
+  }
   const suite = detectTestCommand(cwd, config);
   let script = suite.command || '';
   if (script === 'npm test') {
@@ -105,7 +123,7 @@ function fileCommand(cwd, file, config = rawConfig(cwd)) {
   if (/\bmocha\b/.test(script)) return { command: `npx --no-install mocha ${quoted}` };
   if (/pytest/.test(script)) return { command: `python -m pytest ${quoted}` };
   if (/^go test\b/.test(script)) return { command: `go test ./${path.posix.dirname(String(file).replace(/\\/g, '/'))}` };
-  return { command: null, reason: suite.command ? `no per-file command for "${suite.command}": set workflow.test_file_command with a {file} placeholder` : (suite.reason || 'no test command') };
+  return { command: null, reason: suite.command ? `no per-file command for "${suite.command}": set workflow.test_file_command with a {file} or {dir} placeholder` : (suite.reason || 'no test command') };
 }
 
 /**
@@ -350,7 +368,8 @@ function runTests(cwd, opts = {}) {
     const c = classifyRun({ command: null, reason: detected.reason });
     return { ...rec, exit: null, duration_ms: 0, runner: null, parsed: false, total: null, passed: null, failed: null, skipped: null, failing: [], status: c.status, reason: c.reason, regressions: [], preexisting_failures: [] };
   }
-  const r = runCommand(cwd, detected.command, opts.timeoutMs || DEFAULT_TIMEOUT_MS);
+  const timeoutMs = opts.timeoutMs || DEFAULT_TIMEOUT_MS;
+  const r = runCommand(cwd, detected.command, timeoutMs);
   const raw = r.output;
   const timedOut = r.timed_out;
   let parse = parseTestOutput(raw, cwd);
@@ -360,8 +379,10 @@ function runTests(cwd, opts = {}) {
   }
   const exit = r.exit;
   const c = classifyRun({ command: detected.command, exit, timed_out: timedOut, parse }, opts.baseline || null);
+  const limit = timeoutMs >= 60000 ? `${Math.round(timeoutMs / 6000) / 10} min` : `${Math.round(timeoutMs / 100) / 10} s`;
+  if (timedOut) c.reason = `the suite timed out after ${limit}; raise workflow.test_timeout_minutes in config.json (or pass --timeout <ms>)`;
   return {
-    ...rec, exit, timed_out: timedOut || undefined, duration_ms: Date.now() - started,
+    ...rec, exit, timed_out: timedOut || undefined, timeout_ms: timeoutMs, duration_ms: Date.now() - started,
     runner: parse.runner, parsed: parse.parsed, total: parse.total, passed: parse.passed, failed: parse.failed, skipped: parse.skipped,
     failing: parse.failing, status: c.status, reason: c.reason, regressions: c.regressions, preexisting_failures: c.preexisting,
     baseline: opts.baseline ? { head: opts.baseline.head, status: opts.baseline.status, failing: (opts.baseline.failing || []).length } : undefined,
@@ -410,7 +431,9 @@ function cmdTestRun(cwd, opts, raw) {
       return;
     }
   }
-  const timeoutMs = opts.timeout ? Number(opts.timeout) : undefined;
+  // --timeout (ms), else workflow.test_timeout_minutes, else the default.
+  const flagMs = Number(opts.timeout);
+  const timeoutMs = Number.isFinite(flagMs) && flagMs > 0 ? flagMs : (configuredTimeoutMs(rawConfig(cwd)) || undefined);
   const rec = runTests(cwd, { command: opts.command, timeoutMs, baseline, kind: opts.baseline ? 'baseline' : 'run', phase: opts.phase || null });
   if (paths) {
     const file = opts.baseline ? paths.baseline : paths.run;
@@ -429,5 +452,5 @@ function cmdTestDetect(cwd, raw) {
 module.exports = {
   detectTestCommand, parseTestOutput, parseNodeSpec, parseTap, parseJest, parsePytest, parseGo, parseCargo, parseJUnit,
   classifyRun, runTests, readTestRun, testRunFacts, recordPaths, cmdTestRun, cmdTestDetect, stripAnsi,
-  fileCommand, runCommand, rawConfig,
+  fileCommand, runCommand, rawConfig, configuredTimeoutMs, DEFAULT_TIMEOUT_MS,
 };

@@ -509,7 +509,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Fix, in order of preference:**
 
-1. Fix each reason. The `detail` names the fix: run `/pan:verify-phase N` for a missing or stale verification, `/pan:plan-phase N --gaps` then `/pan:exec-phase N --gaps-only` for gaps, `pan-tools findings dispose <id> --as fixed|deferred|dismissed|decision --reason "..."` for an open finding, and `pan-tools findings dispose <id> --as decision --reason "<what was checked>"` for an unapproved human item (only a `decision` approves it). Then run `/pan:exec-phase N` (or `pan-tools phase complete N`) again.
+1. Fix each reason. The `detail` names the fix: run `/pan:verify-phase N` for a missing or stale verification (when only comments changed since the verified commit, `pan-tools verify refresh N --reason "<what changed>"` moves it to HEAD instead; it refuses any change to code), `/pan:plan-phase N --gaps` then `/pan:exec-phase N --gaps-only` for gaps, `pan-tools findings dispose <id> --as fixed|deferred|dismissed|decision --reason "..."` for an open finding, and `pan-tools findings dispose <id> --as decision --reason "<what was checked>"` for an unapproved human item (only a `decision` approves it). Then run `/pan:exec-phase N` (or `pan-tools phase complete N`) again.
 2. Complete past the gate once, with a recorded reason: `pan-tools phase complete <N> --force --reason "<why>"`. `--force` without `--reason` is refused (`reason_required`). The override is recorded as a decision.
 3. Make the gate advisory for the project: `pan-tools config-set workflow.phase_gate warn`. The phase is then marked complete and the reasons are shown as warnings; `/pan:exec-phase` does not auto-advance past a failed gate.
 

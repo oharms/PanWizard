@@ -285,6 +285,7 @@
     "verify reconcile",
     "verify red",
     "verify references",
+    "verify refresh",
     "verify requirements",
     "verify review-focus",
     "verify scope",

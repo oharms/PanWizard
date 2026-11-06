@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Five items from the field report on 3.42.1.
+
+### Added
+
+- **`verify refresh <phase> --reason "..."`.** A one-word comment fix made a passing verification stale, and the phase gate refused until `verified_commit` was edited by hand. `verify refresh` moves the verification to HEAD when every line that changed since the verified commit is a comment or blank, and records `refreshed_from` and `refresh_reason` in its front matter and a decision in the trace. It refuses a change to code, a file type whose comments it cannot read, and uncommitted edits. `/pan:exec-phase` offers it on a `verification_stale` refusal.
+- **`workflow.test_timeout_minutes`.** `test run` stopped every suite at 15 minutes, so a Go suite that needs 13 minutes, or longer on a busy Docker host, lost the phase's baseline. The limit is now configurable (`--timeout <ms>` still wins for one run). A run that reaches it says which key raises it, and the record holds `timeout_ms`. Each one-file test command uses the same limit.
+
+### Fixed
+
+- **Requirements with Go or shell tests are ticked.** `phase complete` held them as `not_checked` because no one-file command could run them: `workflow.test_file_command` had only `{file}`, Go tests a package folder, and `$(dirname …)` does not work under cmd.exe. Two fixes:
+  - a `{dir}` placeholder, the test file's folder as `./dir` (`go test {dir}`);
+  - a test file no one-file command can run counts as passed when the phase's engine test run passed, no failure names the file or its folder, and the file has not changed since that run. `verify traceability --phase N` does the same.
+
+  `requirements_held` now says why a test went unrun.
+- **`roadmap update-plan-progress` no longer completes the phase.** Once every plan had a summary it ticked the phase `(completed DATE)` and dated the Progress table, before the phase was verified. It now records `Executed`; only `phase complete`, past the gate, ticks and dates the phase. A phase already ticked keeps `Complete` and its date.
+- **`validate health` stops warning about shipped milestones.** Phases of a shipped milestone that have no verification record, or no folder, used to raise one warning each and bury the real ones. They now report as one info line each: `I008` for a missing verification, `I009` for a missing folder. A phase belongs to a shipped milestone when a ✅ or shipped milestone line names its range (`Phases 13-15`), or when its heading sits in that milestone's section or collapsed `<details>` block. A phase folder archived under `milestones/vX-phases/` counts as present.
+
 ## [3.42.1] - 2026-11-05
 
 Five items from the field report on 3.42.0.

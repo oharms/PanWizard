@@ -1086,10 +1086,89 @@ function checkPhaseDirectories(cwd, addIssue) {
  * @param {string} phasesDirPath - Path to phases directory
  * @param {Function} addIssue - Issue recorder
  */
+// ─── Shipped milestones (field report on 3.42.1, item 5) ─────────────────────
+// Health flagged phases 13–15 of a shipped milestone for a missing verification and
+// phase 34 for a missing folder, burying the real warnings. A phase that belongs to a
+// shipped milestone is history: its warnings fold into one info line each.
+
+const SHIPPED_MARK_RE = /✅|\bshipped\b|\bcomplete[d]?\b|\bdone\b/i;
+const OPEN_MARK_RE = /🚧|📋|\bcurrent\b|\bin[-\s]progress\b|\bactive\b|\bplanned\b|\bupcoming\b|\bfuture\b/i;
+const PHASE_RANGE_RE = /\bPhases?\s+(\d+)(?:\s*(?:-|–|—|to|through)\s*(\d+))?/gi;
+const unpadPhase = (p) => String(p).replace(/^0+(?=\d)/, '');
+
+/**
+ * Which roadmap phases belong to a shipped milestone, and which milestone. Read from
+ * (a) a line naming a version, a shipped marker and a phase range (`- ✅ **v1.0 MVP**
+ * - Phases 1-4 (shipped …)`, or the collapsed `<summary>` line), and (b) phase
+ * headings and checklist lines inside a shipped milestone's section or `<details>`
+ * block. A line that also carries an open marker (🚧, in progress, planned) is not
+ * shipped. Pure.
+ * @param {string} roadmap
+ * @returns {(phase: string) => string|null} the shipped milestone's version, or null
+ */
+function shippedMilestonePhases(roadmap) {
+  const { parseMilestoneHeadings } = require('./core.cjs');
+  const text = String(roadmap || '').replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  const statusOf = new Map(parseMilestoneHeadings(text).map((h) => [h.version, h.status]));
+  const lineStatus = (line, version) => {
+    if (OPEN_MARK_RE.test(line)) return 'open';
+    if (SHIPPED_MARK_RE.test(line)) return 'shipped';
+    return statusOf.get(version) === 'shipped' ? 'shipped' : 'other';
+  };
+  const ranges = [];
+  const named = new Map();
+  let region = null; // {version, shipped, level|null (details), }
+  for (const line of lines) {
+    const v = line.match(/\bv(\d+(?:\.\d+)+)\b/);
+    const isPhaseLine = /^\s*(?:#{1,6}\s*|-\s*\[[ xX]\]\s*\*{0,2})Phase\s+\d/i.test(line);
+    if (v && !isPhaseLine) {
+      const version = `v${v[1]}`;
+      const shipped = lineStatus(line, version) === 'shipped';
+      if (shipped) {
+        for (const m of line.matchAll(PHASE_RANGE_RE)) {
+          const from = Number(m[1]); const to = Number(m[2] || m[1]);
+          if (to >= from) ranges.push({ from, to, version });
+        }
+      }
+      const heading = line.match(/^\s{0,3}(#{1,6})\s/);
+      if (/^\s*<summary>/i.test(line)) region = { version, shipped, level: null };
+      else if (heading) region = { version, shipped, level: heading[1].length };
+      continue;
+    }
+    if (region) {
+      if (region.level === null && /^\s*<\/details\b/i.test(line)) { region = null; continue; }
+      const h = line.match(/^\s{0,3}(#{1,6})\s/);
+      if (region.level !== null && h && h[1].length <= region.level && !isPhaseLine) { region = null; continue; }
+    }
+    if (region && region.shipped && isPhaseLine) {
+      const p = line.match(/Phase\s+(\d+[A-Z]?(?:\.\d+)*)/i);
+      if (p && !named.has(unpadPhase(p[1]))) named.set(unpadPhase(p[1]), region.version);
+    }
+  }
+  return (phase) => {
+    const key = unpadPhase(phase);
+    if (named.has(key)) return named.get(key);
+    const whole = parseInt(key, 10);
+    const r = Number.isFinite(whole) ? ranges.find((x) => whole >= x.from && whole <= x.to) : null;
+    return r ? r.version : null;
+  };
+}
+
+/** The message and fix of the one info line for shipped milestones' phases (I008, I009). */
+function shippedPhasesLine(phases, what) {
+  const list = phases.map((p) => p.phase).sort(comparePhaseNum);
+  const versions = [...new Set(phases.map((p) => p.version))].sort();
+  return [`${list.length} phase(s) of shipped milestones (${versions.join(', ')}) ${what}: ${list.join(', ')}; not checked`,
+    `None needed for shipped work. To drop the line, move those phase folders to ${planningRootRel()}/milestones/<version>-phases/`];
+}
+
 function crossCheckRoadmapDisk(cwd, phasesDirPath, addIssue) {
   let roadmapContent;
   try { roadmapContent = fs.readFileSync(path.join(planningPath(cwd), ROADMAP_FILE), 'utf-8'); }
   catch { return; }
+  const shippedIn = shippedMilestonePhases(roadmapContent);
+  const shippedMissing = [];
 
   const roadmapPhases = new Set();
   PHASE_HEADER_RE.lastIndex = 0;
@@ -1120,15 +1199,25 @@ function crossCheckRoadmapDisk(cwd, phasesDirPath, addIssue) {
     if (m) currentPhase = m[1];
   } catch { /* no state.md -- checkStateFile reports that; stay conservative here */ }
 
+  // A phase folder archived with its milestone (milestones/vX-phases/) is on disk too.
+  const archived = new Set();
+  for (const a of require('./core.cjs').getArchivedPhaseDirs(cwd)) {
+    const am = a.name.match(/^(\d+[A-Z]?(?:\.\d+)*)/i);
+    if (am) archived.add(unpadPhase(am[1]));
+  }
+
   for (const p of roadmapPhases) {
     const padded = String(parseInt(p, 10)).padStart(2, '0');
-    if (diskPhases.has(p) || diskPhases.has(padded)) continue;
+    if (diskPhases.has(p) || diskPhases.has(padded) || archived.has(unpadPhase(p))) continue;
     if (currentPhase !== null && comparePhaseNum(p, currentPhase) > 0) {
       addIssue('info', 'I002', `Phase ${p} in ${ROADMAP_FILE} is not planned yet (current phase: ${currentPhase})`, `Run /pan:plan-phase ${p} when you reach it`);
+    } else if (shippedIn(p)) {
+      shippedMissing.push({ phase: p, version: shippedIn(p) });
     } else {
       addIssue('warning', 'W006', `Phase ${p} in ${ROADMAP_FILE} but no directory on disk`, 'Create phase directory or remove from roadmap');
     }
   }
+  if (shippedMissing.length) addIssue('info', 'I009', ...shippedPhasesLine(shippedMissing, 'have no directory on disk'));
   for (const p of diskPhases) {
     const unpadded = String(parseInt(p, 10));
     if (!roadmapPhases.has(p) && !roadmapPhases.has(unpadded))
@@ -1323,6 +1412,8 @@ function checkVerificationGate(cwd, addIssue) {
       .filter(d => d.isDirectory() && /^\d/.test(d.name));
   } catch { return; }
 
+  const shippedIn = shippedMilestonePhases(safeReadFile(path.join(planDir, ROADMAP_FILE)) || '');
+  const shipped = [];
   for (const dir of phaseDirs) {
     const dirPath = path.join(phasesDirPath, dir.name);
     const files = fs.readdirSync(dirPath);
@@ -1332,11 +1423,15 @@ function checkVerificationGate(cwd, addIssue) {
     // Only flag phases that have summaries (executed) but no verification
     if (hasSummary && !hasVerification) {
       const phaseNum = dir.name.match(/^(\d+(?:\.\d+)?)/)?.[1] || dir.name;
+      // A shipped milestone's phase (often from before the verifier) is history.
+      const version = shippedIn(phaseNum);
+      if (version) { shipped.push({ phase: unpadPhase(phaseNum), version }); continue; }
       addIssue('warning', 'VERIFICATION_GATE_MISSING',
         `Phase ${phaseNum} has completed plans but no verification record (verifier is enabled)`,
         `Run /pan:verify-phase ${phaseNum} to verify this phase`);
     }
   }
+  if (shipped.length) addIssue('info', 'I008', ...shippedPhasesLine(shipped, 'have no verification record'));
 }
 
 /**
@@ -1796,4 +1891,5 @@ module.exports = {
   detectInstalledRuntimes,
   syncRequirementCheckboxes,
   syncRoadmapPlanCheckboxes,
+  shippedMilestonePhases,
 };

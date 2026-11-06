@@ -101,7 +101,7 @@ describe('roadmap update-plan-progress command', () => {
     assert.ok(roadmap.includes('- [ ] **Phase 01: Setup**'), 'checkbox should remain unchecked');
   });
 
-  test('marks phase complete when all summaries exist (2 of 2)', () => {
+  test('records Executed, not Complete, when all summaries exist (2 of 2): phase complete ticks it after verification', () => {
     // Set up phase directory with 2 plans and 2 summaries
     const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-setup');
     fs.mkdirSync(phaseDir, { recursive: true });
@@ -124,8 +124,9 @@ describe('roadmap update-plan-progress command', () => {
     assert.strictEqual(output.updated, true, 'should report updated');
     assert.strictEqual(output.plan_count, 2, 'plan_count should be 2');
     assert.strictEqual(output.summary_count, 2, 'summary_count should be 2');
-    assert.strictEqual(output.status, 'Complete', 'status should be Complete');
-    assert.strictEqual(output.complete, true, 'complete should be true');
+    assert.strictEqual(output.status, 'Executed', 'status should be Executed');
+    assert.strictEqual(output.complete, false, 'complete waits for phase complete');
+    assert.strictEqual(output.all_plans_executed, true);
 
     // Verify roadmap.md was updated on disk
     const roadmap = fs.readFileSync(
@@ -133,16 +134,11 @@ describe('roadmap update-plan-progress command', () => {
       'utf-8'
     );
     assert.ok(roadmap.includes('2/2'), 'progress table should show 2/2');
-    assert.ok(roadmap.includes('Complete'), 'status should show Complete');
-    assert.ok(roadmap.includes('2/2 plans complete'), 'plan count line should show 2/2 plans complete');
-    // Checkbox should be checked
-    assert.ok(roadmap.includes('[x]'), 'checkbox should be checked');
-    assert.ok(roadmap.includes('completed'), 'checkbox line should include completed date');
-    // Date should appear in the progress table row
-    assert.ok(
-      roadmap.match(/\d{4}-\d{2}-\d{2}/),
-      'completion date should appear in ROADMAP'
-    );
+    assert.ok(roadmap.includes('Executed'), 'status should show Executed');
+    assert.ok(roadmap.includes('2/2 plans executed'), 'plan count line should show 2/2 plans executed');
+    // Not ticked and not dated before verification (field report on 3.42.1)
+    assert.ok(roadmap.includes('- [ ] **Phase 01: Setup**'), 'checkbox should remain unchecked');
+    assert.ok(!roadmap.includes('(completed'), 'no completed date before phase complete');
   });
 
   test('returns no-plans when phase has no plan files', () => {

@@ -78,14 +78,14 @@ describe('a padded phase number finds an unpadded roadmap heading', () => {
     assert.deepEqual(json.success_criteria, ['A payment completes']);
   });
 
-  test('roadmap update-plan-progress 05 updates the table row, the Plans line and the checkbox', () => {
+  test('roadmap update-plan-progress 05 updates the table row and the Plans line (phase complete ticks the checkbox)', () => {
     const r = runPanTools('roadmap update-plan-progress 05', tmp);
     assert.ok(r.success, r.error);
     assert.equal(JSON.parse(r.output).table_updated, true);
     const roadmap = read(tmp, '.planning/roadmap.md');
-    assert.match(roadmap, /^\| 5\. Pay \| 1\/1 \| Complete \| \d{4}-\d{2}-\d{2} \|$/m);
-    assert.match(roadmap, /^\*\*Plans:\*\* 1\/1 plans complete$/m);
-    assert.match(roadmap, /^- \[x\] \*\*Phase 5: Pay\*\*/m);
+    assert.match(roadmap, /^\| 5\. Pay \| 1\/1 \| Executed \|  \|$/m);
+    assert.match(roadmap, /^\*\*Plans:\*\* 1\/1 plans executed$/m);
+    assert.match(roadmap, /^- \[ \] \*\*Phase 5: Pay\*\*/m);
     assert.match(roadmap, /^\| 1\. Base \| 1\/1 \| Complete \| 2026-10-01 \|$/m, 'phase 1 untouched');
   });
 

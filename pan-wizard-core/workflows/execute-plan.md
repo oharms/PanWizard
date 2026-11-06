@@ -397,7 +397,7 @@ If SUMMARY "Issues Encountered" ≠ "None": yolo → log and continue. Interacti
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap update-plan-progress "${PHASE}"
 ```
-Counts the phase's plans paired with their own summaries (a summary with no plan counts for nothing). Updates progress table row with correct count and status (`In Progress` or `Complete` with date).
+Counts the phase's plans paired with their own summaries (a summary with no plan counts for nothing). Updates progress table row with correct count and status: `In Progress`, or `Executed` once every plan has a summary. The phase stays unticked and undated here: `phase complete` ticks and dates it, after verification.
 </step>
 
 <step name="update_requirements">

@@ -158,7 +158,7 @@ const CONFIG_KEYS_BEYOND_DEFAULTS = Object.freeze({
   sections: Object.freeze({
     // Read by the installer (bin/install-lib.cjs readUserInvokedOnly, DD-12).
     claude: Object.freeze(['user_invoked_only']),
-    workflow: Object.freeze(['auto_advance', 'stop_guard', 'test_command', 'test_file_command']),
+    workflow: Object.freeze(['auto_advance', 'stop_guard', 'test_command', 'test_file_command', 'test_timeout_minutes']),
     planning: Object.freeze(['commit_docs', 'search_gitignored']),
     git: Object.freeze(['branching_strategy', 'phase_branch_template', 'milestone_branch_template']),
   }),

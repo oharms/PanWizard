@@ -361,7 +361,8 @@ function updateProgressTableRow(content, phaseNum, values) {
       while (cells.length < header.length) cells.push('');
       cells[plansIdx] = values.plans;
       cells[statusIdx] = values.status;
-      if (doneIdx >= 0) cells[doneIdx] = values.completed || '';
+      // `completed: undefined` keeps the cell: a phase already completed keeps its date.
+      if (doneIdx >= 0 && values.completed !== undefined) cells[doneIdx] = values.completed || '';
       const indent = lines[r].match(/^\s*/)[0];
       lines[r] = `${indent}| ${cells.join(' | ')} |`;
       return { content: lines.join(eol), updated: true, reason: null };
@@ -475,9 +476,7 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
     return;
   }
 
-  const isComplete = summaryCount >= planCount;
-  const status = isComplete ? 'Complete' : summaryCount > 0 ? 'In Progress' : 'Planned';
-  const today = require('./utils.cjs').localDay();
+  const allExecuted = summaryCount >= planCount;
 
   let roadmapContent;
   try {
@@ -491,11 +490,19 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
   // every lookup below used to miss it while the result still said `updated: true`.
   const phaseEscaped = phaseNumRe(phaseNum);
 
+  // Executed is not complete (field report on 3.42.1): every plan having a summary
+  // used to tick the phase "(completed DATE)" before it was verified. Only `phase
+  // complete`, past the gate, ticks it and dates it; this command records `Executed`.
+  // A phase already ticked stays Complete, with its own date.
+  const alreadyComplete = new RegExp(`-\\s*\\[[xX]\\]\\s*.*Phase\\s+${phaseEscaped}[:\\s]`, 'i').test(roadmapContent);
+  const isComplete = allExecuted && alreadyComplete;
+  const status = isComplete ? 'Complete' : allExecuted ? 'Executed' : summaryCount > 0 ? 'In Progress' : 'Planned';
+
   // Progress table row: the Plans, Status and Completed cells, found by header.
   const table = updateProgressTableRow(roadmapContent, phaseNum, {
     plans: `${summaryCount}/${planCount}`,
     status,
-    completed: isComplete ? today : '',
+    completed: isComplete ? undefined : '',
   });
   roadmapContent = table.content;
 
@@ -504,15 +511,6 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
     ? `${summaryCount}/${planCount} plans complete`
     : `${summaryCount}/${planCount} plans executed`;
   roadmapContent = updatePhasePlansLine(roadmapContent, phaseNum, planCountText).content;
-
-  // If complete: check checkbox
-  if (isComplete) {
-    const checkboxPattern = new RegExp(
-      `(-\\s*\\[)[ ](\\]\\s*.*Phase\\s+${phaseEscaped}[:\\s][^\\n]*)`,
-      'i'
-    );
-    roadmapContent = roadmapContent.replace(checkboxPattern, `$1x$2 (completed ${today})`);
-  }
 
   // Check individual plan checkboxes for plans that have matching summaries
   const completedPlanIds = new Set(phaseInfo.summaries.map(s => getSummaryId(s).toLowerCase()));
@@ -545,6 +543,8 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
     summary_count: summaryCount,
     status,
     complete: isComplete,
+    all_plans_executed: allExecuted,
+    ...(allExecuted && !isComplete ? { next: 'verify the phase; `phase complete` ticks it and dates it' } : {}),
     table_updated: table.updated,
     ...(table.updated ? {} : { table_reason: table.reason }),
   }, raw, `${summaryCount}/${planCount} ${status}${table.updated ? '' : ' (progress table not updated)'}`);

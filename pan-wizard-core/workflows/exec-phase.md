@@ -704,6 +704,14 @@ COMPLETION_EXIT=$?
 | exit 0, `gate.ok` false (`workflow.phase_gate: warn`) | The phase was marked complete. Show the reasons as warnings, run the rest of this step, and do NOT auto-advance (`offer_next` reads `GATE_OK`) |
 | exit 0, `gate.ok` true | Continue |
 
+**A `verification_stale` refusal over comment edits.** When the files in `changed_since` changed only in comments or blank lines (a typo fixed in a comment after the verifier passed), move the verification forward instead of re-verifying, then run `phase complete` again:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify refresh "${PHASE_NUMBER}" --reason "<what the comment change was>"
+```
+It checks the diff itself and refuses with `code_changed` (any line of code changed, or a file type it cannot read comments in) or `uncommitted_changes` (commit them first). On `code_changed`, re-verify with `/pan:verify-phase {N}`.
+
+**`requirements_held` in the result** lists requirements the completion did not tick. An entry with `status: not_checked` has a mapped test no command could run on its own; its `not_checked` entries say why. Show them to the user. The fix is a `workflow.test_file_command` in `.planning/config.json` with a `{file}` or `{dir}` placeholder (Go runs a package: `go test {dir}`), or an engine test run that passed for the phase (`test run --phase N`), which counts for a test file that has not changed since.
+
 **Completing past a refusal** is the user's decision, never yours, and needs their reason. It records a `decision` for every open finding the gate counted:
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase complete "${PHASE_NUMBER}" --force --reason "<the user's reason>"
@@ -712,7 +720,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase complete "${PHASE_NUMBER}
 Set `GATE_OK` to `gate.ok` from `COMPLETION` (`false` when the gate refused).
 
 The CLI handles:
-- Marking phase checkbox `[x]` with completion date
+- Marking phase checkbox `[x]` with completion date (only this command does; `roadmap update-plan-progress` records a fully executed phase as `Executed`)
 - Updating Progress table (Status → Complete with the date, or In Progress while a plan has no summary)
 - Updating plan count to final
 - Advancing state.md to next phase

@@ -864,7 +864,9 @@ function markRequirementsCompleteForPhase(cwd, phaseNum, roadmapContent) {
     let reqContent = reqReadContent;
     // V8: a requirement with EARS criteria is ticked only when its mapped tests pass;
     // a legacy one (no criteria) keeps the old tick. Held ones are reported.
-    const decisions = require('./requirements-lint.cjs').tickDecisions(cwd, reqIds);
+    // With the phase: a test no per-file command can run (shell, or Go behind a custom
+    // suite command) counts on the phase's passed engine test run (field report on 3.42.1).
+    const decisions = require('./requirements-lint.cjs').tickDecisions(cwd, reqIds, { phase: phaseNum });
     const held = [];
 
     for (const reqId of reqIds) {
@@ -873,7 +875,7 @@ function markRequirementsCompleteForPhase(cwd, phaseNum, roadmapContent) {
       const ruling = ms.completionHold(holds, reqId, phaseNum);
       if (ruling) { held.push({ id: reqId, status: ruling.reason, ...(ruling.phases ? { phases: ruling.phases } : {}) }); continue; }
       const d = decisions.get(reqId);
-      if (d && !d.allowed) { held.push({ id: reqId, status: d.status }); continue; }
+      if (d && !d.allowed) { held.push({ id: reqId, status: d.status, ...(d.not_checked ? { not_checked: d.not_checked } : {}) }); continue; }
       const reqEscaped = escapeRegex(reqId);
       reqContent = reqContent.replace(
         new RegExp(`(-\\s*\\[)[ ](\\]\\s*\\*\\*${reqEscaped}\\*\\*)`, 'gi'),
