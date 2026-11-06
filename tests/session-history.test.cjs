@@ -105,8 +105,9 @@ describe('appendSessionSummary', () => {
     const result = appendSessionSummary(tmpDir, { phase: '01' });
     assert.deepStrictEqual(result, { appended: true });
     const content = fs.readFileSync(path.join(tmpDir, '.planning', 'session-history.md'), 'utf-8');
-    // Should contain today's date
-    const today = new Date().toISOString().split('T')[0];
+    // Today's LOCAL date, as the code writes it (localDay). The UTC date failed this
+    // test between local midnight and UTC midnight east of Greenwich.
+    const today = require('../pan-wizard-core/bin/lib/utils.cjs').localDay();
     assert.ok(content.includes(`### Session — ${today}`), 'should use today as default date');
   });
 
