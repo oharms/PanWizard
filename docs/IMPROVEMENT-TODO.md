@@ -22,6 +22,8 @@ This document turns the April 2026 project review into an actionable improvement
 
 > **October 2026 reality check (`2026-10-19`):** a delta run the same day. The suite, the release gates, CI and harness tier 0 pass, and a packed five-runtime install writes every claimed surface. Several recorded statuses lag the tree (work described as open shipped in the last two releases). The changelog's OpenCode 2 claim rests on a simulated loader while Homebrew now installs OpenCode 2. The native exec-waves script lacks gates its markdown twin runs. The Copilot double-hook concern is refuted (PAN's Copilot hook copies defer to the Claude registration). The delta is §12 of [ECOSYSTEM-REVIEW-2026-08.md](ECOSYSTEM-REVIEW-2026-08.md); the queue is the reality-check Addendum of [market-ideas-2026-10.md](specs/market-ideas-2026-10.md).
 
+> **November 2026 market idea scan (`2026-11-07`):** a delta run of `/market-ideas`. Its highest-leverage finding is a PAN gap the host documents: after a compaction Claude Code keeps only the start of an invoked command, and PAN's compaction hook does not tell the model to re-read the workflow it was running. Re-checking the watched ideas against PAN's own recent releases closed several of them and found a lost-update defect in the trace logger's cursor. The queue is [market-ideas-2026-11.md](specs/market-ideas-2026-11.md); the ledger is [market-ideas-ledger.md](specs/market-ideas-ledger.md).
+
 Do not duplicate filesystem-derived counts here. `CLAUDE.md` remains the single source of truth for command, agent, module, workflow, test, hook, spec, and ADR counts.
 
 ## Goals
