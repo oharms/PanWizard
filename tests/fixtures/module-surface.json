@@ -381,6 +381,7 @@
     "LONG_PROMPT_THRESHOLD:number",
     "METRICS_DIR:string",
     "RATES_VERIFIED_AT:string",
+    "SCHEDULED_RATES:object",
     "TOKENS_FILE:string",
     "aggregate:function",
     "appendRecord:function",
@@ -407,6 +408,7 @@
     "renderTable:function",
     "resolveRate:function",
     "samePhaseKey:function",
+    "scheduledRate:function",
     "weeklyLimitStop:function"
   ],
   "cross-family.cjs": [

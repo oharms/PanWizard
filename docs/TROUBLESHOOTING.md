@@ -781,7 +781,15 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 ### OpenCode 2 says "Plugin must export a default definition with an id and an effect or setup function"
 
-The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's loader requires `setup` (or `effect`), and older PAN plugins exported only `server`, so the compaction hand-off was lost. Re-run the installer with `--opencode` (or `/pan:update`) to get the plugin that exports both: OpenCode 1 keeps calling `server()`, OpenCode 2 calls `setup()`.
+The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's loader requires `setup` (or `effect`), and older PAN plugins exported only `server`, so the compaction hand-off was lost. Re-run the installer with `--opencode` (or `/pan:update`) to get the plugin that exports both: OpenCode 1 keeps calling `server()`, OpenCode 2 calls `setup()`. Before 3.43.1 the OpenCode 2 path added PAN's block to the compaction prompt as plain text where OpenCode 2 expects a text part, so update to keep the block.
+
+### OpenCode 2 reads files outside the project without asking
+
+OpenCode 2 accepts the version 1 `opencode.json` PAN writes and translates its `permission` block, but it changed one default: version 1 asked before reading or writing paths outside the project, and version 2 allows them (`external_directory`). To keep the old behaviour, deny or ask for `external_directory` in your OpenCode 2 configuration. The `opencode.ai/install` script and the `opencode-ai` npm package still install OpenCode 1; OpenCode 2 comes from `@opencode/cli` or `opencode.ai/v2/install`, and the two are no longer installed side by side.
+
+### Antigravity loads PAN's plugin without its commands
+
+An Antigravity plugin does not load `commands/` folders, `workflows/` Markdown files or `hooks/hooks.json`, so importing PAN's Claude Code plugin with `agy plugin import claude` brings its agents, skills and MCP server but not its commands or hooks (`agy plugin validate` warns about each). In a project, install with `--unified-skills` instead: Antigravity reads the shared `.agents/skills/` tree, which carries PAN's commands as skills.
 
 ### A command refuses with `lock_timeout`
 

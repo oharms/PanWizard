@@ -104,12 +104,17 @@ function directoryOf(ctx) {
   return (ctx && (ctx.directory || ctx.worktree)) || process.cwd();
 }
 
-/** Push PAN's block onto the first array target; fail-open, inert outside work in flight. */
-function pushBlock(directory, target) {
+/**
+ * Push PAN's block onto the first array target; fail-open, inert outside work in flight.
+ * `asPart` wraps it as an OpenCode 2 system part (`{ type: 'text', text }`): the 2.x
+ * compaction event's `system` is `SystemPart[]` (opencode.ai/docs/build/plugins/server,
+ * read 2026-11-07), while v1's `output.context` takes plain strings.
+ */
+function pushBlock(directory, target, asPart = false) {
   try {
     if (!Array.isArray(target)) return;
     const block = compactionContext(directory);
-    if (block) target.push(block);
+    if (block) target.push(asPart ? { type: 'text', text: block } : block);
   } catch { /* fail open: a compaction without PAN's block beats a broken one */ }
 }
 
@@ -124,9 +129,10 @@ async function server(ctx) {
 }
 
 // OpenCode 2: the loader requires `setup` (or `effect`) and hooks register through
-// `ctx.session.hook(name, fn)` (opencode.ai/v2/docs/build/plugins, migrate-v1). The
-// compaction event's prompt parts are `system` (read from the 2.0 binary); `context`
-// is the documented v1 name and the fallback.
+// `ctx.session.hook(name, fn)` (opencode.ai/docs/build/plugins/migrate-v1). The
+// compaction event's prompt parts are `system`, an array of `{ type: 'text', text }`
+// parts (tests/fixtures/opencode2-compaction-event.json); `context` (strings) is the
+// v1 name and the fallback.
 function setup(ctx) {
   try {
     const directory = directoryOf(ctx);
@@ -134,7 +140,8 @@ function setup(ctx) {
     if (!session || typeof session.hook !== 'function') return;
     session.hook('compaction', async (event) => {
       if (!event) return;
-      pushBlock(directory, Array.isArray(event.system) ? event.system : event.context);
+      if (Array.isArray(event.system)) pushBlock(directory, event.system, true);
+      else pushBlock(directory, event.context);
     });
   } catch { /* fail open: a plugin that cannot register leaves the session as it was */ }
 }

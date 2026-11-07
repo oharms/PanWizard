@@ -135,6 +135,9 @@ const DEFAULT_RATES = {
   'gpt-6.1-sol':        { input: 2.0,  output: 10.0, cache_read: 0.1,  cache_write: 2.5 },
   'gpt-6-sol':          { input: 2.0,  output: 10.0, cache_read: 0.2,  cache_write: 2.5 },
   'gpt-6-luna':         { input: 0.10, output: 0.50, cache_read: 0.01, cache_write: 0.125 },
+  // GPT-6.1 Terra: in Codex's model catalog from 0.165.0; read from the pricing page
+  // (platform.openai.com/docs/pricing, the .md table) on 2026-11-07.
+  'gpt-6.1-terra':      { input: 1.00, output: 5.00, cache_read: 0.05, cache_write: 1.25 },
   // GPT-5.6. The bare `gpt-5.6` id is an alias that "routes requests to GPT-5.6 Sol"
   // (its model page, read 2026-09-23), so it carries Sol's row — not the $5/$30 it
   // carried before, which no page listed. Sol's price is promotional "at least
@@ -186,10 +189,12 @@ const DEFAULT_RATES = {
   // Tier fallbacks when the model id is unknown: reasoning tracks the default Opus
   // (Opus 5.5 since 2026-09-22 — the model the inherit tier runs on for most users),
   // mid the Sonnet the `sonnet` alias resolves to on the Anthropic API (Sonnet 5),
-  // fast Haiku 4.5.
+  // fast Haiku 4.5. Since 2026-11-07 mid and fast track Sonnet 5.5 and Haiku 5.5, the
+  // models the `sonnet` and `haiku` aliases resolve to on the Anthropic API
+  // (code.claude.com/docs/en/model-config, read 2026-11-07).
   'reasoning': { input: 4.0,  output: 20.0, cache_read: 0.20, cache_write: 5.0, cache_write_1h: 8.0 },
-  'mid':       { input: 2.0,  output: 10.0, cache_read: 0.20, cache_write: 2.50, cache_write_1h: 4.0 },
-  'fast':      { input: 1.0,  output: 5.0,  cache_read: 0.1,  cache_write: 1.25, cache_write_1h: 2.0 },
+  'mid':       { input: 2.0,  output: 10.0, cache_read: 0.10, cache_write: 2.50, cache_write_1h: 4.0 },
+  'fast':      { input: 0.10, output: 0.50, cache_read: 0.01, cache_write: 0.125, cache_write_1h: 0.20 },
 };
 
 function metricsDir(cwd) {
@@ -350,7 +355,7 @@ function effectiveRates(config, managedPricing = loadManagedModelPricing()) {
   return Object.keys(rates).length > 0 || rates[BUILTIN_MULTIPLIER] ? rates : undefined;
 }
 
-function resolveRate(model, tier, configRates) {
+function resolveRate(model, tier, configRates, at = null) {
   // Config overrides win over the built-in table — including for versioned ids.
   // Without the family-prefix pass here, a cost.rates override keyed on a family
   // ("claude-opus-5") was silently ignored for the versioned id the hooks
@@ -364,16 +369,48 @@ function resolveRate(model, tier, configRates) {
     }
     if (tier && configRates[tier]) return configRates[tier];
   }
-  const builtin = builtinRate(model, tier);
+  const builtin = builtinRate(model, tier, at);
   const m = configRates ? configRates[BUILTIN_MULTIPLIER] : undefined;
   return builtin && m ? scaleRate(builtin, m) : builtin;
 }
 
-function builtinRate(model, tier) {
-  if (model && DEFAULT_RATES[model]) return DEFAULT_RATES[model];
+// Price changes a pricing page announces with a date. A record is priced at the row in
+// force on its own day (UTC), so a ledger keeps its old totals and new records pick
+// up the new price without anyone editing the table on the day.
+const SCHEDULED_RATES = Object.freeze({
+  // ai.google.dev/gemini-api/docs/pricing, read 2026-10-19 and 2026-11-07: "$2.00
+  // through November 30, 2026. $4.00 starting December 1, 2026"; output $20, cache read
+  // $0.20. Implicit caching only, so the write keeps the input price as the row does.
+  'gemini-4-argon': [{ from: '2026-12-01', rate: { input: 4.00, output: 20.0, cache_read: 0.20, cache_write: 4.00 } }],
+  // Same page: from January 1, 2027, $1.50 / $7.50 / cache read $0.15.
+  'gemini-3.8-flash': [{ from: '2027-01-01', rate: { input: 1.50, output: 7.50, cache_read: 0.15, cache_write: 1.50 } }],
+});
+
+/** The scheduled row in force on `at` (an ISO time or YYYY-MM-DD), or null. Pure. */
+function scheduledRate(key, at) {
+  const list = SCHEDULED_RATES[key];
+  if (!list || !at) return null;
+  const day = String(at).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  let hit = null;
+  for (const e of list) if (e.from <= day && (!hit || e.from > hit.from)) hit = e;
+  return hit ? hit.rate : null;
+}
+
+/** The DEFAULT_RATES key a model id prices under (exact, then longest prefix). */
+function builtinKey(model) {
+  if (!model) return null;
+  if (DEFAULT_RATES[model]) return model;
+  let best = null;
+  for (const k of Object.keys(DEFAULT_RATES)) if (model.startsWith(k) && (!best || k.length > best.length)) best = k;
+  return best;
+}
+
+function builtinRate(model, tier, at = null) {
+  if (model && DEFAULT_RATES[model]) return scheduledRate(model, at) || DEFAULT_RATES[model];
   if (model) {
     const fam = familyPrefixRate(DEFAULT_RATES, model);
-    if (fam) return fam;
+    if (fam) return scheduledRate(builtinKey(model), at) || fam;
   }
   if (tier && DEFAULT_RATES[tier]) return DEFAULT_RATES[tier];
   return null;
@@ -387,7 +424,7 @@ function builtinRate(model, tier) {
  * @returns {number|null}
  */
 function computeCost(rec, configRates) {
-  const rate = resolveRate(rec.model, rec.tier, configRates);
+  const rate = resolveRate(rec.model, rec.tier, configRates, rec.ts || new Date().toISOString());
   if (!rate) return null;
   const input = rec.input_tokens || 0;
   const output = rec.output_tokens || 0;
@@ -1054,6 +1091,8 @@ function cmdModelsCheck(raw) {
 
 module.exports = {
   computeCost,
+  SCHEDULED_RATES,
+  scheduledRate,
   phaseBudget,
   samePhaseKey,
   cmdCostBudget,

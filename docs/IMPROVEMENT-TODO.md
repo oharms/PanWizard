@@ -24,6 +24,8 @@ This document turns the April 2026 project review into an actionable improvement
 
 > **November 2026 market idea scan (`2026-11-07`):** a delta run of `/market-ideas`. Its highest-leverage finding is a PAN gap the host documents: after a compaction Claude Code keeps only the start of an invoked command, and PAN's compaction hook does not tell the model to re-read the workflow it was running. Re-checking the watched ideas against PAN's own recent releases closed several of them and found a lost-update defect in the trace logger's cursor. The queue is [market-ideas-2026-11.md](specs/market-ideas-2026-11.md); the ledger is [market-ideas-ledger.md](specs/market-ideas-ledger.md).
 
+> **November 2026 reality check (`2026-11-07`):** a delta run the same day. A packed five-runtime install and the MCP resources check clean, and the rate rows match their pricing pages. It found a macOS-only defect in the new installer dry run (CI on `main` red), an OpenCode 2 compaction hook that handed its block over in the wrong shape, dated price changes the rate table could not express, and stale statuses in the October queue. All are fixed in the next patch release; see §13 of [ECOSYSTEM-REVIEW-2026-08.md](ECOSYSTEM-REVIEW-2026-08.md) and the reality-check Addendum of [market-ideas-2026-11.md](specs/market-ideas-2026-11.md).
+
 Do not duplicate filesystem-derived counts here. `CLAUDE.md` remains the single source of truth for command, agent, module, workflow, test, hook, spec, and ADR counts.
 
 ## Goals

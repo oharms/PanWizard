@@ -7,9 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.43.1] - 2026-11-07
+
+Fixes from the reality check of `2026-11-07`.
+
 ### Fixed
 
 - **`--dry-run --json` printed truncated JSON on macOS** (Node 18 and 20): the installer exited right after writing the report, and macOS writes stdout to a pipe asynchronously. It now sets the exit code and lets the output drain.
+- **OpenCode 2 gets PAN's state on compaction in the shape it reads.** The OpenCode 2 compaction event's `system` holds text parts (`{ type: 'text', text }`); PAN's plugin pushed a plain string there. OpenCode 1's `context` still takes the string.
+- **Dated price changes are priced on their dates.** Gemini 4 Argon's price doubles on December 1, 2026 and Gemini 3.8 Flash's on January 1, 2027; a cost record is now priced at the rate in force on its own day, so existing ledgers keep their totals and new records pick up the new price without an update.
+- **GPT-6.1 Terra is priced** (read from OpenAI's pricing page on November 7, 2026), and the `mid` and `fast` fallback rates for a record that names only a tier now track the models Claude's `sonnet` and `haiku` aliases resolve to.
+
+### Documentation
+
+- Troubleshooting covers OpenCode 2 allowing access outside the project by default (it translates PAN's permissions but changed that default), which installer gives OpenCode 1 or 2, and Antigravity plugins loading neither commands nor hooks.
 
 ## [3.43.0] - 2026-11-07
 

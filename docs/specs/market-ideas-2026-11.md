@@ -68,3 +68,40 @@ Correctness before packaging before behaviour (carried from the earlier queues):
 - Entrants: `dagoSte/squadra`, `ruvnet/claude-flow`, `Yeachan-Heo/oh-my-codex`, `Yeachan-Heo/oh-my-claudecode`, `addyosmani/agent-skills`, `microsoft/apm` (README and releases API).
 - Standards: `agentplugins/agent-plugins-spec` (pulls, commits, `spec/1.1.0.md`); `modelcontextprotocol` PRs #3459, #3392, #3398 and issues #2848, #2419; `agentskills/agentskills` PRs #648, #649; `agentsmd/agents.md`; `open-telemetry/semantic-conventions-genai`.
 - Vendor posts: Anthropic "The components of agent memory" (`2026-11-06`); Google "Agent Distraction" (`2026-11-06`) and "Cost per task" (`2026-11-03`); GitHub "Beyond code generation" (`2026-11-06`) and the Dependabot APM changelog (`2026-11-03`).
+
+## Addendum — `2026-11-07` (reality check)
+
+A delta `/reality-check` the same day, on `main` @ `7519709`. Finding ids are `RC`, item ids continue from R55. The evidence is in §13 of `docs/ECOSYSTEM-REVIEW-2026-08.md`.
+
+### Baseline (reproduce with the commands, never copy the numbers)
+
+| Item | Value |
+|---|---|
+| Gates | `npm run ci:local` on the `3.43.0` release commit: every gate passed; GitHub CI on `main`: macOS Node 18 and 20 failed (`gh run list`) |
+| Install | packed tarball into `C:\Project\pantesting\reality-check`, `--claude --codex --gemini --opencode --copilot --local`; surfaces checked on disk |
+| MCP | every resource read through the installed server on a bare project |
+| Harness ledger | open findings: `node -e "…filter rows without resolved_at in harness/ledger.jsonl…"` |
+| Rates | `pan-tools models check`; rows compared with the Anthropic, OpenAI and Gemini pricing pages read `2026-11-07` |
+
+### Items
+
+| ID | Pri | Size | Pts | Title | Files | Gate / verify | Status |
+|---|---|---|---|---|---|---|---|
+| R56 | P1 | S | 2 | **OpenCode 2 compaction part** (RC1): push `{ type: 'text', text }` into `system`; keep plain strings for v1's `context` | `pan-wizard-core/opencode/pan-wizard.js`, `tests/fixtures/opencode2-compaction-event.json` | `tests/opencode-plugin.test.cjs` checks the part against the documented shape (red on the old plugin). A live compaction on OpenCode 2 needs a model turn and is not run | **Done `2026-11-07`** |
+| R57 | P1 | XS | 1 | **Status sweep** (RC3): the October queue's "unreleased" rows marked released in `3.37.0`; M49 marked reverted in `3.41.3` | `docs/specs/market-ideas-2026-10.md` | by reading | **Done `2026-11-07`** |
+| R58 | P1 | S | 2 | **Dated rate changes** (RC4): `SCHEDULED_RATES` prices a record at the row in force on its own day; Gemini 4 Argon from `2026-12-01`, Gemini 3.8 Flash from `2027-01-01` | `pan-wizard-core/bin/lib/cost.cjs` | `tests/cost-scheduled-rates.test.cjs` | **Done `2026-11-07`** |
+| R59 | P1 | XS | 1 | **GPT-6.1 Terra row; tier fallbacks on the current aliases** (RC5) | `pan-wizard-core/bin/lib/cost.cjs`, `tests/cost.test.cjs` | the same tests | **Done `2026-11-07`** |
+| R60 | P6 | XS | 1 | **OpenCode 2 and Antigravity behaviour in the docs** (RC6) | `docs/TROUBLESHOOTING.md` | doc lint | **Done `2026-11-07`** |
+| R61 | P7 | — | 0 | **Alias skills carry their target's body** (RC7) | — | design holds (`renderCommandAlias`) | closed, no change |
+| R62 | P6 | XS | 1 | **Write back this run** | this file, §13, `docs/IMPROVEMENT-TODO.md` | post-write gate | **Done `2026-11-07`** |
+| R63 | P0 | XS | 1 | **`--dry-run --json` cut short on macOS** (RC2): set `process.exitCode` instead of exiting | `bin/install.js`, `tests/install-dry-run.test.cjs` | a test pins the shape (red on `3.43.0`); CI on macOS after push | **Done `2026-11-07`** (`7519709`) |
+
+### What not to do — re-affirmed `2026-11-07`
+
+The inherited list holds item by item, unchanged. Added: do not derive a test of a host's hook payload from PAN's own handler; record the host's documented shape in a fixture first (RC1, the same lesson as the `2026-09-22` entry).
+
+### Verification caveats
+
+- A live compaction on OpenCode 2 needs a model turn; R56 rests on OpenCode's plugin docs and a fixture of the documented shape.
+- The macOS fix is proven by a source-shape test and by reasoning about pipe semantics; CI on macOS after the push is the real gate.
+- No Antigravity CLI on this machine; its rows rest on its changelog.

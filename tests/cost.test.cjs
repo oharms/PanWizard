@@ -81,9 +81,10 @@ describe('cost — resolveRate', () => {
     assert.equal(r.cache_read, 0.20);
   });
 
-  test('unknown model falls through to tier (mid tracks the sonnet alias: Sonnet 5)', () => {
+  test('unknown model falls through to tier (mid tracks the sonnet alias: Sonnet 5.5; fast the haiku alias: Haiku 5.5)', () => {
     const r = resolveRate('claude-unknown-model', 'mid', null);
-    assert.deepEqual(r, resolveRate('claude-sonnet-5', null, null));
+    assert.deepEqual(r, resolveRate('claude-sonnet-5-5', null, null));
+    assert.deepEqual(resolveRate('claude-unknown-model', 'fast', null), resolveRate('claude-haiku-5-5', null, null).long ? (({ long, ...rest }) => rest)(resolveRate('claude-haiku-5-5', null, null)) : resolveRate('claude-haiku-5-5', null, null));
     assert.equal(r.input, 2.0);
   });
 

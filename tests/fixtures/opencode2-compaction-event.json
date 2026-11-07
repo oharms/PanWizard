@@ -1,0 +1,8 @@
+{
+  "source": "https://opencode.ai/docs/build/plugins/server (and /docs/build/plugins/migrate-v1), read 2026-11-07",
+  "why": "OpenCode 2's own vocabulary for the compaction hook, so a test of PAN's plugin checks the shape OpenCode documents, not the shape PAN assumed (doctrine 11 of /reality-check). The v1 hook `experimental.session.compacting` maps to `ctx.session.hook(\"compaction\", ...)`; the event is `SessionContextHook & { result?: SessionCompactionResult }`, and OpenCode appends its summary prompt after hooks run.",
+  "hook": "compaction",
+  "event_fields": ["system", "messages", "options", "tools", "agent"],
+  "system_part": { "type": "text", "text": "<string>" },
+  "absent_fields": ["context"]
+}

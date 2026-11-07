@@ -347,3 +347,21 @@ Run on `claude/quirky-thompson-2c5aa3` @ `127389f` (`3.36.0`, released `2026-10-
 | Copilot reads `.claude/settings.json` hooks and runs every source | Refuted as a PAN defect: each Copilot hook copy defers to a Claude registration of the same script | — |
 
 **Convergence read holds:** peers spent the window on plan and gate integrity, and Anthropic's account of its own code review matches PAN's verify, findings and defect-corpus design. The move the other way is a host default, fork mode in headless Claude Code, which PAN keeps declining (ADR-0046 D6). **What not to do** carries forward unchanged. **Cadence:** a full re-run is still due around `2026-11-22`. The early trigger ("OpenCode 2 becomes the default install") is met for Homebrew users only, so R51 runs now instead of a full re-run. The queue is the `2026-10-19` reality-check Addendum of `docs/specs/market-ideas-2026-10.md`.
+
+## 13. Reality check (run `2026-11-07`, delta)
+
+Run on `main` @ `7519709` (`3.43.0` released to GitHub and staged on npm, plus one unreleased fix). Window `2026-10-19` → `2026-11-07`; the same-day `/market-ideas` scan supplied the market read, and this run re-read its hand-offs at their primary sources. A full `ci:local` passed on the `3.43.0` release commit (host suites, Linux containers, harness tier 0, coverage), but CI on `main` failed on macOS with Node 18 and 20. A packed `3.43.0` install wrote every claimed surface on all five runtimes, and every MCP resource read cleanly through the real engine on a bare project. The harness ledger has no open finding. The Anthropic, OpenAI and Gemini rate rows match their pricing pages as read today.
+
+| Finding | Bearing | Queue |
+|---|---|---|
+| `install.js --dry-run --json` exited right after writing its report; macOS writes stdout to a pipe asynchronously, so the JSON came out cut short (CI on Node 18 and 20) | A defect in `3.43.0`, fixed in `7519709` | R63 |
+| The OpenCode 2 compaction hook pushed PAN's block into `system` as a string, where OpenCode 2 documents `SystemPart[]` (`{ type: 'text', text }`); the test that covered it was derived from the plugin, not from OpenCode's docs | The hand-off on compaction was not in the shape OpenCode 2 reads | R56 |
+| The October queue still marked its `2026-10-19`/`20` items "unreleased" (they shipped in `3.37.0`), and M49 "Done" although `3.41.3` reverted it | Docs, not code | R57 |
+| Gemini 4 Argon's price doubles on `2026-12-01` and Gemini 3.8 Flash's on `2027-01-01`; only a code comment asked for the row to be edited on the day | The ledger would under-bill from those dates | R58 |
+| GPT-6.1 Terra is in Codex's catalog and on the pricing page with no PAN row; the `mid` and `fast` tier fallbacks still tracked Sonnet 5 and Haiku 4.5 | Unpriced records; tier-only records over-billed | R59 |
+| OpenCode 2 translates PAN's v1 `permission` block but allows `external_directory` by default; Antigravity plugins load neither `commands/` nor `hooks/hooks.json` | User-facing behaviour the docs did not mention | R60 |
+| Alias skills carry their target's whole body | By design (`renderCommandAlias`: a pointer would not resolve on every runtime); no change | R61 |
+| Copilot runs hook commands through PowerShell on Windows | Refuted as a PAN defect: PAN's `node "<path>"` command is valid there | — |
+| Claude Code caps prompt and agent hooks at 24 at a time | No bearing: PAN registers command hooks | — |
+
+**Convergence read holds**, with the same two signals the other way as the scan: a peer shipping a feature only as a Claude Mods plugin, and Gemini CLI narrowing to enterprise. **What not to do** carries forward unchanged. **Cadence:** a full re-run is still due around `2026-11-22`; OpenCode 2 becoming the default of `opencode.ai/install` or `opencode-ai` would bring it forward. The queue is the `2026-11-07` reality-check Addendum of `docs/specs/market-ideas-2026-11.md`.

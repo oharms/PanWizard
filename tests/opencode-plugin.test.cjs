@@ -128,7 +128,11 @@ describe('OpenCode 2: setup() registers the same compaction hand-off (R45)', () 
     } finally { cleanup(d); }
   });
 
-  test('pushes onto `system` the same block server() pushes onto `context`', async () => {
+  test('pushes onto `system` a part in the documented shape, carrying the block server() pushes onto `context`', async () => {
+    // The shape comes from OpenCode's docs, not from this plugin (R56: the 2.x hook
+    // pushed a bare string into SystemPart[], and this test, derived from the plugin,
+    // agreed with it).
+    const doc = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'opencode2-compaction-event.json'), 'utf8'));
     const d = project();
     try {
       const { ctx, hooks } = fakeCtx(d);
@@ -136,7 +140,11 @@ describe('OpenCode 2: setup() registers the same compaction hand-off (R45)', () 
       const event = { system: [] };
       await hooks[0].fn(event);
       assert.equal(event.system.length, 1);
-      assert.deepEqual(event.system, await compact(d));
+      const [part] = event.system;
+      assert.deepEqual(Object.keys(part).sort(), Object.keys(doc.system_part).sort());
+      assert.equal(part.type, doc.system_part.type);
+      assert.equal(typeof part.text, 'string');
+      assert.deepEqual([part.text], await compact(d));
     } finally { cleanup(d); }
   });
 
@@ -164,7 +172,7 @@ describe('OpenCode 2: setup() registers the same compaction hand-off (R45)', () 
       plugin.setup(ctx);
       const event = { system: [] };
       await hooks[0].fn(event);
-      assert.match(event.system[0], /re-read \.planning\/tracks\/api\/state\.md/);
+      assert.match(event.system[0].text, /re-read \.planning\/tracks\/api\/state\.md/);
     } finally {
       if (saved === undefined) delete process.env.PAN_TRACK; else process.env.PAN_TRACK = saved;
       cleanup(d);
@@ -190,8 +198,8 @@ describe('OpenCode 2: setup() registers the same compaction hand-off (R45)', () 
       plugin.setup(ctx);
       const event = { system: [] };
       await hooks[0].fn(event);
-      assert.ok(event.system[0].length <= 2000);
-      assert.deepEqual(event.system, await compact(d));
+      assert.ok(event.system[0].text.length <= 2000);
+      assert.deepEqual(event.system.map((p) => p.text), await compact(d));
     } finally { cleanup(d); }
   });
 
