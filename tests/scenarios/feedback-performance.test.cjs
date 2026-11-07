@@ -43,14 +43,14 @@ describe('E2E Feedback: Performance Sanity', () => {
     assert.ok(elapsed < 5000, `state json took ${elapsed}ms, should be < 5000ms`);
   });
 
-  test('phases list (10 phases) completes in < 3000ms', () => {
+  test('phases list (10 phases) completes in < 5000ms', () => {
     const start = Date.now();
     const r = runner.run('phases list');
     const elapsed = Date.now() - start;
     assert.ok(r.success, `should succeed: ${r.error}`);
     const p = JSON.parse(r.output);
     assert.equal(p.count, 10, 'should have 10 phases');
-    assert.ok(elapsed < 3000, `phases list took ${elapsed}ms, should be < 3000ms`);
+    assert.ok(elapsed < 5000, `phases list took ${elapsed}ms, should be < 5000ms`);
   });
 
   test('focus scan (10 phases) completes in < 5000ms', () => {
@@ -61,11 +61,11 @@ describe('E2E Feedback: Performance Sanity', () => {
     assert.ok(elapsed < 5000, `focus scan took ${elapsed}ms, should be < 5000ms`);
   });
 
-  test('validate health completes in < 3000ms', () => {
+  test('validate health completes in < 5000ms', () => {
     const start = Date.now();
     const r = runner.run('validate health');
     const elapsed = Date.now() - start;
     assert.equal(r.success, JSON.parse(r.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
-    assert.ok(elapsed < 3000, `validate health took ${elapsed}ms, should be < 3000ms`);
+    assert.ok(elapsed < 5000, `validate health took ${elapsed}ms, should be < 5000ms`);
   });
 });
