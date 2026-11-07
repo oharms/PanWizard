@@ -3533,7 +3533,10 @@ function runDryRun() {
     try { fs.rmSync(sandbox, { recursive: true, force: true }); } catch { /* temp */ }
     try { fs.rmSync(home, { recursive: true, force: true }); } catch { /* temp */ }
   }
-  process.exit(code);
+  // Set the exit code rather than exiting: on macOS stdout to a pipe is written
+  // asynchronously, and exiting at once cut the JSON short (CI, Node 18 and 20).
+  // Nothing runs after this call, so the process ends when the output has drained.
+  process.exitCode = code;
 }
 
 // Main logic

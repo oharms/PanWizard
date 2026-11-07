@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`--dry-run --json` printed truncated JSON on macOS** (Node 18 and 20): the installer exited right after writing the report, and macOS writes stdout to a pipe asynchronously. It now sets the exit code and lets the output drain.
+
 ## [3.43.0] - 2026-11-07
 
 An installer preview, and two fixes from the market scan of `2026-11-07`.

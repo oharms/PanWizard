@@ -88,6 +88,18 @@ describe('a dry run', () => {
     assert.deepEqual(fs.readdirSync(project), []);
   });
 
+  test('the report is never cut short: the run ends by setting the exit code, not by process.exit()', () => {
+    // On macOS stdout to a pipe is asynchronous; exiting right after the write
+    // truncated the JSON on CI (Node 18 and 20) while every other platform passed.
+    const src = fs.readFileSync(INSTALLER_PATH, 'utf8');
+    const start = src.indexOf('function runDryRun()');
+    const body = src.slice(start, src.indexOf('\n}\n', start));
+    const afterWrite = body.slice(body.indexOf('process.stdout.write('));
+    assert.ok(start > 0 && afterWrite.length > 0);
+    assert.doesNotMatch(afterWrite, /process\.exit\(/);
+    assert.match(afterWrite, /process\.exitCode = code;/);
+  });
+
   test('the source repository is refused', () => {
     const repo = path.resolve(__dirname, '..');
     const r = spawnSync(process.execPath, [INSTALLER_PATH, '--claude', '--dry-run'], { cwd: repo, encoding: 'utf8', timeout: 60000 });
