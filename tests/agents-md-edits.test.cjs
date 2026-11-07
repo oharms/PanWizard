@@ -54,7 +54,7 @@ describe('AGENTS.md: a section the project edited is kept', () => {
   });
 
   test('the memory line defers to the project, and regeneration replaces the old line (DD-16)', () => {
-    const now = A.buildAgentsMdSection();
+    const now = A.buildAgentsMdSection({ mode: 'advisory' });
     assert.match(now, /a saved memory that describes another way is out of date, unless this project's own instructions say otherwise\./);
     for (const mode of ['advisory', 'exclusive']) {
       const old = A.buildAgentsMdSection({ mode }).replace(', unless this project\'s own instructions say otherwise.', '.');

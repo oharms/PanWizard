@@ -49,9 +49,13 @@ describe('the routing table', () => {
     }
   });
 
-  test('advisory (the default) renders the table; off renders the section without it', () => {
-    assert.match(A.buildAgentsMdSection(), /### When to use PAN in this project/);
-    for (const [command, intent] of A.ROUTES) assert.ok(A.buildAgentsMdSection().includes(`| ${intent} | \`${command}\` |`), command);
+  test('off (the default since 3.42.2) renders the section without the table; advisory renders it', () => {
+    // Field feedback on 3.42.2: the advisory table steered every plain request into a
+    // PAN command, so an installed project was PAN-only in practice. Routing is opt-in.
+    assert.doesNotMatch(A.buildAgentsMdSection(), /When to use PAN|\| Run \||saved memory/);
+    assert.equal(A.buildAgentsMdSection(), A.buildAgentsMdSection({ mode: 'off' }));
+    assert.match(A.buildAgentsMdSection({ mode: 'advisory' }), /### When to use PAN in this project/);
+    for (const [command, intent] of A.ROUTES) assert.ok(A.buildAgentsMdSection({ mode: 'advisory' }).includes(`| ${intent} | \`${command}\` |`), command);
     assert.doesNotMatch(A.buildAgentsMdSection({ mode: 'off' }), /When to use PAN|\| Run \|/);
     assert.doesNotMatch(A.buildAgentsMdSection({ mode: 'advisory' }), /only through PAN/);
     assert.match(A.buildAgentsMdSection({ mode: 'exclusive' }), /only through PAN/);
@@ -79,12 +83,13 @@ describe('the routing table', () => {
     assert.equal(A.upsertAgentsMdSection(edited, A.buildAgentsMdSection({ mode: 'off' })), edited);
   });
 
-  test('routingModeOf reads instructions.routing and falls back to advisory', () => {
+  test('routingModeOf reads instructions.routing and falls back to off', () => {
     assert.equal(A.routingModeOf({ instructions: { routing: 'exclusive' } }), 'exclusive');
     assert.equal(A.routingModeOf({ instructions: { routing: 'off' } }), 'off');
     for (const c of [null, {}, { instructions: null }, { instructions: { routing: 'loud' } }, { routing: { strategy: 'static' } }]) {
-      assert.equal(A.routingModeOf(c), 'advisory', JSON.stringify(c));
+      assert.equal(A.routingModeOf(c), 'off', JSON.stringify(c));
     }
+    assert.equal(A.routingModeOf({ instructions: { routing: 'advisory' } }), 'advisory');
   });
 });
 
@@ -147,7 +152,10 @@ describe('installer: Gemini loads AGENTS.md, and no GEMINI.md is written', () =>
     assert.deepEqual(s.context.fileName, ['CONTEXT.md', 'AGENTS.md']);
     assert.deepEqual(s.ui, { theme: 'x' });
     assert.equal(fs.existsSync(path.join(dir, 'GEMINI.md')), false);
-    assert.match(fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8'), /### When to use PAN in this project/);
+    // PAN's section, without the routing table: routing is off unless the project opts in.
+    const agents = fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8');
+    assert.match(agents, /<!-- BEGIN PAN WIZARD -->/);
+    assert.doesNotMatch(agents, /When to use PAN/);
 
     // A second install changes nothing and keeps the first record of what PAN found.
     execFileSync(process.execPath, [INSTALLER, '--gemini', '--local', '--skip-warnings'], { cwd: dir, encoding: 'utf8', stdio: 'pipe' });
@@ -181,7 +189,8 @@ describe('memory rebuild --only agents-md, and global installs', () => {
     fs.mkdirSync(path.join(userDir, 'pan-wizard-core'));
     const { out } = rebuild(['--apply', '--only', 'agents-md']);
     assert.equal(out.claude_bridge, true);
-    assert.match(fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8'), /When to use PAN/);
+    assert.match(fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8'), /<!-- BEGIN PAN WIZARD -->/);
+    assert.doesNotMatch(fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8'), /When to use PAN/, 'routing is off by default');
     assert.match(fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), /@AGENTS\.md/);
   });
 

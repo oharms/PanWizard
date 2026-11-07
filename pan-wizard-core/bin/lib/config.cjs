@@ -88,8 +88,10 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
     // Project memory routing: what PAN's AGENTS.md section says about which command a
     // plain request belongs to. `off` (no table), `advisory` (the table), `exclusive` (the
     // table, and the guard's unrouted_write rule; files matching `routing_exempt` globs are
-    // left alone by it). Not `routing.*`: that section is model routing.
-    instructions: { routing: 'advisory', routing_exempt: [] },
+    // left alone by it). Not `routing.*`: that section is model routing. `off` by default
+    // (field feedback on 3.42.2): the table steered every plain request, a one-line fix
+    // included, into a PAN command, so a project opts in to routing.
+    instructions: { routing: 'off', routing_exempt: [] },
     // Spend per phase, in API-equivalent dollars. It only warns (80% and over); 0 = off.
     cost: { phase_budget_usd: 20 },
     brave_search: hasBraveSearch,

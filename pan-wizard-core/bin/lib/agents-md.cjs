@@ -61,11 +61,13 @@ const ROUTES = Object.freeze([
   // plain requests into an autonomous loop is the over-routing ADR-0050 warns of.
   ['focus-design', 'investigate and design a feature before building it'],
 ]);
-// `instructions.routing` in the planning config: `off` leaves the table out, `advisory`
-// (default) adds it, `exclusive` also says the project does this work only through PAN
+// `instructions.routing` in the planning config: `off` (the default since 3.42.2) leaves
+// the table out, `advisory` adds it, `exclusive` also says the project does this work only through PAN
 // (and turns on the guard's unrouted_write rule).
 const ROUTING_MODES = Object.freeze(['off', 'advisory', 'exclusive']);
-const DEFAULT_ROUTING_MODE = 'advisory';
+// `off` since 3.42.2: the advisory table sent every plain request, a one-line fix
+// included, into a PAN command, which made an installed project PAN-only in practice.
+const DEFAULT_ROUTING_MODE = 'off';
 
 /** The routing mode a parsed planning config asks for; the default for anything else. */
 function routingModeOf(config) {
@@ -114,7 +116,7 @@ function fencedInner(existing) {
 
 /**
  * Build the PAN section for AGENTS.md (marker-fenced, runtime-neutral).
- * @param {{mode?: 'off'|'advisory'|'exclusive'}} [opts] - the routing mode (default advisory)
+ * @param {{mode?: 'off'|'advisory'|'exclusive'}} [opts] - the routing mode (default off)
  * @returns {string} The fenced section, no leading/trailing blank lines.
  */
 function buildAgentsMdSection(opts = {}) {

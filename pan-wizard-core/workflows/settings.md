@@ -31,7 +31,7 @@ Parse current values (when a key is absent, use PAN's default: `false` for resea
 - `workflow.nyquist_validation` — validation architecture research during plan-phase
 - `model_profile` — how much ceremony and which model each agent uses (default: `balanced`; `quality` keeps the full ceremony everywhere)
 - `routing.strategy` — not asked here (default: `static`). The `complexity` strategy reaches no workflow, so offering it would be a choice that changes nothing; `config-set routing.strategy complexity` still sets it for `resolve-model --metadata` callers.
-- `instructions.routing` — how PAN's AGENTS.md section steers plain requests to PAN commands (default: `advisory`; `exclusive`; `off`)
+- `instructions.routing` — how PAN's AGENTS.md section steers plain requests to PAN commands (default: `off`, no table; `advisory`, a table naming the PAN command for common requests; `exclusive`, PAN-only)
 - `cost.phase_budget_usd` — spend per phase PAN warns about, in API-equivalent dollars (default: `20`; `0` = off). It never stops a run
 - `branching_strategy` — branching approach (default: `"none"`; a top-level key — a nested `git.branching_strategy` is ignored when the top-level key exists, as it does in every config `config-ensure-section` creates — write the top-level key)
 </step>
@@ -138,9 +138,9 @@ AskUserQuestion([
     header: "Routing",
     multiSelect: false,
     options: [
-      { label: "Advisory (Recommended)", description: "A short table maps requests (fix a bug, small change, plan, build, check) to PAN commands" },
-      { label: "Exclusive", description: "The table, plus: this project does that work only through PAN; with hooks.guard enforce, a source edit outside any PAN task is refused" },
-      { label: "Off", description: "No table; the section only says the project uses PAN" }
+      { label: "Off (Recommended)", description: "No table; the section only says the project uses PAN, and plain requests are handled the tool's own way" },
+      { label: "Advisory", description: "A short table maps requests (fix a bug, small change, plan, build, check) to PAN commands, so even a small fix goes through PAN" },
+      { label: "Exclusive", description: "The table, plus: this project does that work only through PAN; with hooks.guard enforce, a source edit outside any PAN task is refused" }
     ]
   }
 ])

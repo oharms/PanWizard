@@ -9,7 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.42.2] - 2026-11-06
 
-Five items from the field report on 3.42.1.
+Five items from the field report on 3.42.1, and request routing made opt-in.
+
+### Changed
+
+- **`instructions.routing` is `off` by default.** Under the old default, `advisory`, PAN's section of `AGENTS.md` carried a table mapping plain requests to PAN commands (fix a bug → `debug`, small change → `quick`). Every plain request, a one-line fix included, went through a PAN command, so an installed project was PAN-only in practice. The section now says the project uses PAN and how its commands are named. PAN runs when you call a command.
+  - `advisory` and `exclusive` are still there as opt-ins, through `/pan:settings`, which now recommends `off`.
+  - A project whose `config.json` already says `advisory` keeps it until changed. `/pan:new-project` wrote that value before this release. To switch, run `pan-tools config-set instructions.routing off`, then `pan-tools memory rebuild --apply --only agents-md`.
 
 ### Added
 

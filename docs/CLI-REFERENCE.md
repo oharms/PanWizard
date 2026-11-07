@@ -2717,7 +2717,7 @@ pan-tools config-ensure-section [--raw]
 
 **`--raw` output:** `created` or `exists`.
 
-**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`/`phase_gate` (`enforce`)/`mutation_gate` (`report`)/`mutation_floor` (`0.6`)/`review_mode` (`single`)/`cross_family_review` (`off`)/`worktree_isolation` (`false`), `hooks.guard` (`report`), `instructions` (`routing: advisory`), `cost.phase_budget_usd` (`20`), `budget.default_points`/micro thresholds/`max_usd_run`/`max_usd_day` (`null`), and the `commit`, `execution` and `routing` blocks):
+**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`/`phase_gate` (`enforce`)/`mutation_gate` (`report`)/`mutation_floor` (`0.6`)/`review_mode` (`single`)/`cross_family_review` (`off`)/`worktree_isolation` (`false`), `hooks.guard` (`report`), `instructions` (`routing: off`), `cost.phase_budget_usd` (`20`), `budget.default_points`/micro thresholds/`max_usd_run`/`max_usd_day` (`null`), and the `commit`, `execution` and `routing` blocks):
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -4148,7 +4148,7 @@ pan-tools memory optimize --apply --keep 20
 
 ### `memory rebuild [--apply] [--only agents-md]`
 
-Regenerate PAN's *derived* tools-memory as an idempotent projection from source: the marker-fenced PAN section in `AGENTS.md` (read natively by Codex, OpenCode and Copilot CLI; Claude Code reads it through the `CLAUDE.md` bridge below; Gemini CLI through the `context.fileName` entry a Gemini install adds), written in the routing mode `instructions.routing` names (`off`: no table; `advisory`, the default: a short table of which PAN command a plain request belongs to; `exclusive`: the table, and a line saying the project does that work only through PAN), PAN's block in `CLAUDE.md` (when a Claude install is visible: in the project, or a global one in the Claude user directory, which writes nothing into projects itself): the `@AGENTS.md` import and a `# Compact instructions` section that tells Claude Code's compaction summary what PAN work needs to resume. An older block holding only the import is brought up to date in place. It also patches state.md's position keys in place from the body; comments, quoting and keys PAN does not know are kept; a state.md with more than one front-matter block is reported as `action: "refused"` and left as it is. User content outside PAN's markers is never touched. Refuses to run inside the PAN source repository.
+Regenerate PAN's *derived* tools-memory as an idempotent projection from source: the marker-fenced PAN section in `AGENTS.md` (read natively by Codex, OpenCode and Copilot CLI; Claude Code reads it through the `CLAUDE.md` bridge below; Gemini CLI through the `context.fileName` entry a Gemini install adds), written in the routing mode `instructions.routing` names (`off`, the default since 3.42.2: no table; `advisory`: a short table of which PAN command a plain request belongs to; `exclusive`: the table, and a line saying the project does that work only through PAN), PAN's block in `CLAUDE.md` (when a Claude install is visible: in the project, or a global one in the Claude user directory, which writes nothing into projects itself): the `@AGENTS.md` import and a `# Compact instructions` section that tells Claude Code's compaction summary what PAN work needs to resume. An older block holding only the import is brought up to date in place. It also patches state.md's position keys in place from the body; comments, quoting and keys PAN does not know are kept; a state.md with more than one front-matter block is reported as `action: "refused"` and left as it is. User content outside PAN's markers is never touched. Refuses to run inside the PAN source repository.
 
 Dry-run by default; pass `--apply` to write. A second run changes nothing. `--only agents-md` rebuilds `AGENTS.md` and the bridge and leaves state.md alone (what `/pan:new-project` and `/pan:settings` run); any other `--only` value is refused with `error: "bad_only"`. A PAN section the project edited is kept and reported as `action: "kept_edited"`.
 
@@ -4162,7 +4162,7 @@ pan-tools memory rebuild --apply     # regenerate AGENTS.md / CLAUDE.md; patch s
 {
   "apply": true,
   "runtimes": ["claude", "copilot"],
-  "routing": "advisory",
+  "routing": "off",
   "claude_bridge": true,
   "rebuilt": [
     { "file": "AGENTS.md", "action": "update", "wrote": true },

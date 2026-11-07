@@ -522,7 +522,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
   },
   "parallelization": true,
   "hooks": { "guard": "report" },
-  "instructions": { "routing": "advisory", "routing_exempt": [] },
+  "instructions": { "routing": "off", "routing_exempt": [] },
   "cost": { "phase_budget_usd": 20 },
   "brave_search": false,
   "budget": {
@@ -596,7 +596,7 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 | `workflow.nyquist_validation` | `true`, `false` | `false` | Validation architecture research during plan-phase; adds the Nyquist plan-check dimension. Off by default — opt-in via `pan-tools config-set workflow.nyquist_validation true`. |
 | `workflow.auto_advance` | `true`, `false` | `false` | Chain discuss → plan → execute → verify → transition without prompting. **Scope:** within a phase the chain is automatic; at a phase boundary a chain that `/pan:plan-phase` drives stops (it runs exec-phase with `--no-transition`) and prints the next command; PAN's stop guard then blocks the session's stop once and tells the agent to spawn the next phase; a direct `/pan:exec-phase --auto` hands over to `transition.md`, which spawns the next phase as a Task subagent and, at the end of the milestone, turns `auto_advance` off and stops, showing `/pan:milestone-done` as the next step. Equivalent to passing `--auto` to `/pan:discuss-phase`, `/pan:plan-phase` and `/pan:exec-phase`. |
 | `hooks.guard` | `off`, `report`, `enforce` | `report` | The pre-tool guard hook (Claude Code, Codex, Gemini CLI, Copilot CLI). `report` logs each credential written into a file, direct write to PAN's state, judge agent's write outside `.planning/`, or edit to a test the phase does not declare, to `.planning/guard.jsonl`; `enforce` also denies the credential write, the direct state write (state.md goes through `pan-tools state` verbs), and a judge agent's write outside `.planning/`. In `exclusive` request routing it also reports, and under `enforce` denies, a source edit while no PAN task is in flight (`unrouted_write`). |
-| `instructions.routing` | `off`, `advisory`, `exclusive` | `advisory` | What PAN's section of `AGENTS.md` says about which PAN command a plain request belongs to. See [How PAN tells your tool to use it](#how-pan-tells-your-tool-to-use-it). Set with `/pan:settings`, which rewrites the section |
+| `instructions.routing` | `off`, `advisory`, `exclusive` | `off` | What PAN's section of `AGENTS.md` says about which PAN command a plain request belongs to. See [How PAN tells your tool to use it](#how-pan-tells-your-tool-to-use-it). Set with `/pan:settings`, which rewrites the section |
 | `instructions.routing_exempt` | list of globs | `[]` | Files the `exclusive` guard rule leaves alone, for example `["docs/**", "*.md"]` |
 | `workflow.phase_gate` | `enforce`, `warn` | `enforce` | The phase gate `phase complete` runs first: summaries for every plan, a passing and fresh verification, approved human items, a clean reconcile, no open critical or high finding, no committed stub, no weakened test. `warn` marks the phase complete and reports what failed (exec-phase then does not auto-advance); `enforce` refuses until each reason is fixed, or until `phase complete <N> --force --reason "<why>"`, which records the override. `pan-tools phase gate <N>` runs the gate alone. |
 | `workflow.test_command` | a shell command | detected | The suite the engine's test gate runs (`pan-tools test run`). Without it PAN detects one: package.json's `test` script, pytest, `go test ./...`, cargo, Maven, Gradle or `make test` |
@@ -938,7 +938,12 @@ Each coding tool loads a project instructions file at the start of every session
 | Codex, OpenCode, Copilot CLI | `AGENTS.md` directly |
 | Gemini CLI | `AGENTS.md`, named in `context.fileName` in `.gemini/settings.json` (PAN adds it, and takes it out on uninstall). PAN writes no `GEMINI.md`, which Copilot would also load |
 
-With `instructions.routing: advisory` (the default) the section carries a short table: fix a bug → `debug`, small change → `quick`, plan → `plan-phase`, build → `exec-phase`, check → `verify-phase`, and so on, so a request in plain words reaches the PAN command. `exclusive` adds that the project does this work only through PAN; with `hooks.guard: enforce` the guard then refuses a source edit made while no PAN task is in flight. `off` leaves the table out. A section you edited yourself is never replaced.
+With `instructions.routing: off` (the default since 3.42.2) the section says the project uses PAN and how its commands are named, and nothing more: a plain request such as "fix this bug" is handled the tool's own way, and PAN runs when you call a command. Opt in to more with `/pan:settings` or `pan-tools config-set instructions.routing <mode>`:
+
+- `advisory` adds a short table: fix a bug → `debug`, small change → `quick`, plan → `plan-phase`, build → `exec-phase`, check → `verify-phase`, and so on, so a request in plain words reaches the PAN command. Before 3.42.2 this was the default, and it sent even a one-line fix through a PAN command.
+- `exclusive` adds that the project does this work only through PAN; with `hooks.guard: enforce` the guard then refuses a source edit made while no PAN task is in flight.
+
+A project whose `config.json` already says `advisory` (`/pan:new-project` wrote it before 3.42.2) keeps it until you change it; then run `pan-tools memory rebuild --apply --only agents-md`. A section you edited yourself is never replaced.
 
 A global install writes nothing into a project. `/pan:new-project` writes the section when it sets one up; for an existing project, run `pan-tools memory rebuild --apply --only agents-md`.
 
