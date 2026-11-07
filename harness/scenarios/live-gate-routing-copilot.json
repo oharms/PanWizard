@@ -8,13 +8,21 @@
   "requires": { "cli": "copilot" },
   "budget": { "maxUsd": 0, "maxMinutes": 6, "maxStepMinutes": 3 },
   "steps": [
+    { "kind": "fs", "read": "AGENTS.md", "expect": ["stdout~<!-- BEGIN PAN WIZARD -->", "absent:GEMINI.md"],
+      "why": "The installer's contract: PAN's section, and no GEMINI.md. Routing is off by default since 3.42.2, so the table comes next, by opting in." },
+    { "kind": "pan", "argv": ["config-ensure-section"], "expect": ["exit:0"],
+      "why": "The empty seed has no planning config; this writes the defaults, routing off." },
+    { "kind": "pan", "argv": ["config-set", "instructions.routing", "advisory"], "expect": ["exit:0"],
+      "why": "The project opts in to the routing table, as a project choosing advisory does." },
+    { "kind": "pan", "argv": ["memory", "rebuild", "--apply", "--only", "agents-md"], "expect": ["exit:0"],
+      "why": "Rewrites PAN's section for the routing mode the config now asks for." },
     { "kind": "fs", "read": "AGENTS.md", "expect": ["stdout~### When to use PAN in this project", "absent:GEMINI.md"],
-      "why": "The installer's contract: PAN's section with its routing table, and no GEMINI.md." },
+      "why": "The advisory section, with its table, is on disk, and still no GEMINI.md." },
     { "kind": "cli", "bin": "copilot", "args": ["instruction", "list"],
       "expect": ["exit:0", "stdout~\\bAGENTS\\.md\\b", "stdout~^(?![\\s\\S]*GEMINI\\.md)"],
       "why": "The measurement: Copilot's own list of the instruction sources it would load names AGENTS.md and no GEMINI.md." }
   ],
   "controls": [
-    {"id":"no-agents-md","after":0,"delete":"AGENTS.md","why":"With AGENTS.md gone, Copilot's list must not name it, which shows the listing reads this workspace."}
+    {"id":"no-agents-md","after":4,"delete":"AGENTS.md","why":"With AGENTS.md gone, Copilot's list must not name it, which shows the listing reads this workspace."}
   ]
 }

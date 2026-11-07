@@ -90,6 +90,8 @@
       ],
       "why": "Project memory routing (ADR-0050): the install names AGENTS.md in context.fileName, in the same project settings file the trusted listing above proves Gemini reads, and writes no GEMINI.md, which Copilot would also load. Gemini 0.64.0 hands settings.context.fileName (merged settings; a string or an array) to setGeminiMdFilename (read from its bundle 2026-10-31). Listing the files it loaded needs a login, so that last link is read from the code, not observed."
     },
+    { "kind": "pan", "argv": ["config-ensure-section"], "expect": ["exit:0"],
+      "why": "The empty seed has no planning config; this writes the defaults, routing off." },
     { "kind": "pan", "argv": ["config-set", "instructions.routing", "advisory"], "expect": ["exit:0"],
       "why": "Routing is off by default since 3.42.2; the project opts in to the table, as a project choosing advisory does." },
     { "kind": "pan", "argv": ["memory", "rebuild", "--apply", "--only", "agents-md"], "expect": ["exit:0"],
