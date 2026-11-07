@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.43.0] - 2026-11-07
+
+An installer preview, and two fixes from the market scan of `2026-11-07`.
+
 ### Added
 
 - **`--dry-run` for the installer.** A local install or uninstall with `--dry-run` lists the files it would add, change or delete, and writes nothing; `--json` prints the lists. It runs the real install in a temporary copy of the paths an install can touch and compares the result, so the list is what a real run writes. A `--global` or `--config-dir` dry run is refused.
