@@ -3099,3 +3099,63 @@ function classifyPatchBackups(meta, readBackup, readInstalled, opts = {}) {
   return { resolved, pending, stale: !opts.savedThisRun };
 }
 module.exports.classifyPatchBackups = classifyPatchBackups;
+
+// ─── --dry-run (M54, MI-145) ────────────────────────────────────────────────────
+// A dry run installs into a throwaway copy of the paths a local install can touch and
+// reports the difference, so what it lists is what a real run writes. These are those
+// paths, relative to the project: tests/install-dry-run.test.cjs fails when a real
+// local install creates a top-level entry outside the list. `.planning/config.json` is
+// read by the installer (claude.user_invoked_only) and must reach the copy.
+const DRY_RUN_PATHS = Object.freeze([
+  '.agents', '.claude', '.codex', '.gemini', '.github', '.opencode',
+  '.mcp.json', 'AGENTS.md', 'CLAUDE.md', '.gitignore', '.planning/config.json',
+]);
+
+/** The installer arguments for the copy's run: the same request without the preview flags. Pure. */
+function dryRunArgs(args) {
+  return args.filter((a) => a !== '--dry-run' && a !== '--json');
+}
+
+/**
+ * Every file under `rels` inside `root`, as a Map of forward-slash path to sha256.
+ * Read-only; a missing path contributes nothing. Symlinks are recorded by target, not followed.
+ */
+function snapshotPaths(root, rels) {
+  const fs = require('fs');
+  const path = require('path');
+  const crypto = require('crypto');
+  const out = new Map();
+  const visit = (abs, rel) => {
+    let st;
+    try { st = fs.lstatSync(abs); } catch { return; }
+    if (st.isSymbolicLink()) {
+      let target = '';
+      try { target = fs.readlinkSync(abs); } catch { /* unreadable */ }
+      out.set(rel, `link:${target}`);
+    } else if (st.isDirectory()) {
+      for (const name of fs.readdirSync(abs).sort()) visit(path.join(abs, name), `${rel}/${name}`);
+    } else if (st.isFile()) {
+      out.set(rel, crypto.createHash('sha256').update(fs.readFileSync(abs)).digest('hex'));
+    }
+  };
+  for (const rel of rels) visit(path.join(root, ...rel.split('/')), rel);
+  return out;
+}
+
+/** What changed between two snapshots: sorted lists of added, changed and deleted paths. Pure. */
+function diffSnapshots(before, after) {
+  const added = [];
+  const changed = [];
+  const deleted = [];
+  for (const [p, h] of after) {
+    if (!before.has(p)) added.push(p);
+    else if (before.get(p) !== h) changed.push(p);
+  }
+  for (const p of before.keys()) if (!after.has(p)) deleted.push(p);
+  const order = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  return { added: added.sort(order), changed: changed.sort(order), deleted: deleted.sort(order) };
+}
+module.exports.DRY_RUN_PATHS = DRY_RUN_PATHS;
+module.exports.dryRunArgs = dryRunArgs;
+module.exports.snapshotPaths = snapshotPaths;
+module.exports.diffSnapshots = diffSnapshots;

@@ -155,6 +155,45 @@ describe('cost cursor', () => {
   });
 });
 
+// The trace logger keeps its own cursor and fires on the same SubagentStop events, so
+// it needs the same hold (M55 in docs/specs/market-ideas-2026-11.md).
+describe('trace cursor', () => {
+  const hook = fs.readFileSync(path.join(ROOT, 'hooks', 'pan-trace-logger.js'), 'utf-8');
+  const lockSrc = fs.readFileSync(path.join(LIB, 'lock.cjs'), 'utf-8');
+  const num = (src, re) => Number(src.match(re)[1].replace(/_/g, ''));
+
+  test('the hook\'s inline lock keeps lock.cjs\'s protocol and timings', () => {
+    assert.equal(num(hook, /CURSOR_LOCK_RETRIES = (\d+)/), num(lockSrc, /DEFAULT_RETRIES = (\d+)/));
+    assert.equal(num(hook, /CURSOR_LOCK_INTERVAL_MS = (\d+)/), num(lockSrc, /DEFAULT_INTERVAL_MS = (\d+)/));
+    assert.equal(num(hook, /CURSOR_LOCK_STALE_MS = ([\d_]+)/), num(lockSrc, /DEFAULT_STALE_MS = ([\d_]+)/));
+    assert.match(hook, /flag: 'wx'/);
+    assert.match(hook, /LOCK_CONTENTION = process\.platform === 'win32' \? \['EPERM', 'EACCES', 'EBUSY'\] : \[\]/);
+    assert.match(hook, /renameSync\(tmp, traceCursorPath\(cwd\)\)/, 'the cursor lands by rename');
+  });
+
+  test('the hook and lock.cjs name the same lock file for the trace cursor, through any spelling of the project', () => {
+    const H = require(path.join(ROOT, 'hooks', 'pan-trace-logger.js'));
+    fs.mkdirSync(path.join(dir, '.planning', H.OPTIMIZE_DIR), { recursive: true });
+    const cursor = path.join(dir, '.planning', H.OPTIMIZE_DIR, H.TRACE_CURSOR_FILE);
+    assert.equal(H.cursorLockPath(dir), lock.lockPathFor(cursor));
+    const real = fs.realpathSync.native(dir);
+    assert.equal(H.cursorLockPath(real), lock.lockPathFor(cursor), 'the real path meets the same lock');
+  });
+
+  test('the cursor read and write sit inside one hold of the lock, the slice read before it', () => {
+    const peek = hook.indexOf('let since = readTraceCursor(cwd)[keyPath] || 0;');
+    const start = hook.indexOf('const cursorLock = cwd ? acquireCursorLock(cwd) : null;');
+    const read = hook.indexOf('const cursor = readTraceCursor(cwd);', start);
+    const release = hook.indexOf('releaseCursorLock(cursorLock);', read);
+    assert.ok(peek > 0 && peek < start, 'the transcript slice is read before the lock');
+    assert.ok(start > 0 && start < read && read < release, 'acquire, then read, then release');
+    assert.match(hook.slice(read, release), /if \(\(cursor\[keyPath\] \|\| 0\) !== since\) \{/, 'a moved cursor is re-sliced under the lock');
+    assert.match(hook.slice(release - 40, release), /finally \{/, 'released in finally');
+    const writes = [...hook.slice(read, release).matchAll(/writeTraceCursor\(cwd, cursor\)/g)];
+    assert.equal(writes.length, 2, 'both cursor writes are inside the hold');
+  });
+});
+
 describe('lock files and git', () => {
   test('a held lock leaves nothing in the project: git and directory listings never see it', () => {
     const { execFileSync } = require('child_process');

@@ -68,6 +68,18 @@ Add `--unified-skills` to install commands as one shared `.agents/skills/` tree 
 
 On Claude Code the model may start any PAN command. To keep some for yourself, name them: `--user-invoked-only health,update` marks `/pan:health` and `/pan:update` (or `/pan-health` and `/pan-update` after `--unified-skills`) `disable-model-invocation: true`, so they run only when you type them. A local install also reads `claude.user_invoked_only` from the project's `.planning/config.json` on every reinstall and `/pan:update`; a global install uses the flag only. The installer records the flag's names, so an update keeps them without the flag; `--user-invoked-only none` clears them. Other runtimes ignore it.
 
+### See what an install would change (`--dry-run`)
+
+Add `--dry-run` to a local install or uninstall to list the files it would add, change or delete, without writing anything:
+
+```bash
+npx pan-wizard --claude --local --dry-run
+npx pan-wizard --all --local --dry-run --json
+npx pan-wizard --claude --local --uninstall --dry-run
+```
+
+The installer runs the real install in a temporary copy of the paths it can touch (the runtime directories, `.agents/`, `.mcp.json`, `AGENTS.md`, `CLAUDE.md`, `.gitignore` and `.planning/config.json`) and compares the result with your project, so the list is what a real run writes. On a reinstall, `pan-file-manifest.json` shows as changed because it records when it was written. `--json` prints `added`, `changed`, `deleted`, `outside_project` and `exit_code`. A dry run of a `--global` or `--config-dir` install is refused.
+
 ### Docker and containers
 
 If Claude Code in the container reads its config from somewhere other than the installing user's `~/.claude`, set `CLAUDE_CONFIG_DIR` to that directory before installing (`--global --config-dir <path>` does the same):

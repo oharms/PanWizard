@@ -240,3 +240,44 @@ describe('trace hook — as the host runs it', () => {
     }
   });
 });
+
+describe('trace hook — the cursor under parallel fires (M55)', () => {
+  // A sibling fire holds the cursor lock and, while holding it, consumes the agent's
+  // transcript. The hook under test read its slice before the sibling's write, so
+  // unlocked it would record the same tokens again and overwrite the sibling's
+  // advance. Locked, it waits, re-reads the cursor under the lock and records a
+  // zero-token completion.
+  test('a fire that waits for a sibling holding the lock re-slices from the sibling\'s cursor', async () => {
+    const { spawn } = require('child_process');
+    const H = require('../hooks/pan-trace-logger.js');
+    const { payload, agentFile, records } = seed();
+    const optimize = path.join(project, '.planning', H.OPTIMIZE_DIR);
+    fs.mkdirSync(optimize, { recursive: true });
+    const cursorFile = path.join(optimize, H.TRACE_CURSOR_FILE);
+    const lockPath = H.cursorLockPath(project);
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fs.writeFileSync(lockPath, `${process.pid}@${os.hostname()}`, { flag: 'wx' });
+    let released = false;
+    try {
+      const child = spawn(process.execPath, [path.join(__dirname, '..', 'hooks', 'pan-trace-logger.js')], { cwd: project, stdio: ['pipe', 'pipe', 'pipe'] });
+      child.stdin.end(JSON.stringify(payload));
+      const done = new Promise((resolve) => child.on('close', resolve));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      // The sibling consumes the whole agent transcript, then releases the lock.
+      fs.writeFileSync(cursorFile, JSON.stringify({ [agentFile]: records.length }));
+      fs.unlinkSync(lockPath);
+      released = true;
+      assert.equal(await done, 0);
+    } finally {
+      if (!released) { try { fs.unlinkSync(lockPath); } catch { /* gone */ } }
+    }
+    const tracesDir = path.join(project, '.planning', 'optimization', 'traces');
+    const [session] = fs.readdirSync(tracesDir);
+    const events = fs.readFileSync(path.join(tracesDir, session, 'trace.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const completion = completionOf(events);
+    assert.ok(completion, 'the spawn is still recorded');
+    assert.equal(completion.context.input_tokens, 0, 'the sibling\'s slice is not counted twice');
+    assert.equal(failuresOf(events).length, 0, 'nor are its failures');
+    assert.equal(JSON.parse(fs.readFileSync(cursorFile, 'utf8'))[agentFile], records.length, 'the sibling\'s advance is kept');
+  });
+});

@@ -93,6 +93,9 @@ function compactionContext(directory) {
     'PAN project state at this compaction — keep it in the summary so the work resumes where it stopped:',
     ...lines,
     `After compaction, re-read ${rel}/state.md and the current phase's plan before the next step: continue the work in flight rather than re-planning finished work.`,
+    // The summary keeps the position, not the running command's procedure (the same
+    // line as GENERIC_WORKFLOW_LINE in hooks/pan-state-reinject.js).
+    'The compaction kept only the start of any PAN command\'s instructions: if a PAN command was running, re-read the workflow file it loads before the next step.',
   ].join('\n');
   return block.length > BLOCK_MAX ? block.slice(0, BLOCK_MAX - 1) + '…' : block;
 }

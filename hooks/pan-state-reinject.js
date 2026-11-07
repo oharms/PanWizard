@@ -112,7 +112,7 @@ function field(content, name) {
  * @param {string} [args.planningRel]       the planning directory, for the pointer line
  * @returns {string|null}
  */
-function buildReinjectContext({ stateContent, roadmapContent, planningRel = '.planning' }) {
+function buildReinjectContext({ stateContent, roadmapContent, planningRel = '.planning', command = null, workflowPath = null }) {
   if (typeof stateContent !== 'string' || typeof roadmapContent !== 'string') return null;
   const phase = field(stateContent, 'Current Phase');
   if (!phase) return null;
@@ -137,8 +137,85 @@ function buildReinjectContext({ stateContent, roadmapContent, planningRel = '.pl
   if (resume) lines.push(`- Resume file: ${resume}`);
   lines.push(`- First unbuilt roadmap phase: Phase ${unticked[1]}`);
   lines.push(`Re-read ${planningRel}/state.md and the current phase's plan before the next step: continue the work in flight rather than re-planning finished work.`);
+  lines.push(workflowLine(command, workflowPath));
   const block = lines.join('\n');
   return block.length > BLOCK_MAX ? block.slice(0, BLOCK_MAX - 1) + '…' : block;
+}
+
+// After a compaction the host keeps only the start of an invoked command: Claude Code
+// re-attaches each invoked skill cut to its first 5,000 tokens (code.claude.com/docs/
+// en/skills.md, "Skill content lifecycle", read 2026-11-07), and a PAN command
+// @-includes its whole workflow, so a long orchestrator loses most of its steps.
+// Re-reading state.md and the plan restores the position, not the procedure (MI-144,
+// M53 in docs/specs/market-ideas-2026-11.md).
+const GENERIC_WORKFLOW_LINE = 'The compaction kept only the start of any PAN command\'s instructions: if a PAN command was running, re-read the workflow file it loads before the next step.';
+
+/** The line naming what to re-read for the command in flight. Pure. */
+function workflowLine(command, workflowPath) {
+  if (command && workflowPath) {
+    return `/pan:${command} was running and the compaction kept only the start of its instructions: re-read ${workflowPath} before the next step.`;
+  }
+  return GENERIC_WORKFLOW_LINE;
+}
+
+// The last PAN command typed in this session, from the transcript's tail. A compact
+// copy of readCommandFromTranscript() in pan-cost-logger.js (hooks cannot require
+// one another).
+const COMMAND_TAIL_BYTES = 262144;
+const PAN_COMMAND_RE = /<command-name>\s*\/?pan[:-]([a-z0-9][a-z0-9-]*)\s*<\/command-name>/i;
+
+function commandFromTranscript(transcriptPath) {
+  try {
+    if (typeof transcriptPath !== 'string' || !transcriptPath) return null;
+    const fd = fs.openSync(transcriptPath, 'r');
+    let text;
+    let partial = false;
+    try {
+      const size = fs.fstatSync(fd).size;
+      const start = Math.max(0, size - COMMAND_TAIL_BYTES);
+      partial = start > 0;
+      const len = size - start;
+      if (len <= 0) return null;
+      const buf = Buffer.allocUnsafe(len);
+      const read = fs.readSync(fd, buf, 0, len, start);
+      text = buf.toString('utf-8', 0, read);
+    } finally {
+      fs.closeSync(fd);
+    }
+    const lines = text.split(/\r?\n/);
+    if (partial) lines.shift(); // a mid-record first line
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i]) continue;
+      let rec;
+      try { rec = JSON.parse(lines[i]); } catch { continue; }
+      if (!rec || rec.type !== 'user' || !rec.message) continue;
+      const content = rec.message.content;
+      let typed = null;
+      if (typeof content === 'string') typed = content;
+      else if (Array.isArray(content)) {
+        if (content.some((b) => b && b.type === 'tool_result')) continue; // host reply, not a typed turn
+        typed = content.filter((b) => b && b.type === 'text' && typeof b.text === 'string').map((b) => b.text).join('\n');
+      }
+      if (!typed) continue;
+      const m = typed.match(PAN_COMMAND_RE);
+      if (m) return m[1].toLowerCase();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The installed workflow file for a command, or null. The hook sits in
+ * <runtime dir>/hooks/, beside <runtime dir>/pan-wizard-core/. Shown with forward
+ * slashes, which every host's Read tool accepts.
+ */
+function workflowPathFor(command, hookDir = __dirname) {
+  if (!command || !/^[a-z0-9][a-z0-9-]*$/.test(command)) return null;
+  const p = path.join(hookDir, '..', 'pan-wizard-core', 'workflows', `${command}.md`);
+  try { if (fs.statSync(p).isFile()) return path.resolve(p).split(path.sep).join('/'); } catch { /* not installed here */ }
+  return null;
 }
 
 function readIfExists(p) {
@@ -226,11 +303,14 @@ function injectOutput(host, context) {
   return null;
 }
 
-function contextFor(projectDir) {
+function contextFor(projectDir, transcriptPath = null) {
+  const command = commandFromTranscript(transcriptPath);
   return buildReinjectContext({
     stateContent: readIfExists(planningPath(projectDir, 'state.md')),
     roadmapContent: readIfExists(planningPath(projectDir, 'roadmap.md')),
     planningRel: planningDirName(),
+    command,
+    workflowPath: workflowPathFor(command),
   });
 }
 
@@ -250,7 +330,7 @@ function main() {
 
       if (mode === 'session-start') {
         if (payload.source !== 'compact') { process.exit(0); return; }
-        const context = contextFor(projectDir);
+        const context = contextFor(projectDir, payload.transcript_path);
         if (context) {
           process.stdout.write(JSON.stringify({
             hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context },
@@ -280,4 +360,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { buildReinjectContext, UNTICKED_PHASE_RE, markerName, hookDirName, sessionIdOf, injectOutput, MARKER_TTL_MS };
+module.exports = { buildReinjectContext, UNTICKED_PHASE_RE, markerName, hookDirName, sessionIdOf, injectOutput, MARKER_TTL_MS, GENERIC_WORKFLOW_LINE, workflowLine, commandFromTranscript, workflowPathFor };

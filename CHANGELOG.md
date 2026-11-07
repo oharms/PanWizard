@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`--dry-run` for the installer.** A local install or uninstall with `--dry-run` lists the files it would add, change or delete, and writes nothing; `--json` prints the lists. It runs the real install in a temporary copy of the paths an install can touch and compares the result, so the list is what a real run writes. A `--global` or `--config-dir` dry run is refused.
+
+### Fixed
+
+- **After a compaction, PAN says to re-read the running command's workflow.** Claude Code keeps only the first 5,000 tokens of each invoked command when it compacts a conversation, and a PAN command carries its whole workflow, so a long run such as `/pan:exec-phase` kept its opening steps and lost the rest. The state block injected after a compaction already named `state.md` and the plan; it now also names the workflow file of the PAN command in flight (read from the session's transcript), or says to re-read the workflow when the command is not known. OpenCode's compaction block carries the same line.
+- **The trace logger's cursor is locked.** Parallel subagents finishing at once could read the trace logger's cursor together, so one fire's advance was lost and the next fire counted the same transcript lines again. The cursor is now read and written under the same lock as the cost logger's, and written by rename.
+
 ## [3.42.2] - 2026-11-06
 
 Five items from the field report on 3.42.1, and request routing made opt-in.

@@ -506,8 +506,81 @@ function writeTraceCursor(cwd, cursor) {
       if (Object.keys(bounded).length) pruned[SEEN_EVENTS] = bounded;
     }
     fs.mkdirSync(path.dirname(traceCursorPath(cwd)), { recursive: true });
-    fs.writeFileSync(traceCursorPath(cwd), JSON.stringify(pruned), 'utf-8');
+    // Temp file + rename: a fire reading the cursor never sees half of it.
+    const tmp = `${traceCursorPath(cwd)}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(pruned), 'utf-8');
+    try { fs.renameSync(tmp, traceCursorPath(cwd)); } catch {
+      fs.writeFileSync(traceCursorPath(cwd), JSON.stringify(pruned), 'utf-8');
+      try { fs.unlinkSync(tmp); } catch { /* best-effort */ }
+    }
   } catch { /* best-effort — never block the agent loop */ }
+}
+
+// The cursor is read, advanced and written back by every SubagentStop fire, and
+// parallel subagents fire at once: unlocked, two fires read the same cursor and the
+// second write drops the first one's advance, so a slice is summed twice. The same
+// best-effort copy of lock.cjs's protocol as pan-cost-logger.js (hooks cannot
+// require core; tests/store-adoption.test.cjs pins both copies to lock.cjs):
+// <os temp>/pan-locks-<user>/<hash>-<name>.lock by exclusive create, ~1 s of
+// retries, a lock older than 10 s stolen only when its holder is gone; on timeout
+// the fire goes ahead unlocked — never block the agent.
+const CURSOR_LOCK_RETRIES = 40;
+const CURSOR_LOCK_INTERVAL_MS = 25;
+const CURSOR_LOCK_STALE_MS = 10_000;
+const LOCK_OWNER = `${process.pid}@${os.hostname()}`;
+// Windows answers EPERM/EBUSY/EACCES while a released lock is still being deleted.
+const LOCK_CONTENTION = process.platform === 'win32' ? ['EPERM', 'EACCES', 'EBUSY'] : [];
+
+function cursorLockPath(cwd) {
+  const abs = path.resolve(traceCursorPath(cwd));
+  let dir = path.dirname(abs);
+  try { dir = fs.realpathSync.native(dir); } catch { /* not created yet */ }
+  let id = path.join(dir, path.basename(abs));
+  if (process.platform === 'win32') id = id.toLowerCase();
+  let user = '';
+  try { user = os.userInfo().username; } catch { /* no passwd entry */ }
+  if (!user && typeof process.getuid === 'function') user = String(process.getuid());
+  const hash = require('crypto').createHash('sha1').update(id).digest('hex').slice(0, 20);
+  return path.join(os.tmpdir(), `pan-locks-${String(user || 'user').replace(/[^A-Za-z0-9._-]/g, '_')}`, `${hash}-${path.basename(abs)}.lock`);
+}
+
+function cursorLockHolderGone(content) {
+  const m = /^(\d+)(?:@(.*))?$/.exec(String(content || '').trim());
+  if (!m) return true;
+  if (m[2] && m[2] !== os.hostname()) return true;
+  const pid = Number(m[1]);
+  if (pid === process.pid) return false;
+  try { process.kill(pid, 0); return false; } catch (e) { return e.code !== 'EPERM'; }
+}
+
+function acquireCursorLock(cwd) {
+  const lockPath = cursorLockPath(cwd);
+  try { fs.mkdirSync(path.dirname(lockPath), { recursive: true, mode: 0o700 }); } catch { return null; }
+  const wait = () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.max(1, Math.round(CURSOR_LOCK_INTERVAL_MS * (0.5 + Math.random()))));
+  for (let attempt = 0; attempt <= CURSOR_LOCK_RETRIES; attempt++) {
+    try {
+      fs.writeFileSync(lockPath, LOCK_OWNER, { flag: 'wx' });
+      return lockPath;
+    } catch (err) {
+      if (LOCK_CONTENTION.includes(err.code)) { if (attempt < CURSOR_LOCK_RETRIES) wait(); continue; }
+      if (err.code !== 'EEXIST') return null;
+      try {
+        if (Date.now() - fs.statSync(lockPath).mtimeMs > CURSOR_LOCK_STALE_MS && cursorLockHolderGone(fs.readFileSync(lockPath, 'utf-8'))) {
+          const stealPath = `${lockPath}.steal.${process.pid}.${Date.now()}`;
+          try { fs.renameSync(lockPath, stealPath); fs.unlinkSync(stealPath); continue; } catch { /* another fire stole it */ }
+        }
+      } catch { /* vanished — retry */ }
+      if (attempt < CURSOR_LOCK_RETRIES) wait();
+    }
+  }
+  return null;
+}
+
+function releaseCursorLock(lockPath) {
+  if (!lockPath) return;
+  try {
+    if (fs.readFileSync(lockPath, 'utf-8').trim() === LOCK_OWNER) fs.unlinkSync(lockPath);
+  } catch { /* already gone */ }
 }
 
 /**
@@ -993,11 +1066,24 @@ function buildTraceEvents(data, sessionId, cwd) {
   let failures = null;
   if (sliceSource || agentFileMissing) {
     const keyPath = sliceSource || parentPath;
+    const sliceFrom = (from) => (sliceSource
+      ? readUsageFromTranscript(sliceSource, data.session_id, from)
+      : { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: null, first_ts: null, last_ts: null, lineCount: from });
+    // The slice is read before the lock (a large transcript takes a second to parse,
+    // and parallel fires would queue behind it past the lock's budget), then the
+    // cursor is read again under the lock: if a sibling advanced it in between, the
+    // slice is taken again from there. The lock is held from that read to the cursor
+    // write below, so two fires never count the same lines or drop each other's
+    // advance (mirrors pan-cost-logger.js).
+    let since = readTraceCursor(cwd)[keyPath] || 0;
+    let fromTranscript = sliceFrom(since);
+    const cursorLock = cwd ? acquireCursorLock(cwd) : null;
+    try {
     const cursor = readTraceCursor(cwd);
-    const since = cursor[keyPath] || 0;
-    const fromTranscript = sliceSource
-      ? readUsageFromTranscript(sliceSource, data.session_id, since)
-      : { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: null, first_ts: null, last_ts: null, lineCount: since };
+    if ((cursor[keyPath] || 0) !== since) {
+      since = cursor[keyPath] || 0;
+      fromTranscript = sliceFrom(since);
+    }
     const rawIn = fromTranscript.input_tokens;
     const rawOut = fromTranscript.output_tokens;
     const rawCr = fromTranscript.cache_read_input_tokens;
@@ -1047,6 +1133,9 @@ function buildTraceEvents(data, sessionId, cwd) {
       // through to emit the completion.
       addSeenSig(cursor, keyPath, eventSig);
       writeTraceCursor(cwd, cursor);
+    }
+    } finally {
+      releaseCursorLock(cursorLock);
     }
   } else {
     const rawIn = extractNumber(data.usage, 'input_tokens');
@@ -1288,6 +1377,8 @@ module.exports = {
   MAX_FAILURE_EVENTS,
   PLANNING_DIR,
   OPTIMIZE_DIR,
+  TRACE_CURSOR_FILE,
+  cursorLockPath,
   TRACES_DIR,
   CURRENT_SESSION_FILE,
   TRACE_EVENT_FILE,

@@ -276,11 +276,11 @@ function recordedUserInvokedOnly(dir) {
   } catch { return []; }
 }
 
-console.log(banner);
+if (!(args.includes('--dry-run') && args.includes('--json'))) console.log(banner);
 
 // Show help if requested
 if (hasHelp) {
-  console.log(`  ${yellow}Usage:${reset} npx pan-wizard [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-l, --local${reset}               Install locally to current directory (default)\n    ${cyan}-g, --global${reset}              Install globally to config directory\n    ${cyan}--claude${reset}                  Install for Claude Code only\n    ${cyan}--opencode${reset}                Install for OpenCode only\n    ${cyan}--gemini${reset}                  Install for Gemini only\n    ${cyan}--codex${reset}                   Install for Codex only\n    ${cyan}--copilot${reset}                 Install for GitHub Copilot CLI only\n    ${cyan}--all${reset}                     Install for all runtimes\n    ${cyan}-u, --uninstall${reset}           Uninstall PAN (remove all PAN files)\n    ${cyan}-c, --config-dir <path>${reset}   Specify custom config directory\n    ${cyan}-h, --help${reset}                Show this help message\n    ${cyan}--force-statusline${reset}        Replace existing statusline config\n    ${cyan}--unified-skills${reset}          Install commands as one shared .agents/skills/ tree, mirrored to .claude/skills/ for Claude Code (ADR-0028 alpha)\n    ${cyan}--user-invoked-only <a,b>${reset} Keep these Claude commands user-invoked only (the model cannot start them); remembered for updates, "none" clears. A local install also reads .planning/config.json claude.user_invoked_only\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime; installs project-level)${reset}\n    npx pan-wizard\n\n    ${dim}# Install for Claude Code in current project (default, --local implied)${reset}\n    npx pan-wizard --claude\n\n    ${dim}# Install for all runtimes in current project${reset}\n    npx pan-wizard --all --local\n\n    ${dim}# Install globally (available in all projects)${reset}\n    npx pan-wizard --claude --global\n\n    ${dim}# Install for Gemini globally${reset}\n    npx pan-wizard --gemini --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx pan-wizard --codex --global --config-dir ~/.codex-work\n\n    ${dim}# Uninstall PAN from Codex globally${reset}\n    npx pan-wizard --codex --global --uninstall\n\n  ${yellow}Notes:${reset}\n    By default, PAN installs into the current project directory only.\n    Use --global to install system-wide (writes to ~/.claude, ~/.gemini, etc.).\n    The --config-dir option takes priority over CLAUDE_CONFIG_DIR / GEMINI_CONFIG_DIR / CODEX_HOME.\n`);
+  console.log(`  ${yellow}Usage:${reset} npx pan-wizard [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-l, --local${reset}               Install locally to current directory (default)\n    ${cyan}-g, --global${reset}              Install globally to config directory\n    ${cyan}--claude${reset}                  Install for Claude Code only\n    ${cyan}--opencode${reset}                Install for OpenCode only\n    ${cyan}--gemini${reset}                  Install for Gemini only\n    ${cyan}--codex${reset}                   Install for Codex only\n    ${cyan}--copilot${reset}                 Install for GitHub Copilot CLI only\n    ${cyan}--all${reset}                     Install for all runtimes\n    ${cyan}-u, --uninstall${reset}           Uninstall PAN (remove all PAN files)\n    ${cyan}-c, --config-dir <path>${reset}   Specify custom config directory\n    ${cyan}-h, --help${reset}                Show this help message\n    ${cyan}--force-statusline${reset}        Replace existing statusline config\n    ${cyan}--unified-skills${reset}          Install commands as one shared .agents/skills/ tree, mirrored to .claude/skills/ for Claude Code (ADR-0028 alpha)\n    ${cyan}--user-invoked-only <a,b>${reset} Keep these Claude commands user-invoked only (the model cannot start them); remembered for updates, "none" clears. A local install also reads .planning/config.json claude.user_invoked_only\n    ${cyan}--dry-run${reset}                 List the files a local install or uninstall would add, change or delete, and write nothing (add --json for JSON)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime; installs project-level)${reset}\n    npx pan-wizard\n\n    ${dim}# Install for Claude Code in current project (default, --local implied)${reset}\n    npx pan-wizard --claude\n\n    ${dim}# Install for all runtimes in current project${reset}\n    npx pan-wizard --all --local\n\n    ${dim}# Install globally (available in all projects)${reset}\n    npx pan-wizard --claude --global\n\n    ${dim}# Install for Gemini globally${reset}\n    npx pan-wizard --gemini --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx pan-wizard --codex --global --config-dir ~/.codex-work\n\n    ${dim}# Uninstall PAN from Codex globally${reset}\n    npx pan-wizard --codex --global --uninstall\n\n  ${yellow}Notes:${reset}\n    By default, PAN installs into the current project directory only.\n    Use --global to install system-wide (writes to ~/.claude, ~/.gemini, etc.).\n    The --config-dir option takes priority over CLAUDE_CONFIG_DIR / GEMINI_CONFIG_DIR / CODEX_HOME.\n`);
   process.exit(0);
 }
 
@@ -3474,8 +3474,72 @@ function installAllRuntimes(runtimes, isGlobal, isInteractive) {
   }
 }
 
+/**
+ * --dry-run (M54): install into a throwaway copy of the paths a local install can
+ * touch (lib.DRY_RUN_PATHS), under a throwaway home, and report what differs from
+ * the project. The project itself is only read. Exits with the copy's exit code.
+ */
+function runDryRun() {
+  const asJson = args.includes('--json');
+  if (hasGlobal || explicitConfigDir) {
+    console.error(`  ${yellow}--dry-run previews a local install or uninstall; drop --global / --config-dir${reset}`);
+    process.exit(1);
+  }
+  const project = process.cwd();
+  if (isInsideSourceRepo(project)) {
+    console.error(`  ${yellow}Refusing: this is the PAN source repository. Preview an install in a test directory instead.${reset}`);
+    process.exit(1);
+  }
+  const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-dry-run-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-dry-run-home-'));
+  let code = 1;
+  try {
+    for (const rel of lib.DRY_RUN_PATHS) {
+      const from = path.join(project, ...rel.split('/'));
+      if (!fs.existsSync(from)) continue;
+      const to = path.join(sandbox, ...rel.split('/'));
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true });
+    }
+    const childArgs = lib.dryRunArgs(args);
+    if (!childArgs.includes('--local') && !childArgs.includes('-l') && !hasUninstall) childArgs.push('--local');
+    const r = require('child_process').spawnSync(process.execPath, [__filename, ...childArgs], {
+      cwd: sandbox,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    code = r.status === null ? 1 : r.status;
+    const diff = lib.diffSnapshots(lib.snapshotPaths(project, lib.DRY_RUN_PATHS), lib.snapshotPaths(sandbox, lib.DRY_RUN_PATHS));
+    const outside = [...lib.snapshotPaths(home, ['.']).keys()].map((p) => `~/${p.replace(/^\.\//, '')}`);
+    if (asJson) {
+      process.stdout.write(JSON.stringify({ dry_run: true, exit_code: code, ...diff, outside_project: outside }, null, 2) + '\n');
+    } else {
+      if (code !== 0) {
+        console.log(`  ${yellow}The install would fail (exit ${code}):${reset}`);
+        console.log(((r.stderr || '') + (r.stdout || '')).trim().split('\n').slice(-20).map((l) => `    ${l}`).join('\n'));
+      }
+      const list = (label, items, mark) => {
+        console.log(`  ${label}: ${items.length}`);
+        for (const p of items) console.log(`    ${mark} ${p}`);
+      };
+      console.log(`  ${cyan}Dry run${reset} — nothing was written. A real run would:`);
+      list('add', diff.added, '+');
+      list('change', diff.changed, '~');
+      list('delete', diff.deleted, '-');
+      if (outside.length) list('write outside the project', outside, '+');
+    }
+  } finally {
+    try { fs.rmSync(sandbox, { recursive: true, force: true }); } catch { /* temp */ }
+    try { fs.rmSync(home, { recursive: true, force: true }); } catch { /* temp */ }
+  }
+  process.exit(code);
+}
+
 // Main logic
-if (hasGlobal && hasLocal) {
+if (args.includes('--dry-run')) {
+  runDryRun();
+} else if (hasGlobal && hasLocal) {
   console.error(`  ${yellow}Cannot specify both --global and --local${reset}`);
   process.exit(1);
 } else if (explicitConfigDir && hasLocal) {
