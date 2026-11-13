@@ -73,7 +73,7 @@ PAN is competitive but not uniquely differentiated:
 
 - **Multi-Agent Orchestration** — PAN has specialized agents with wave-based parallel execution. Cursor and Cline ship sub-agents (checked `2026-09-10`), and Claude Code, Codex and Copilot CLI now run agents in isolated worktrees natively (checked `2026-09-21`). Parallel agents are no longer a differentiator; PAN's difference is the planning state and verification around them
 - **Session Persistence** — state.md + pause/resume. Cursor has Notepad and Devin has cloud state; Codex keeps its own cross-session memories and Copilot CLI imports session memory (checked `2026-09-21`)
-- **Model Profiles** — PAN's quality/balanced/budget profiles with provider-agnostic tier routing, per-agent overrides and cost estimation. Per-phase tiers apply only to a manual `pan-tools resolve-model --metadata`, and complexity-based adjustment (off unless `routing.strategy` is `complexity`) changes a workflow's model only on a `/pan:exec-phase --gaps-only` retry under `budget`, where it cancels the escalation. Cursor offers model selection per request
+- **Model Profiles** — PAN's quality/balanced/budget profiles with provider-agnostic tier routing, per-agent overrides and cost estimation. Per-phase tiers apply only to a manual `pan-tools resolve-model --metadata`, and complexity-based adjustment (off unless `routing.strategy` is `complexity`) changes a workflow's model only on a `/pan:exec-phase --gaps-only` retry under `balanced` or `budget`, where it cancels the escalation. Cursor offers model selection per request
 
 ---
 

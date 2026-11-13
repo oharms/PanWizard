@@ -84,9 +84,17 @@ describe('resolve-model --attempt', () => {
     assert.equal(off.escalated_from, null);
   });
 
-  test('balanced is already at the top: a retry changes nothing', () => {
+  test('balanced: a fix round climbs the executor from mid back to the launch model', () => {
     writeConfig({ model_profile: 'balanced' });
+    assert.equal(resolve('pan-executor').model, 'sonnet');
     const r = resolve('pan-executor --attempt 2');
+    assert.equal(r.model, 'inherit');
+    assert.equal(r.escalated_from, 'mid');
+  });
+
+  test('balanced planner is already at the top: a retry changes nothing', () => {
+    writeConfig({ model_profile: 'balanced' });
+    const r = resolve('pan-planner --attempt 2');
     assert.equal(r.model, 'inherit');
     assert.equal(r.escalated_from, null);
   });

@@ -612,10 +612,10 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 |-------|---------------|-----------------|-----------------|
 | Research (opt-in) | 10-20K | 30-50K (on the mid tier) | 30-50K |
 | Planning | 10-20K | 20-40K (checker on the mid tier) | 20-40K |
-| Execution (per plan) | 10-40K | 20-80K | 20-80K |
-| Verification | 5-10K | 10-20K | 10-20K |
+| Execution (per plan) | 10-40K | 20-80K (on the mid tier) | 20-80K |
+| Verification | 5-10K | 10-20K (on the mid tier) | 10-20K |
 
-`quality` and `balanced` are `inherit` for every agent except the researchers and the plan-checker, which `balanced` runs on the mid tier; `balanced` also sizes the ceremony (a precisely specified small phase skips the planner and the checker), where `quality` runs the full ceremony. `budget` is the only profile that down-tiers the rest. Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth.
+`quality` is `inherit` for every agent; `balanced` is `inherit` for planning, design, orchestration and final review and runs every other agent (execution, research, debugging, verification, the routine checkers) on the mid tier; `balanced` also sizes the ceremony (a precisely specified small phase skips the planner and the checker), where `quality` runs the full ceremony. `budget` down-tiers every agent, some to the fast tier. Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth.
 
 **Common causes of higher-than-expected usage:**
 
@@ -627,7 +627,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Cost reduction strategies (ordered by impact):**
 
-1. **Switch profile:** `/pan:settings --profile budget` for prototyping or high-volume work — it lowers every agent's tier; `balanced` (the default) already runs the researchers and the plan-checker on the mid tier and sizes the ceremony, where `quality` spends the most
+1. **Switch profile:** `/pan:settings --profile budget` for prototyping or high-volume work — it lowers every agent's tier; `balanced` (the default) already runs execution, research, debugging and the routine checkers on the mid tier and sizes the ceremony, where `quality` spends the most
 2. **Leave research off:** it is off by default; `/pan:plan-phase N --research` turns it on for one phase, and `--skip-research` leaves it out when `workflow.research` is `true`
 3. **Disable plan checker:** `workflow.plan_check: false` in `/pan:settings` (saves 20-40K per phase)
 4. **Disable verifier:** `workflow.verifier: false` for early prototyping (saves 10-30K per phase)
@@ -652,13 +652,14 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 |-----------|--------|----------|----------|
 | Research | fast | mid | reasoning |
 | Planning | mid | reasoning | reasoning |
-| Execution | mid | reasoning | reasoning |
-| Verification | fast | reasoning | reasoning |
+| Execution | mid | mid | reasoning |
+| Verification | fast | mid | reasoning |
+| Final review | fast | reasoning | reasoning |
 | Plan checker | fast | mid | reasoning |
 
-`quality` and `balanced` are `inherit` for every agent except the researchers and the plan-checker, which `balanced` runs on the mid tier. `budget` is the only profile that down-tiers the rest. `inherit` → the reasoning tier, i.e. the model the session was launched with; `mid` and `fast` map to the provider's mid/fast models (Sonnet and Haiku on Anthropic). Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth, and `pan-tools estimate-cost` prints the relative multiplier per profile.
+`quality` is `inherit` for every agent. `balanced` is `inherit` for planning, design, orchestration and final review (planner, designer, conductor, reviewer, hardener, meta-reviewer) and runs every other agent on the mid tier; a fix round after a failed verification climbs the executor back to `inherit`. `budget` down-tiers every agent. `inherit` → the reasoning tier, i.e. the model the session was launched with; `mid` and `fast` map to the provider's mid/fast models (Sonnet and Haiku on Anthropic). Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth, and `pan-tools estimate-cost` prints the relative multiplier per profile.
 
-So if the symptom is "an agent ran on a weaker model", the profile to look at is `budget`, or `balanced` when the agent was a researcher or the plan-checker; moving to `quality` puts those back on the reasoning tier.
+So if the symptom is "an agent ran on a weaker model", the profile to look at is `budget`, or `balanced` for any agent outside planning, design, orchestration and final review; moving to `quality` puts every agent back on the reasoning tier, and a `model_overrides` entry lifts just one.
 
 **Override precedence:** Per-agent override (`model_overrides`) > per-phase roadmap model tier (read only by `resolve-model --metadata`, which no workflow passes) > profile default > hardcoded `mid`
 
@@ -724,7 +725,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 **Symptom:** After updating Claude Code, a PAN phase uses noticeably more of the plan's allowance, or the cost report's model column moves from a Sonnet-tier id to an Opus-tier one.
 
-**Root cause:** Claude Code `2.1.280` changed the default model on the Pro and Team Standard plans from Sonnet to the newest Opus-tier model, matching the other plans. PAN's `quality` and `balanced` profiles resolve the agents that plan, write and judge code to the session's own model (`inherit`; under `balanced` only the researchers and the plan-checker run on the mid tier), so a change of default moves those agents at once — nothing in PAN changed. The exception is an agent spawned with no model, as `/pan:army` spawns them: it runs on its own `model:` pin where its file has one (the reviewer-class agents pin `opus`).
+**Root cause:** Claude Code `2.1.280` changed the default model on the Pro and Team Standard plans from Sonnet to the newest Opus-tier model, matching the other plans. PAN's `quality` profile resolves every agent to the session's own model (`inherit`), and `balanced` does so for planning, design, orchestration and final review (the other agents run on the mid tier), so a change of default moves those agents at once — nothing in PAN changed. The exception is an agent spawned with no model, as `/pan:army` spawns them: it runs on its own `model:` pin where its file has one (the reviewer-class agents pin `opus`).
 
 **Fix:** Choose the session model yourself with `/model`, or switch PAN to the `budget` profile (planning and execution on the mid tier, verification and research on the fast tier), or pin individual agents with `model_overrides` in `.planning/config.json`.
 
@@ -748,7 +749,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 - Run `/clear` between major commands (e.g., after plan-phase completes, before exec-phase)
 - Avoid reading large files in the main session -- let subagents handle file reading
-- Use the `budget` profile (its mid/fast agents produce shorter output, consuming less context); `balanced` and `quality` differ only in the researchers and the plan-checker, so switching between those two will not help much here
+- Use the `budget` profile (its mid/fast agents produce shorter output, consuming less context); `balanced` already runs most agents on the mid tier, so moving from it to `budget` helps less than moving off `quality`
 - Keep plans to 2-3 tasks each to reduce executor output size
 
 ### resume restores incomplete context

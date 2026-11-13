@@ -314,6 +314,11 @@ function contextFor(projectDir, transcriptPath = null) {
   });
 }
 
+/** True when the hook fired inside a subagent (Claude Code names it with `agent_id`). Pure. */
+function isSubagent(payload) {
+  return !!payload && typeof payload.agent_id === 'string' && payload.agent_id.trim() !== '';
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const mode = argv.includes('--mark') ? 'mark' : argv.includes('--inject') ? 'inject' : 'session-start';
@@ -326,6 +331,12 @@ function main() {
       let payload = {};
       try { payload = JSON.parse(input); } catch { /* fail open on bad stdin */ }
       if (!payload || typeof payload !== 'object') payload = {};
+      // A subagent compacted, not the session: the block is the orchestrator's
+      // position and "re-read the running command's workflow", which would send an
+      // executor into the orchestrator's steps. Claude Code fires the post-compaction
+      // SessionStart for subagents too and names them with `agent_id` (2.1.323), while
+      // `transcript_path` is still the main session's.
+      if (isSubagent(payload)) { process.exit(0); return; }
       const projectDir = typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : process.cwd();
 
       if (mode === 'session-start') {
@@ -360,4 +371,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { buildReinjectContext, UNTICKED_PHASE_RE, markerName, hookDirName, sessionIdOf, injectOutput, MARKER_TTL_MS, GENERIC_WORKFLOW_LINE, workflowLine, commandFromTranscript, workflowPathFor };
+module.exports = { buildReinjectContext, isSubagent, UNTICKED_PHASE_RE, markerName, hookDirName, sessionIdOf, injectOutput, MARKER_TTL_MS, GENERIC_WORKFLOW_LINE, workflowLine, commandFromTranscript, workflowPathFor };

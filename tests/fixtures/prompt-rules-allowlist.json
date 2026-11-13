@@ -318,5 +318,9 @@
   {
     "id": "pan-wizard-core/workflows/update:cf18d27d",
     "reason": "Old patch backups (field report on 3.42.0, item 5): the installer clears backed-up files the new version already matches and marks a backup an earlier update made stale: true (install-lib classifyPatchBackups, install.js reportLocalPatches), pinned by tests/requirements-reopen.test.cjs. The line keeps the model from merging an old copy wholesale; no harness scenario runs /pan:update or /pan:patches (live npm install, model time)."
+  },
+  {
+    "id": "pan-wizard-core/references/model-profiles:15a2d682",
+    "reason": "Profile rebalance (2026-11-13): reference prose describing which agents inherit the session model under each profile; the normative word is the descriptive \"PAN never selects your host model\". What it describes is enforced in code by MODEL_PROFILES and resolveModelDetailed in core.cjs (reasoning resolves to inherit), pinned by tests/core.test.cjs; no harness scenario needs to claim a reference paragraph."
   }
 ]

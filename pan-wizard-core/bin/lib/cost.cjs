@@ -69,13 +69,19 @@ const DEFAULT_RATES = {
   // the 0.1× convention EXCEPT on three models the page footnotes: Fable 5.1 and
   // Mythos 5.1 at 0.025× input, Opus 5.5 at 0.05×. Each needs its own row, because
   // the family-prefix fallback would otherwise price it at its predecessor's reads.
-  // Fable 5.1 is what the `fable`/`best` aliases resolve to (model-config: neither
-  // Fable model is any plan's default); cached re-reads are the bulk of PAN's
-  // traffic (ADR-0044).
+  // Fable 5.2 (claude-fable-5-2) is what the `fable` alias resolves to from Claude
+  // Code 2.1.321 (model-config: no Fable model is any plan's default). Its row and
+  // Mythos 5.2's were read from the pricing page 2026-11-13: $8/$40, 5-minute writes
+  // $10, 1-hour writes $16, reads $0.20 (0.025× input). Without them the prefix
+  // fallback priced both as Fable 5 / Mythos 5, reads 5× over. Cached re-reads are the
+  // bulk of PAN's traffic (ADR-0044).
+  'claude-fable-5-2':   { input: 8.0,  output: 40.0, cache_read: 0.20, cache_write: 10.0, cache_write_1h: 16.0 },
   'claude-fable-5-1':   { input: 10.0, output: 50.0, cache_read: 0.25, cache_write: 12.5, cache_write_1h: 20.0 },
   'claude-fable-5':     { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5, cache_write_1h: 20.0 },
   // Mythos 5.1 / Mythos 5 (limited availability): $10/$50; Mythos 5.1 reads at
-  // 0.025× input like Fable 5.1, Mythos 5 follows the 0.1× rule (R7).
+  // 0.025× input like Fable 5.1, Mythos 5 follows the 0.1× rule (R7). Mythos 5.2:
+  // Fable 5.2's prices (read 2026-11-13, above).
+  'claude-mythos-5-2':  { input: 8.0,  output: 40.0, cache_read: 0.20, cache_write: 10.0, cache_write_1h: 16.0 },
   'claude-mythos-5-1':  { input: 10.0, output: 50.0, cache_read: 0.25, cache_write: 12.5, cache_write_1h: 20.0 },
   'claude-mythos-5':    { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5, cache_write_1h: 20.0 },
   // Opus 5.5 (claude-opus-5-5, released 2026-09-22): $4 input / $20 output, 5-minute

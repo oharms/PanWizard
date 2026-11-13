@@ -118,47 +118,52 @@ const COST_MULTIPLIERS = { reasoning: 15, mid: 3, fast: 1 };
 
 // ─── Model Profile Table ─────────────────────────────────────────────────────
 
-// COST RESET (2026-07): quality + balanced (the default) both resolve to the
-// `reasoning` tier for EVERY agent — i.e. the DEFAULT model you launched with
-// (`inherit`). PAN no longer silently demotes agents to cheaper models; context
-// isolation (each subagent runs in its own window), not a cheaper model, is what
-// keeps the main conversation clean. Cheapness is now OPT-IN: choose the `budget`
-// profile (the only column that still down-tiers) or pin a specific agent via
-// config `model_overrides`. The reviewer-class agents additionally pin `model: opus`
-// in their own frontmatter (a native, deliberate exception). resolve-model /
-// MODEL_PROFILES is advisory + cost-estimation; native Claude Code delegation
-// reads each agent file's static `model:` (unset → inherit).
+// Profiles (rebalanced 2026-11-13, replacing the 2026-07 "cost reset" that ran
+// balanced on the launch model for every agent):
+//   - quality: every agent on `reasoning`, the model you launched with (`inherit`).
+//   - balanced (the default): planning, design and orchestration stay on `reasoning`
+//     (pan-planner, pan-designer, pan-conductor), and so does the final review layer
+//     (pan-reviewer, pan-hardener, pan-meta-reviewer, which also pin `model: opus` in
+//     their own frontmatter). Execution, research, debugging and the routine checkers
+//     run on `mid`. This is the shape published middle profiles share (Claude Code's
+//     `opusplan`: "Opus in plan mode, then Sonnet for execution"; GSD's balanced;
+//     Anthropic's orchestrator-plus-Sonnet-subagents guidance, read 2026-11-13). `mid`
+//     is the floor: no balanced agent runs on `fast`. A fix round after a failed
+//     verification resolves the executor with `--attempt 2`, which climbs one tier
+//     back to `reasoning` (escalateTier).
+//   - budget: mid and fast throughout.
+// `model_overrides` pins any agent. resolve-model / MODEL_PROFILES feeds the spawns'
+// `model=` and cost estimation; an agent file's static `model:` still applies where a
+// host reads it.
 const MODEL_PROFILES = {
   // Original planning/execution agents (pre-v3.0)
   'pan-planner':              { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
   'pan-designer':             { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
-  'pan-roadmapper':           { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
-  'pan-executor':             { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
-  // Right-sized ceremony (2026-10-24): balanced runs the researchers and the plan-checker
-  // on the mid tier, about half the launch model's price; quality keeps them on reasoning.
+  'pan-roadmapper':           { quality: 'reasoning', balanced: 'mid', budget: 'mid' },
+  'pan-executor':             { quality: 'reasoning', balanced: 'mid', budget: 'mid' },
   'pan-phase-researcher':     { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
   'pan-project-researcher':   { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
-  'pan-debugger':             { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
-  'pan-document_code':        { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
-  'pan-verifier':             { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-debugger':             { quality: 'reasoning', balanced: 'mid', budget: 'mid' },
+  'pan-document_code':        { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
+  'pan-verifier':             { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
   'pan-plan-checker':         { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
-  'pan-design-checker':       { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
-  'pan-integration-checker':  { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-design-checker':       { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
+  'pan-integration-checker':  { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
   'pan-reviewer':             { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   // Spec B v2 agents (v3.0–v3.4) — added v3.7.5 to close MODEL_PROFILES drift
   'pan-conductor':            { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
-  'pan-counterfactual':       { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
+  'pan-counterfactual':       { quality: 'reasoning', balanced: 'mid', budget: 'mid' },
   'pan-hardener':             { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-meta-reviewer':        { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
-  'pan-knowledge':            { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
-  'pan-previewer':            { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-knowledge':            { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
+  'pan-previewer':            { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
   // v3.5 agents
-  'pan-optimizer':            { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
-  'pan-distiller':            { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-optimizer':            { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
+  'pan-distiller':            { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
   // v3.7.0 self-improvement loop — observation-only watchdog
-  'pan-experiment-runner':    { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-experiment-runner':    { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
   // ADR-0033 bot-army — Release squad
-  'pan-release':              { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-release':              { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
 };
 
 // ─── Effort Profiles (2026-06, adaptive-thinking era) ───────────────────────
@@ -957,8 +962,9 @@ function adjustTierForCapabilities(tier, opts) {
 // repeated failures, HydraFusion's cascade); PAN only chose a tier BEFORE a run.
 // Each failed attempt now raises the tier one step up this ladder, capped by
 // `routing.max_escalations` and never above the agent's own `quality` tier —
-// so under `quality` and `balanced`, where every agent already runs on the
-// reasoning tier, escalation is a no-op; it is the `budget` profile's retry path.
+// so under `quality`, where every agent already runs on the reasoning tier, it is
+// a no-op; under `balanced` it climbs the mid-tier agents (the executor's fix round)
+// back to the launch model, and under `budget` it is the retry path for every agent.
 const TIER_LADDER = Object.freeze(['fast', 'mid', 'reasoning']);
 const DEFAULT_MAX_ESCALATIONS = 1;
 

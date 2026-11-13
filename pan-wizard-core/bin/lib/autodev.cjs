@@ -229,6 +229,26 @@ function standinMissing(bin) {
   return names.some((n) => fs.existsSync(path.join(dir, n))) ? null : `PAN_STANDIN_DIR is set and has no stand-in for ${bin}: refusing to run the real CLI`;
 }
 
+/**
+ * The model a lean execute session runs on. In exec-lean the session does the
+ * executor's work itself (no executor is spawned), so it takes the executor's tier
+ * from the project's profile: `balanced` runs it on mid (`--model sonnet`). The launch
+ * model (the `reasoning` tier, `inherit`) needs no flag, so `quality` and a
+ * `model_overrides` pin to reasoning leave the session as it was. Claude only: the
+ * other hosts' runners take no model flag here. A failed attempt's escalation
+ * (`opts.model`) wins over this.
+ * @returns {string|null} a `--model` alias, or null for the launch model
+ */
+function leanSessionModel(cwd, host) {
+  if (host !== 'claude') return null;
+  try {
+    const { tier } = require('./core.cjs').resolveModelDetailed(cwd, 'pan-executor');
+    return tier && tier !== 'reasoning' ? CLAUDE_MODEL_FOR_TIER[tier] || null : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The host argv for a session: hosts.cjs's, plus Claude's spend ceiling and an escalated model. */
 function sessionArgv(host, prompt, opts = {}) {
   const argv = HOSTS[host].runner.buildArgs(prompt, { captureMetrics: host === 'claude' });
@@ -278,7 +298,8 @@ function executeUnit(cwd, unit, host, opts = {}) {
     try { lean = require('./sizing.cjs').sizePhase(cwd, String(unit.phase)).path === 'lean'; } catch { lean = false; }
   }
   const prompt = unitPrompt(host, lean ? { ...unit, lean: true } : unit, opts.note);
-  const argv = sessionArgv(host, prompt, { remainingUsd: opts.remainingUsd, model: opts.model });
+  const model = opts.model || (lean ? leanSessionModel(cwd, host) : null);
+  const argv = sessionArgv(host, prompt, { remainingUsd: opts.remainingUsd, model });
   const useShell = h.runner.shell === 'win32' && process.platform === 'win32';
   const quoted = useShell ? argv.map((a) => (/\s/.test(a) ? `"${String(a).replace(/"/g, '""')}"` : a)) : argv;
   const r = spawnSync(h.runner.bin, quoted, {
@@ -737,4 +758,4 @@ function cmdAutodev(cwd, sub, flags, raw) {
   output(r, raw, r.stop ? r.stop.reason : r.error);
 }
 
-module.exports = { autodevActivity, LEAN_WORKFLOW, budgetStopReport, blockedReport, standinMissing, STOP_REASONS, selectUnit, decideStop, pendingUnit, snapshotHash, unitPrompt, sessionArgv, executeUnit, runAutodev, runStatus, cmdAutodev, verificationStatus, daySpend, unitForecast };
+module.exports = { autodevActivity, LEAN_WORKFLOW, leanSessionModel, budgetStopReport, blockedReport, standinMissing, STOP_REASONS, selectUnit, decideStop, pendingUnit, snapshotHash, unitPrompt, sessionArgv, executeUnit, runAutodev, runStatus, cmdAutodev, verificationStatus, daySpend, unitForecast };

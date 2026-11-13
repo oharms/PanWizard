@@ -285,8 +285,10 @@ function parseModelId(id) {
  *   - On the Anthropic API, Fable 5.x, Sonnet 5 and later and Opus 4.7 and later
  *     run a native 1M window. On Bedrock, Google Cloud and Foundry some of them run
  *     200K, so there the window is unknown.
+ *   - Haiku 5 and later run 1M too (platform.claude.com models overview, read
+ *     2026-11-13: Haiku 5.5, 1M tokens).
  *   - Opus 4.6 and Sonnet 4.6 (and older) run 200K unless their `[1m]` variant is
- *     configured; Haiku runs 200K.
+ *     configured; Haiku 4.5 and older run 200K.
  *   - CLAUDE_CODE_DISABLE_1M_CONTEXT=1 holds every model to 200K.
  *   - A context already past 200K can only be in a 1M window.
  */
@@ -296,7 +298,7 @@ function modelWindowFor(modelId, { env = {}, settings = [], used = 0 } = {}) {
   const m = parseModelId(modelId);
   if (!m) return null;
   const native1m = m.family === 'fable'
-    || (m.family === 'sonnet' && m.major >= 5)
+    || ((m.family === 'sonnet' || m.family === 'haiku') && m.major >= 5)
     || (m.family === 'opus' && (m.major > 4 || (m.major === 4 && m.minor >= 7)));
   if (native1m) {
     const thirdParty = m.thirdParty || ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY']

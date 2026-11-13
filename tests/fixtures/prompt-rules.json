@@ -3133,10 +3133,10 @@
    "baseline": true
   },
   {
-   "id": "pan-wizard-core/references/model-profiles:28f4a14f",
+   "id": "pan-wizard-core/references/model-profiles:15a2d682",
    "file": "pan-wizard-core/references/model-profiles.md",
-   "text": "PAN never selects your host model — it recommends a *class*. Because the `reasoning` tier is `inherit`, whichever top-tier model you configure in your runtime (Claude Code, etc.) runs the reasoning-tier agents (planner, conductor, executor…). Since the 2026-07 COST RESET that means *every* agent under `quality` and `balanced` (the default), except the ones that pin a model in their own frontmatter — `grep -l '^model: opus' agents/*.md` lists those, and the pin wins on Claude Code. Only the opt-in `budget` profile drops agents to `mid`/`fast`, which on Anthropic map to Sonnet/Haiku.",
-   "baseline": true
+   "text": "PAN never selects your host model — it recommends a *class*. Because the `reasoning` tier is `inherit`, whichever top-tier model you configure in your runtime (Claude Code, etc.) runs the reasoning-tier agents. Under `quality` that is *every* agent; under `balanced` (the default) it is the planning, design, orchestration and final-review agents (planner, designer, conductor, reviewer, hardener, meta-reviewer), and the rest run on `mid`. Agents that pin a model in their own frontmatter are the exception — `grep -l '^model: opus' agents/*.md` lists those, and the pin wins on Claude Code where a spawn passes no model. `mid` and `fast` map to Sonnet/Haiku on Anthropic.",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/references/model-profiles:c74d7ea5",

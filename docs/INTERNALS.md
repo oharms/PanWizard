@@ -225,12 +225,13 @@ Legacy names (`opus` → `reasoning`, `sonnet` → `mid`, `haiku` → `fast`) ar
 |-----------|---------|----------|--------|
 | Planner | reasoning | reasoning | mid |
 | Researcher | reasoning | mid | fast |
-| Executor | reasoning | reasoning | mid |
-| Verifier | reasoning | reasoning | fast |
+| Executor | reasoning | mid | mid |
+| Verifier | reasoning | mid | fast |
 | Plan Checker | reasoning | mid | fast |
-| Codebase Mapper (`pan-document_code`) | reasoning | reasoning | fast |
+| Codebase Mapper (`pan-document_code`) | reasoning | mid | fast |
+| Reviewer | reasoning | reasoning | fast |
 
-The full per-agent matrix is `MODEL_PROFILES` in `core.cjs` (mirrored in [AGENTS.md](AGENTS.md#model-profiles)). Since right-sized ceremony (`docs/specs/right-sized-ceremony.md`, 2026-10-24) `balanced` runs the researchers and the plan checker on the mid tier; `quality` keeps every agent on the reasoning tier.
+The full per-agent matrix is `MODEL_PROFILES` in `core.cjs` (mirrored in [AGENTS.md](AGENTS.md#model-profiles)). Since the 2026-11-13 rebalance `balanced` keeps planning, design, orchestration and the final review layer (planner, designer, conductor, reviewer, hardener, meta-reviewer) on the reasoning tier and runs every other agent on the mid tier; `quality` keeps every agent on the reasoning tier.
 
 ### Routing Pipeline
 
@@ -260,12 +261,12 @@ Relative cost per tier: reasoning = 15×, mid = 3×, fast = 1×. The `estimate-c
 ### When to Use Each
 
 - **Quality:** Complex architectural work, critical production code, unfamiliar domains
-- **Balanced (default):** Most projects -- the writing agents (planner, executor, verifier, reviewer, …) at the reasoning tier, the researchers and the plan checker at the mid tier, and the lean path (right-sized ceremony) for precisely specified work
+- **Balanced (default):** Most projects -- planning, design, orchestration and final review at the reasoning tier, execution, research, debugging and the routine checkers at the mid tier, and the lean path (right-sized ceremony) for precisely specified work
 - **Budget:** Prototyping, familiar patterns, cost-sensitive work
 
 ### Design Rationale
 
-The quality profile runs every agent at the reasoning tier and keeps the full ceremony on every piece of work. Balanced keeps the reasoning tier for the agents that plan, write and judge code, and since right-sized ceremony (2026-10-24) steps the researchers and the plan checker down to the mid tier, where the brief showed no quality loss; it also takes the lean path for a phase or quick task whose requirements already say precisely what to build (`sizing.cjs`). The opt-in `budget` profile steps agents down further, to mid/fast tiers, for prototyping, familiar patterns, and cost-sensitive work.
+The quality profile runs every agent at the reasoning tier and keeps the full ceremony on every piece of work. Balanced (rebalanced 2026-11-13) keeps the reasoning tier for the agents that plan, design, orchestrate and give the final review, and runs execution, research, debugging and the routine checkers on the mid tier, the shape published middle profiles share (plan on the top model, execute on the mid tier); a fix round after a failed verification climbs the executor back to the reasoning tier (`escalateTier`). Since right-sized ceremony (2026-10-24) it also takes the lean path for a phase or quick task whose requirements already say precisely what to build (`sizing.cjs`). The opt-in `budget` profile steps agents down further, to mid/fast tiers, for prototyping, familiar patterns, and cost-sensitive work.
 
 ### Per-Agent Overrides
 

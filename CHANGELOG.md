@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.44.0] - 2026-11-13
+
+A Codex hook check, two development checks from the GBrain read, and fixes from the market scan and reality check of `2026-11-13`.
+
+### Changed
+
+- **`balanced` is balanced again.** Since the cost reset of July 2026 the default profile ran nearly every agent on the model you launched with, the same as `quality`. It now keeps that model where published middle profiles keep it — planning, design and orchestration (`pan-planner`, `pan-designer`, `pan-conductor`) and the final review layer (`pan-reviewer`, `pan-hardener`, `pan-meta-reviewer`) — and runs execution, debugging, research and the routine checkers on the mid tier (the `sonnet` alias on Claude Code). No `balanced` agent runs on the fast tier. A fix round after a failed verification still climbs the executor back to the launch model. In a lean phase, where `autodev`'s execute session does the executor's work itself, that session now starts on the executor's tier (`--model sonnet` under `balanced`); a failed attempt still escalates it, and `quality` or a `model_overrides` pin to the launch model leaves it as it was. **If you are on `balanced` (the default), your executor and verifier move to the mid tier on update**; `quality` keeps every agent on the launch model, and `model_overrides` pins any one agent.
+
+### Added
+
+- **`/pan:hygiene` reports Codex hooks that Codex will not run.** Codex runs a project hook only when the user's `config.toml` (`CODEX_HOME`, else `~/.codex`) holds a trust entry for it; otherwise it lists the hook and skips it without a word. The new `codex-hook-trust` check reads `.codex/hooks.json` and that file, and warns with the PAN hooks that have no trust entry and how to trust them (`/hooks` in Codex). It only reads: PAN never writes Codex's `config.toml`.
+- **`scripts/check-test-discriminates.cjs`** (development aid): runs the named tests on the working tree, where they must pass, then in a throwaway `git worktree` of the base with the source under test reverted, where they must fail. It says whether a fix's test would have caught the bug.
+- **The prompt-contract lint also checks the user docs.** Every `pan-tools` verb and subcommand named in `README.md` and `docs/*.md` must exist; two stale references were fixed.
+
+### Fixed
+
+- **The post-compaction state block no longer reaches subagents.** Claude Code fires the post-compaction `SessionStart` hook when a subagent compacts as well, and its payload names the main session's transcript, so a compacting executor was told the orchestrator's command was running and to re-read that command's workflow. The hook now stays silent when the payload names an `agent_id` (Claude Code 2.1.323 and later).
+- **Fable 5.2 and Mythos 5.2 are priced.** `fable` resolves to Fable 5.2 from Claude Code 2.1.321, and both models were priced at their predecessors' rates by the family fallback, cache reads at five times the page. They now have their own rows ($8 / $40, cache reads $0.20; read from the pricing page on November 13, 2026).
+- **The context monitor knows Haiku 5.5 runs a 1M window.** Measured from the transcript, a Haiku 5.5 session was held to a 200K window and warned of a full context at a fraction of it.
+
 ## [3.43.1] - 2026-11-07
 
 Fixes from the reality check of `2026-11-07`.

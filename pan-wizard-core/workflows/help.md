@@ -430,7 +430,7 @@ Every shipped command, by group. This list is generated from each command's own 
 
 **`/pan:settings`** — Toggle researcher, plan checker, verifier agents. Select model profile.
 
-**`/pan:settings --profile <name>`** — Quick profile switch: `quality` and `balanced` (reasoning tier for every agent; `balanced` is the default), `budget` (mid tier for writing, fast tier for research/verification).
+**`/pan:settings --profile <name>`** — Quick profile switch: `quality` (reasoning tier for every agent), `balanced` (the default: reasoning tier for planning, design, orchestration and final review, mid tier for every other agent), `budget` (mid tier for writing, fast tier for research/verification).
 
 **Planning config** (`.planning/config.json`):
 - `commit_docs: true` — commit planning artifacts to git (set `false` + add `.planning/` to `.gitignore` for private planning)

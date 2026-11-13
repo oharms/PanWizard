@@ -36,6 +36,7 @@
     "daySpend:function",
     "decideStop:function",
     "executeUnit:function",
+    "leanSessionModel:function",
     "pendingUnit:function",
     "runAutodev:function",
     "runStatus:function",

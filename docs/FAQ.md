@@ -23,8 +23,8 @@ PAN itself is free and open source. Token costs depend on your Claude/model usag
 | Profile | Model resolution | Best for |
 |---------|----------------------|----------|
 | `quality` | Every agent at the session model (reasoning tier); the full ceremony on every phase | Critical architecture work |
-| `balanced` (default) | The session model for every agent except the two researchers and the plan-checker, which run on the mid tier; the ceremony is sized (a precisely specified phase is planned and checked by the engine) | Normal development |
-| `budget` | The only profile that down-tiers: mid for the planning, orchestration and code-writing agents, fast for research, review, verification and utility agents | High-volume work, prototyping |
+| `balanced` (default) | The session model for planning, design, orchestration and final review; the mid tier for every other agent (execution, research, debugging, the routine checkers), with a fix round after failed verification climbing the executor back to the session model; the ceremony is sized (a precisely specified phase is planned and checked by the engine) | Normal development |
+| `budget` | Down-tiers every agent: mid for the planning, orchestration and code-writing agents, fast for research, review, verification and utility agents | High-volume work, prototyping |
 
 Reduce costs further by disabling optional agents:
 ```text
@@ -44,7 +44,7 @@ Each phase goes through several agent stages. Approximate token usage per stage:
 | Execution | 1 executor per plan (fresh context each) | 20-80K per plan | No |
 | Verification | 1 verifier | 10-20K | Yes (`verifier: false`) |
 
-**Profile multiplier:** the numbers above assume the default `balanced` profile, where the agents that plan, write and judge code are on the reasoning tier and inherit the model you launched with (a few review agents pin their own), while the researchers and the plan-checker run on the mid tier and the ceremony is sized. `quality` keeps every agent on the reasoning tier and runs the full ceremony on everything. `budget` is the only profile that down-tiers the rest: mid for the planning, orchestration and code-writing agents, fast for research, review, verification and the utility agents. On PAN's relative cost scale (`pan-tools estimate-cost`, reasoning = 15×, mid = 3×, fast = 1×) that puts `quality` at ~15× baseline, `balanced` a little under it, and `budget` at ~1.6×.
+**Profile multiplier:** the numbers above assume the default `balanced` profile, where planning, design, orchestration and the final review agents are on the reasoning tier and inherit the model you launched with (the review agents also pin their own), while every other agent — the executor, the researchers, the debugger, the verifier and the routine checkers — runs on the mid tier and the ceremony is sized. `quality` keeps every agent on the reasoning tier and runs the full ceremony on everything. `budget` is the only profile that down-tiers the rest: mid for the planning, orchestration and code-writing agents, fast for research, review, verification and the utility agents. On PAN's relative cost scale (`pan-tools estimate-cost`, reasoning = 15×, mid = 3×, fast = 1×) that puts `quality` at ~15× baseline, `balanced` at ~6×, and `budget` at ~1.6×.
 
 **Optimization tips:**
 - Leave research off for familiar domains (it is off by default; `/pan:plan-phase N --research` turns it on for one phase)

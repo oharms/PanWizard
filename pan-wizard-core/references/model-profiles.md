@@ -30,7 +30,7 @@ For backward compatibility, legacy Anthropic model names still work:
 
 ## Choosing a Reasoning-Tier Model (Claude)
 
-PAN never selects your host model — it recommends a *class*. Because the `reasoning` tier is `inherit`, whichever top-tier model you configure in your runtime (Claude Code, etc.) runs the reasoning-tier agents (planner, conductor, executor…). Since the 2026-07 COST RESET that means *every* agent under `quality` and `balanced` (the default), except the ones that pin a model in their own frontmatter — `grep -l '^model: opus' agents/*.md` lists those, and the pin wins on Claude Code. Only the opt-in `budget` profile drops agents to `mid`/`fast`, which on Anthropic map to Sonnet/Haiku.
+PAN never selects your host model — it recommends a *class*. Because the `reasoning` tier is `inherit`, whichever top-tier model you configure in your runtime (Claude Code, etc.) runs the reasoning-tier agents. Under `quality` that is *every* agent; under `balanced` (the default) it is the planning, design, orchestration and final-review agents (planner, designer, conductor, reviewer, hardener, meta-reviewer), and the rest run on `mid`. Agents that pin a model in their own frontmatter are the exception — `grep -l '^model: opus' agents/*.md` lists those, and the pin wins on Claude Code where a spawn passes no model. `mid` and `fast` map to Sonnet/Haiku on Anthropic.
 
 The IDs below are *examples* of what you can configure in each class — not an exhaustive or only-valid list. A newer release in the same class behaves the same way here.
 
@@ -56,34 +56,34 @@ At install time PAN also runs a **best-effort, advisory** capability check on th
 
 ## Profile Definitions
 
-Since the 2026-07 **COST RESET**, `quality` and `balanced` are identical — both route every agent to the `reasoning` tier. Only the opt-in `budget` profile steps agents below reasoning (to `mid`/`fast` per the last column). The table below is illustrative; `core.cjs` `MODEL_PROFILES` is the source of truth and covers the full agent roster.
+Since the 2026-11-13 rebalance, `quality` routes every agent to the `reasoning` tier, `balanced` keeps planning, design, orchestration and final review on `reasoning` and runs every other agent on `mid`, and `budget` steps every agent to `mid`/`fast` (per the last column). The table below shows the core agents; `core.cjs` `MODEL_PROFILES` is the source of truth and covers the full agent roster.
 
 | Agent | `quality` | `balanced` | `budget` |
 |-------|-----------|------------|----------|
 | pan-planner | reasoning | reasoning | mid |
-| pan-roadmapper | reasoning | reasoning | mid |
-| pan-executor | reasoning | reasoning | mid |
-| pan-phase-researcher | reasoning | reasoning | fast |
-| pan-project-researcher | reasoning | reasoning | fast |
-| pan-debugger | reasoning | reasoning | mid |
-| pan-document_code | reasoning | reasoning | fast |
-| pan-verifier | reasoning | reasoning | fast |
-| pan-plan-checker | reasoning | reasoning | fast |
-| pan-integration-checker | reasoning | reasoning | fast |
+| pan-roadmapper | reasoning | mid | mid |
+| pan-executor | reasoning | mid | mid |
+| pan-phase-researcher | reasoning | mid | fast |
+| pan-project-researcher | reasoning | mid | fast |
+| pan-debugger | reasoning | mid | mid |
+| pan-document_code | reasoning | mid | fast |
+| pan-verifier | reasoning | mid | fast |
+| pan-plan-checker | reasoning | mid | fast |
+| pan-integration-checker | reasoning | mid | fast |
 | pan-reviewer | reasoning | reasoning | fast |
 
 ### Profile Philosophy
 
-Post-COST-RESET, `quality` and `balanced` are the same profile in practice — both give every agent the `reasoning` tier. Cost savings come only from opting into `budget`.
+`balanced` follows the shape published middle profiles share: plan on the top model, execute on the mid tier (Claude Code's `opusplan` alias, an orchestrator with mid-tier subagents). `quality` buys the top model everywhere; `budget` cuts further.
 
 **quality** — Maximum reasoning power
 - Reasoning tier for ALL agents. Use when quota is available, critical architecture work, or maximum quality is desired.
 
-**balanced** (default) — Reasoning everywhere
-- Identical to `quality` since the COST RESET: reasoning tier for every agent. It remains the default so new projects get full reasoning power out of the box. Switch to `budget` when you need to cut token spend.
+**balanced** (default) — Reasoning where it decides, mid where it executes
+- Reasoning tier for pan-planner, pan-designer, pan-conductor and the final review layer (pan-reviewer, pan-hardener, pan-meta-reviewer); mid tier for every other agent (execution, research, debugging, the routine checkers, the utility agents). No balanced agent runs on `fast`. A fix round after a failed verification resolves the executor with `--attempt 2`, which climbs it from mid back to reasoning. Switch to `quality` for every agent on your session model, or to `budget` to cut token spend further.
 
 **budget** — Minimal token spend
-- The only profile that steps agents below reasoning: mid for anything that writes code, fast for research and verification (see the `budget` column). Use for high-volume work or less critical phases.
+- Mid for anything that writes code, fast for research and verification (see the `budget` column) — the only profile that puts agents on `fast`. Use for high-volume work or less critical phases.
 
 ### Cost Multipliers
 
@@ -247,24 +247,27 @@ Runtime: `/pan:settings --profile <profile>`
 
 | Direction | Example | Behavior |
 |-----------|---------|----------|
-| Same tier | quality → balanced | Proceeds silently (both resolve every agent to the reasoning tier) |
+| Downgrade | quality → balanced | Confirmation required |
 | Downgrade | balanced → budget | Confirmation required |
 | Upgrade | budget → balanced | Proceeds silently |
 | Same | balanced → balanced | Proceeds silently |
 
-**Tier Order:** `quality` = `balanced` (2) > `budget` (1)
+**Tier Order:** `quality` (3) > `balanced` (2) > `budget` (1)
 
 ---
 
 ## Design Rationale
 
-Since the 2026-07 COST RESET, `quality` and `balanced` put every agent on the `reasoning` tier — so the notes below explain the tier each agent *steps down to* under `budget`, the only profile that now drops below reasoning.
+`quality` puts every agent on the `reasoning` tier; the notes below explain where `balanced` and `budget` step agents down.
 
-**Why reasoning for pan-planner (and every agent under quality/balanced)?**
-Planning involves architecture decisions, goal decomposition, and task design — where model quality has the highest impact. Post-COST-RESET the reasoning tier is inexpensive enough that every agent stays on it unless you opt into budget.
+**Why reasoning for pan-planner, pan-designer and pan-conductor (under quality and balanced)?**
+Planning, design and orchestration involve architecture decisions, goal decomposition, and task design — where model quality has the highest impact.
 
-**Why mid for pan-executor under budget?**
-Executors follow explicit PLAN.md instructions. The plan already contains the reasoning; execution is implementation, so `budget` can safely step them to mid.
+**Why reasoning for the final review layer under balanced?**
+pan-reviewer, pan-hardener and pan-meta-reviewer are the last check before work lands; they stay on the top model (and pin `model: opus` in their frontmatter).
+
+**Why mid for pan-executor under balanced and budget?**
+Executors follow explicit PLAN.md instructions. The plan already contains the reasoning; execution is implementation, so the mid tier carries it. A fix round after a failed verification escalates the executor back to reasoning.
 
 **Why fast for verifiers under budget?**
 Verification ideally uses goal-backward reasoning, but under `budget` the check degrades gracefully to fast pattern-matching to save tokens.

@@ -116,7 +116,7 @@ Shows your overall project status and tells you what to do next — plan the nex
 - **Start small** — Pick a project with 3-5 phases for your first run
 - **Use `/pan:discuss-phase`** before planning if you're unsure about approach
 - **Check `/pan:progress`** whenever you lose track of where you are
-- **Use the `balanced` profile** (default) — the agents that plan, write and judge code are on the reasoning tier, which inherits the model you launched with (the researchers and the plan-checker run on the mid tier, and a few review agents pin their own model — see Model Profiles); switch to `budget` only when cost matters more than depth
+- **Use the `balanced` profile** (default) — planning, design, orchestration and the final review agents are on the reasoning tier, which inherits the model you launched with, and execution, research, debugging and the routine checkers run on the mid tier (a fix round after failed verification climbs the executor back to the reasoning tier — see Model Profiles); switch to `quality` when you want every agent on your session model, or to `budget` only when cost matters more than depth
 - **Run `/clear`** between major commands to keep context fresh
 
 ### Capability-aware features
@@ -672,21 +672,22 @@ PAN uses abstract tier names (`reasoning`, `mid`, `fast`) that map to provider-s
 | Agent | `quality` | `balanced` | `budget` |
 |-------|-----------|------------|----------|
 | pan-planner | reasoning | reasoning | mid |
-| pan-roadmapper | reasoning | reasoning | mid |
-| pan-executor | reasoning | reasoning | mid |
+| pan-roadmapper | reasoning | mid | mid |
+| pan-executor | reasoning | mid | mid |
 | pan-phase-researcher | reasoning | mid | fast |
 | pan-project-researcher | reasoning | mid | fast |
-| pan-debugger | reasoning | reasoning | mid |
-| pan-document_code | reasoning | reasoning | fast |
-| pan-verifier | reasoning | reasoning | fast |
+| pan-debugger | reasoning | mid | mid |
+| pan-document_code | reasoning | mid | fast |
+| pan-verifier | reasoning | mid | fast |
 | pan-plan-checker | reasoning | mid | fast |
-| pan-integration-checker | reasoning | reasoning | fast |
+| pan-integration-checker | reasoning | mid | fast |
 | pan-reviewer | reasoning | reasoning | fast |
 
-The table shows the core agents. Every other agent is on `reasoning` under `quality` and `balanced` too; `MODEL_PROFILES` in `core.cjs` has each one's `budget` tier. `balanced` differs from `quality` only in the researchers and the plan-checker (mid tier) and in the ceremony it runs (see `model_profile` above).
+The table shows the core agents. Under `balanced`, the other agents that stay on `reasoning` are `pan-designer`, `pan-conductor`, `pan-hardener` and `pan-meta-reviewer`; every remaining agent is on `mid`, and every agent is on `reasoning` under `quality`. `MODEL_PROFILES` in `core.cjs` has each one's tiers. `balanced` also differs from `quality` in the ceremony it runs (see `model_profile` above).
 
-**Profile philosophy (cost reset):**
-- **quality** and **balanced** -- Every agent runs on the `reasoning` tier, i.e. **`inherit` — the model you launched with** (under `balanced`, the researchers and the plan-checker run on the mid tier; a few review agents pin their own model; see the note below). PAN respects your model choice by default and does not silently demote agents to cheaper models; context isolation (each subagent in its own window), not a weaker model, is what keeps the main conversation clean.
+**Profile philosophy (rebalanced 2026-11-13):**
+- **quality** -- Every agent runs on the `reasoning` tier, i.e. **`inherit` — the model you launched with**, with the full ceremony on everything.
+- **balanced** (default) -- Planning, design, orchestration and final review (planner, designer, conductor, reviewer, hardener, meta-reviewer) run on `inherit`; execution, research, debugging and the routine checkers run on the mid tier. This is the shape published middle profiles share: plan on the top model, execute on the mid tier. No `balanced` agent runs on the fast tier, and a fix round after a failed verification climbs the executor back to `inherit`. A few review agents also pin their own model; see the note below.
 - **budget** -- The opt-in cheap mode: mid for code-writing agents, fast for research and verification. Choose it explicitly for high-volume or less-critical work. Cheapness is opt-in, not the default.
 
 > Model tiering takes effect where a PAN workflow passes the resolved tier as a Task spawn's `model` (from `init` or `resolve-model`), and it is what `pan-tools estimate-cost` (shown by `/pan:settings --profile`) prices — `/pan:cost` does not use it, since the hooks take each record's tier from the model id they record; a spawn that passes no model uses the agent file's static `model:` — unset means `inherit`. A few security-review agents deliberately pin `model: opus` in their own frontmatter; `grep -l '^model: opus' .claude/agents/*.md` lists them (`~/.claude/agents/` in a global install).
@@ -696,7 +697,7 @@ The table shows the core agents. Every other agent is on `reasoning` under `qual
 The `routing.strategy` setting controls how tiers are adjusted at runtime:
 
 - **static** (default) -- Profile assigns fixed tiers. Predictable, no surprises.
-- **complexity** -- Adjusts tiers up or down from task metadata (file count, wave count, requirements, architecture flag) passed to `pan-tools resolve-model --metadata`. No workflow passes that metadata today, so a first attempt resolves as it does under `static`. Under `budget` it also cancels the `/pan:exec-phase --gaps-only` escalation: the retry carries only its attempt number, scores as a simple task and drops a tier before it climbs one.
+- **complexity** -- Adjusts tiers up or down from task metadata (file count, wave count, requirements, architecture flag) passed to `pan-tools resolve-model --metadata`. No workflow passes that metadata today, so a first attempt resolves as it does under `static`. Under `balanced` and `budget` it also cancels the `/pan:exec-phase --gaps-only` escalation: the retry carries only its attempt number, scores as a simple task and drops a tier before it climbs one.
 
 ### Cost Estimation
 
@@ -1256,7 +1257,7 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 ### Phase Execution Hangs or Takes Too Long
 
 **Cause:** Complex plans with many dependencies, or agent model too weak for the task.
-**Fix:** Check the plan complexity (number of tasks, wave count). If you're on the `budget` profile, the executor is running a mid-tier model — switch back to `balanced` (`/pan:settings --profile balanced`) so it inherits your session model, or lift just that agent with `"model_overrides": {"pan-executor": "opus"}` in `.planning/config.json` (override values are tiers: `opus` means the reasoning tier, so the executor inherits your session model rather than switching to Opus). Conversely, if simple tasks feel slow, the reasoning tier is the cost: the `budget` profile or a `model_overrides` entry trades depth for speed. (`quality` and `balanced` resolve the executor identically; the two differ only in the researchers and the plan-checker, and in how much ceremony a phase gets.)
+**Fix:** Check the plan complexity (number of tasks, wave count). On `balanced` and `budget` the executor runs a mid-tier model — switch to `quality` (`/pan:settings --profile quality`) so it inherits your session model, or lift just that agent with `"model_overrides": {"pan-executor": "opus"}` in `.planning/config.json` (override values are tiers: `opus` means the reasoning tier, so the executor inherits your session model rather than switching to Opus). Conversely, if simple tasks feel slow, the reasoning tier is the cost: the `budget` profile or a `model_overrides` entry trades depth for speed. (`balanced` already lifts the executor to the reasoning tier for a fix round after a failed verification.)
 
 ### Plan Rejected by Checker Multiple Times
 

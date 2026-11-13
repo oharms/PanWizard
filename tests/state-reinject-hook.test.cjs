@@ -97,6 +97,26 @@ describe('the hook process', () => {
       fs.rmSync(elsewhere, { recursive: true, force: true });
     }
   });
+
+  test('a subagent compaction gets nothing: the block is the orchestrator\'s position', () => {
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-reinject-sub-'));
+    try {
+      fs.mkdirSync(path.join(project, '.planning'));
+      fs.writeFileSync(path.join(project, '.planning', 'state.md'), STATE);
+      fs.writeFileSync(path.join(project, '.planning', 'roadmap.md'), ROADMAP);
+      const base = { hook_event_name: 'SessionStart', source: 'compact', cwd: project };
+      const sub = spawnHook(HOOK, { ...base, agent_id: 'a1b2c3', agent_type: 'pan-executor' }, project);
+      assert.equal(sub.status, 0);
+      assert.equal(sub.stdout, '');
+      // The main session's compaction still gets the block, and an empty id is not a subagent.
+      for (const payload of [base, { ...base, agent_id: '' }]) {
+        const main = spawnHook(HOOK, payload, project);
+        assert.match(JSON.parse(main.stdout).hookSpecificOutput.additionalContext, /Current phase: 3/);
+      }
+    } finally {
+      fs.rmSync(project, { recursive: true, force: true });
+    }
+  });
 });
 
 // ─── After a compaction on Gemini CLI and Copilot CLI (market-ideas M33) ───────

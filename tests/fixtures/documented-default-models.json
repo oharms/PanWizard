@@ -11,10 +11,17 @@
     },
     {
       "runtime": "claude",
-      "id": "claude-fable-5-1",
-      "role": "the target of the fable and best aliases where Fable is available",
+      "id": "claude-fable-5-2",
+      "role": "the target of the fable alias outside Claude apps gateway sessions (Claude Code 2.1.321 and later)",
       "source": "https://code.claude.com/docs/en/model-config",
-      "read": "2026-10-03"
+      "read": "2026-11-13"
+    },
+    {
+      "runtime": "claude",
+      "id": "claude-fable-5-1",
+      "role": "the target of the fable and best aliases before Claude Code 2.1.321; kept by Console accounts, third-party providers and settings that name it",
+      "source": "https://code.claude.com/docs/en/model-config",
+      "read": "2026-11-13"
     },
     {
       "runtime": "claude",

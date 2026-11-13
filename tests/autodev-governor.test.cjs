@@ -99,6 +99,31 @@ describe('A6: the dollar governor (pure)', () => {
   });
 });
 
+describe('a lean execute session runs on the executor\'s tier (balanced rebalance, 2026-11-13)', () => {
+  const { createTempProject, cleanup } = require('./helpers.cjs');
+  let dir;
+  afterEach(() => cleanup(dir));
+  const withConfig = (cfg) => {
+    dir = createTempProject();
+    fs.writeFileSync(path.join(dir, '.planning', 'config.json'), JSON.stringify(cfg));
+    return dir;
+  };
+  test('balanced: the session does the executor\'s work, so it runs on mid (--model sonnet)', () => {
+    assert.equal(A.leanSessionModel(withConfig({ model_profile: 'balanced' }), 'claude'), 'sonnet');
+    const argv = A.sessionArgv('claude', 'P', { model: A.leanSessionModel(dir, 'claude') });
+    assert.deepEqual(argv.slice(-3), ['--model', 'sonnet', 'P']);
+  });
+  test('quality, and a pin to the launch model, leave the session on the launch model (no flag)', () => {
+    assert.equal(A.leanSessionModel(withConfig({ model_profile: 'quality' }), 'claude'), null);
+    cleanup(dir);
+    assert.equal(A.leanSessionModel(withConfig({ model_profile: 'balanced', model_overrides: { 'pan-executor': 'reasoning' } }), 'claude'), null);
+  });
+  test('budget runs it on mid too; other hosts get no model flag from here', () => {
+    assert.equal(A.leanSessionModel(withConfig({ model_profile: 'budget' }), 'claude'), 'sonnet');
+    assert.equal(A.leanSessionModel(dir, 'codex'), null);
+  });
+});
+
 describe('A4 and A6 end to end with a stand-in host', () => {
   const dirs = [];
   let binDir;

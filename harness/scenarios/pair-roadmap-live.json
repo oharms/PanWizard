@@ -62,5 +62,15 @@
       ],
       "why": "Every requirement edge holds, across restarts, judged by a check neither arm saw."
     }
+  ],
+  "arms": [
+    {
+      "id": "balanced-before-rebalance",
+      "write": {
+        "path": ".planning/config.json",
+        "content": "{\n  \"model_profile\": \"balanced\",\n  \"commit_docs\": true,\n  \"workflow\": {\n    \"auto_advance\": false,\n    \"parallelization\": true\n  },\n  \"model_overrides\": {\n    \"pan-executor\": \"reasoning\",\n    \"pan-verifier\": \"reasoning\"\n  }\n}\n"
+      },
+      "why": "The balanced profile as it was before 2026-11-13 for the agents this build spawns: pan-executor and pan-verifier pinned back to reasoning (the launch model) with model_overrides (a lean phase runs no planner, checker or researcher, and the reviewers pin their own model). Run against the plain scenario, same seed and hidden check, to measure what the rebalance saves in cost and time and whether it costs any acceptance case."
+    }
   ]
 }

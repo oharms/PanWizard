@@ -320,12 +320,14 @@ describe('resolve-model command', () => {
     cleanup(tmpDir);
   });
 
-  test('known agent type inherits the default model in the balanced profile (cost reset)', () => {
+  test('balanced runs the executor on the mid tier and the planner on the launch model (rebalanced 2026-11-13)', () => {
+    const planner = JSON.parse(runPanTools('resolve-model pan-planner', tmpDir).output);
+    assert.strictEqual(planner.model, 'inherit', 'planning stays on the launch model in balanced');
     const result = runPanTools('resolve-model pan-executor', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    assert.strictEqual(output.model, 'inherit', 'pan-executor balanced profile inherits the main model after the cost reset');
+    assert.strictEqual(output.model, 'sonnet', 'pan-executor runs on the mid tier in balanced');
     assert.strictEqual(output.profile, 'balanced');
     assert.ok(!output.error, 'should not have error field');
     assert.ok(!output.unknown_agent, 'known agent should not have unknown_agent flag');
@@ -366,7 +368,7 @@ describe('resolve-model command', () => {
   test('raw flag outputs plain model name', () => {
     const result = runPanTools('resolve-model pan-executor --raw', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
-    assert.strictEqual(result.output, 'inherit');
+    assert.strictEqual(result.output, 'sonnet');
   });
 });
 
@@ -1126,7 +1128,7 @@ describe('resolveModelInternal', () => {
     assert.ok(['inherit', 'sonnet', 'haiku'].includes(result), 'should return valid model tier from balanced profile');
   });
 
-  test('pan-reviewer inherits the default model in balanced profile (cost reset)', () => {
+  test('pan-reviewer inherits the default model in balanced profile (final review stays on the launch model)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
       JSON.stringify({ model_profile: 'balanced' })
@@ -1465,13 +1467,13 @@ describe('resolveModelInternal routing', () => {
   beforeEach(() => { tmpDir = createTempProject(); });
   afterEach(() => cleanup(tmpDir));
 
-  test('static strategy returns the balanced-profile model (inherit after reset)', () => {
+  test('static strategy returns the balanced-profile model (mid for the executor)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
       JSON.stringify({ model_profile: 'balanced', routing: { strategy: 'static' } })
     );
     const result = resolveModelInternal(tmpDir, 'pan-executor');
-    assert.strictEqual(result, 'inherit');
+    assert.strictEqual(result, 'sonnet');
   });
 
   test('per-agent override takes precedence over routing strategy', () => {
@@ -1658,8 +1660,8 @@ describe('resolveModelInternal per-phase override', () => {
 
   test('falls back to profile when phase has no model_tier', () => {
     const result = resolveModelInternal(tmpDir, 'pan-executor', { phaseNum: 3 });
-    // pan-executor balanced = reasoning → inherit (cost reset)
-    assert.strictEqual(result, 'inherit', 'should fall back to profile-based resolution');
+    // pan-executor balanced = mid → sonnet (rebalanced 2026-11-13)
+    assert.strictEqual(result, 'sonnet', 'should fall back to profile-based resolution');
   });
 
   test('per-agent override still takes precedence over per-phase', () => {

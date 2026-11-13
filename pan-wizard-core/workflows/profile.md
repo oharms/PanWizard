@@ -84,7 +84,7 @@ This creates `.planning/config.json` with defaults if missing and loads current 
 Detect if this is a downgrade and confirm with user:
 
 ```
-TIER_MAP = { "quality": 2, "balanced": 2, "budget": 1 }   # quality and balanced resolve every agent to the same tier and effort
+TIER_MAP = { "quality": 3, "balanced": 2, "budget": 1 }   # quality: every agent on reasoning; balanced: execution, research and checkers on mid; budget: mid and fast
 current_profile = config.model_profile OR "balanced"
 new_profile = $ARGUMENTS.profile
 
@@ -138,8 +138,9 @@ Agents will now use:
 
 [Show table from MODEL_PROFILES in ~/.claude/pan-wizard-core/bin/lib/core.cjs for selected profile]
 
-Example (`budget` — the only profile that steps agents below the reasoning
-tier; `quality` and `balanced` put every agent on `reasoning`):
+Example (`budget` — mid and fast throughout; `quality` puts every agent on
+`reasoning`, and `balanced` keeps planning, design, orchestration and final
+review on `reasoning` and runs every other agent on `mid`):
 | Agent | Tier |
 |-------|------|
 | pan-planner | mid |
@@ -151,7 +152,7 @@ Cost estimate:
 [Run: node ~/.claude/pan-wizard-core/bin/pan-tools.cjs estimate-cost]
 Show the average cost multiplier for each profile (quality/balanced/budget)
 and highlight the selected profile — read the numbers from the command output,
-don't hardcode them (`quality` and `balanced` report the same multiplier).
+don't hardcode them.
 Example shape:
   quality: <n>× avg | balanced: <n>× avg | budget: <n>× avg
                                            ^^^^^^^^^^^^^^^^ selected

@@ -38,10 +38,11 @@ const { output, error } = require('./core.cjs');
  * - workers: narrow-job agents (Tier 2) + standalone utility agents
  *   invoked directly by commands, not delegated through a squad.
  *
- * "Tier 2" is a hierarchy position, not a model tier. Post-COST-RESET (2026-07)
- * every agent in MODEL_PROFILES resolves to `reasoning` under both quality and
- * balanced (the default); `budget` is the only profile that down-tiers, and it is
- * the profile — never this list — that decides what an agent drops to. Note it
+ * "Tier 2" is a hierarchy position, not a model tier. Since the 2026-11-13
+ * rebalance every agent in MODEL_PROFILES resolves to `reasoning` under quality;
+ * balanced (the default) keeps planning, design, orchestration and final review on
+ * `reasoning` and runs the rest on `mid`; budget down-tiers further. It is the
+ * profile — never this list — that decides what an agent drops to. Note `budget`
  * down-tiers per agent, not per group: `budget` sends some of the workers below
  * to `fast` and others to `mid`. MODEL_PROFILES in core.cjs is the table; read it
  * rather than assuming one tier covers a row of a doc.

@@ -46,7 +46,7 @@ AskUserQuestion([
     header: "Model",
     multiSelect: false,
     options: [
-      { label: "Balanced (Recommended)", description: "right-sized: a small, well-specified phase or quick task skips research and the planner/checker loop; plan-checker and researchers on the mid tier; one plan revision" },
+      { label: "Balanced (Recommended)", description: "right-sized: a small, well-specified phase or quick task skips research and the planner/checker loop; planning and final review on the reasoning tier, execution, research and checkers on the mid tier; one plan revision" },
       { label: "Quality", description: "the full ceremony on every piece of work, every agent on the reasoning tier (the behaviour before right-sizing; costs several times more)" },
       { label: "Budget", description: "right-sized like balanced, plus mid tier for writing and fast tier for research/verification (lowest cost)" }
     ]

@@ -326,9 +326,15 @@ describe('pan-context-monitor — reading the transcript file', () => {
 
 describe('pan-context-monitor — the model window from the model id (code.claude.com/docs/en/model-config, read 2026-10-04)', () => {
   test('native 1M on the Anthropic API: Fable 5.x, Sonnet 5 and later, Opus 4.7 and later', () => {
-    for (const id of ['claude-fable-5-1', 'claude-fable-5', 'claude-sonnet-5', 'claude-sonnet-5-5', 'claude-opus-4-7', 'claude-opus-4-8', 'claude-opus-5-5']) {
+    for (const id of ['claude-fable-5-2', 'claude-fable-5-1', 'claude-fable-5', 'claude-sonnet-5', 'claude-sonnet-5-5', 'claude-opus-4-7', 'claude-opus-4-8', 'claude-opus-5-5']) {
       assert.equal(modelWindowFor(id), 1000000, id);
     }
+  });
+
+  test('Haiku 5.5 runs 1M (platform.claude.com models overview, read 2026-11-13); Haiku 4.5 stays 200K', () => {
+    assert.equal(modelWindowFor('claude-haiku-5-5'), 1000000);
+    assert.equal(modelWindowFor('claude-haiku-5-5', { env: { CLAUDE_CODE_USE_BEDROCK: '1' } }), null);
+    assert.equal(modelWindowFor('claude-haiku-4-5-20251001'), 200000);
   });
 
   test('200K: Haiku, Opus 4.6 and Sonnet 4.6 and older, and the 3.x models', () => {

@@ -154,14 +154,17 @@ describe('the engine plan check (lean path)', () => {
   });
 });
 
-describe('the balanced profile runs the plan-checker and researchers on the mid tier', () => {
+describe('the balanced profile (rebalanced 2026-11-13)', () => {
   const { MODEL_PROFILES } = require('../pan-wizard-core/bin/lib/core.cjs');
-  test('balanced: mid; quality: reasoning (the old behaviour)', () => {
-    for (const a of ['pan-plan-checker', 'pan-phase-researcher', 'pan-project-researcher']) {
-      assert.deepEqual([MODEL_PROFILES[a].balanced, MODEL_PROFILES[a].quality], ['mid', 'reasoning'], a);
+  const STRONG = ['pan-planner', 'pan-designer', 'pan-conductor', 'pan-reviewer', 'pan-hardener', 'pan-meta-reviewer'];
+  test('plan, design, orchestration and the final review stay on the launch model; the rest run on mid', () => {
+    for (const [a, p] of Object.entries(MODEL_PROFILES)) {
+      assert.equal(p.balanced, STRONG.includes(a) ? 'reasoning' : 'mid', a);
+      assert.equal(p.quality, 'reasoning', `${a}: quality keeps every agent on the launch model`);
     }
-    assert.equal(MODEL_PROFILES['pan-planner'].balanced, 'reasoning', 'the planner and executor stay on the launch model');
-    assert.equal(MODEL_PROFILES['pan-executor'].balanced, 'reasoning');
+  });
+  test('no balanced agent runs on the fast tier', () => {
+    assert.deepEqual(Object.entries(MODEL_PROFILES).filter(([, p]) => p.balanced === 'fast').map(([a]) => a), []);
   });
 });
 

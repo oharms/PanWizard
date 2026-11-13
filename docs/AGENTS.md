@@ -98,7 +98,7 @@ For a bot-army campaign (`/pan:army`), the agents are organized into role-scoped
 
 **The `access` column is advisory, and does not always match the tool grant.** `squads.cjs` describes itself as "a registry + resolver only — it modifies no agent and changes no execution path", so these values are the contract the conductor's prompt is written around, not a sandbox the runtime imposes. Compare them against the real grants with `grep '^tools:' agents/*.md` and expect divergence: several agents in a `read-only` squad hold `Write` because they emit planning or verification artifacts. What the grants *do* enforce is delegation depth — `grep -l '^tools:.*Task' agents/*.md` names every agent able to spawn another, so squad members cannot fan out further.
 
-**Squad tier is not profile tier.** The tier column above is a `squads.cjs` grouping attribute — what `pan-tools squad list` reports — and it is not an agent's profile tier, which is what `resolve-model` reports from the active `model_profile` (`quality` is `reasoning` for every agent; `balanced` runs the researchers and the plan checker on `mid`; `budget` down-tiers further). `/pan:army` applies neither: its spawns pass no model, so a squad agent runs on its own `model:` pin, else the session model, under every profile. So the `mid` on the Quality and Release rows does not describe what those agents run. See [Model Profiles](#model-profiles) for the per-agent matrix.
+**Squad tier is not profile tier.** The tier column above is a `squads.cjs` grouping attribute — what `pan-tools squad list` reports — and it is not an agent's profile tier, which is what `resolve-model` reports from the active `model_profile` (`quality` is `reasoning` for every agent; `balanced` keeps planning, design, orchestration and final review on `reasoning` and runs every other agent on `mid`; `budget` down-tiers further). `/pan:army` applies neither: its spawns pass no model, so a squad agent runs on its own `model:` pin, else the session model, under every profile. So the `mid` on the Quality and Release rows does not describe what those agents run. See [Model Profiles](#model-profiles) for the per-agent matrix.
 
 Outside the squads sit the coordinator (`pan-conductor`, Tier 0) and the worker/utility agents — `pan-document_code`, `pan-distiller` (narrow, high-volume jobs — the `budget` profile is the only one that drops them to the fast tier), plus `pan-optimizer`, `pan-knowledge`, `pan-counterfactual`, `pan-previewer` (invoked directly by their own commands, not delegated through a squad) and `pan-experiment-runner` (no shipped command spawns it — see its row above). Drift tests pin the squad roster to the agent files (`tests/squads.test.cjs`: every agent is the coordinator, a worker or in exactly one squad) and each agent's `effort:` to `AGENT_BASE_EFFORT` (`tests/core.test.cjs`).
 
@@ -602,40 +602,40 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 
 Each agent is assigned a model tier based on the active profile in `.planning/config.json`. PAN uses abstract tiers (`reasoning`, `mid`, `fast`) that map to provider-specific models:
 
-**Source of truth:** `MODEL_PROFILES` in `pan-wizard-core/bin/lib/core.cjs`. Since right-sized ceremony (`docs/specs/right-sized-ceremony.md`), `balanced` runs the plan-checker and the researchers on the mid tier and `quality` keeps every agent on the reasoning tier, with the full ceremony on every piece of work. The table below mirrors that source by hand — no script or test regenerates it — so when in doubt, `core.cjs` wins.
+**Source of truth:** `MODEL_PROFILES` in `pan-wizard-core/bin/lib/core.cjs`. Since the 2026-11-13 rebalance, `balanced` keeps planning, design, orchestration and the final review layer on the reasoning tier and runs every other agent on the mid tier; `quality` keeps every agent on the reasoning tier, with the full ceremony on every piece of work. The table below mirrors that source by hand — no script or test regenerates it — so when in doubt, `core.cjs` wins.
 
 | Agent | `quality` | `balanced` | `budget` |
 |-------|-----------|------------|----------|
 | pan-planner | reasoning | reasoning | mid |
-| pan-roadmapper | reasoning | reasoning | mid |
-| pan-executor | reasoning | reasoning | mid |
+| pan-roadmapper | reasoning | mid | mid |
+| pan-executor | reasoning | mid | mid |
 | pan-designer | reasoning | reasoning | mid |
-| pan-design-checker | reasoning | reasoning | fast |
+| pan-design-checker | reasoning | mid | fast |
 | pan-phase-researcher | reasoning | mid | fast |
 | pan-project-researcher | reasoning | mid | fast |
-| pan-debugger | reasoning | reasoning | mid |
-| pan-document_code | reasoning | reasoning | fast |
-| pan-verifier | reasoning | reasoning | fast |
+| pan-debugger | reasoning | mid | mid |
+| pan-document_code | reasoning | mid | fast |
+| pan-verifier | reasoning | mid | fast |
 | pan-plan-checker | reasoning | mid | fast |
-| pan-integration-checker | reasoning | reasoning | fast |
+| pan-integration-checker | reasoning | mid | fast |
 | pan-reviewer | reasoning | reasoning | fast |
 | pan-conductor | reasoning | reasoning | mid |
-| pan-counterfactual | reasoning | reasoning | mid |
+| pan-counterfactual | reasoning | mid | mid |
 | pan-hardener | reasoning | reasoning | fast |
 | pan-meta-reviewer | reasoning | reasoning | fast |
-| pan-knowledge | reasoning | reasoning | fast |
-| pan-previewer | reasoning | reasoning | fast |
-| pan-optimizer | reasoning | reasoning | fast |
-| pan-distiller | reasoning | reasoning | fast |
-| pan-experiment-runner | reasoning | reasoning | fast |
-| pan-release | reasoning | reasoning | fast |
+| pan-knowledge | reasoning | mid | fast |
+| pan-previewer | reasoning | mid | fast |
+| pan-optimizer | reasoning | mid | fast |
+| pan-distiller | reasoning | mid | fast |
+| pan-experiment-runner | reasoning | mid | fast |
+| pan-release | reasoning | mid | fast |
 
 **Resolution order** (`resolveModelDetailed()` in `core.cjs`): a `model_overrides` entry for the agent wins, then a per-phase tier from the roadmap, then the profile column above (an agent missing from the table gets `mid`, unadjusted). Only a profile-derived tier is then adjusted — by `routing.strategy: complexity`, by the capability hints below, and on a retry (`attempt > 1`) by escalation toward the agent's `quality` tier; a pinned tier is never adjusted.
 
 **Tier mapping by provider:** Anthropic: reasoning → `inherit` (the model your session runs on), mid → Sonnet, fast → Haiku. OpenAI/Google: reasoning → inherit, mid/fast → provider equivalents. Legacy names (`opus`, `sonnet`, `haiku`) still work as aliases.
 
-**Design rationale (cost reset 2026-07, right-sized ceremony 2026-10-24):**
-- **quality inherits everywhere; balanced inherits for the agents that plan, write and judge code** — those run on the model you launched with, and since right-sized ceremony `balanced` runs only the researchers and the plan checker on the mid tier. The other exceptions are `pan-reviewer`, `pan-hardener` and `pan-meta-reviewer`, which pin `model: opus` in their own frontmatter. On Claude Code the pin holds where a spawn passes no model (`/pan:review-deep`, `/pan:focus-auto`); `/pan:exec-phase` and autodev's `exec-lean` workflow pass the resolved tier, so under `budget` their review spawns run on the fast tier. The installer drops the pin from the other runtimes' agent files, so there these agents inherit the session model like the rest. Context isolation, not a weaker model, keeps the main conversation clean.
+**Design rationale (rebalance 2026-11-13, right-sized ceremony 2026-10-24):**
+- **quality inherits everywhere; balanced inherits for planning, design, orchestration and final review** — `pan-planner`, `pan-designer`, `pan-conductor`, `pan-reviewer`, `pan-hardener` and `pan-meta-reviewer` run on the model you launched with, and every other agent (execution, research, debugging, the routine checkers, the utility agents) runs on the mid tier. No `balanced` agent runs on the fast tier. This is the shape published middle profiles share: plan on the top model, execute on the mid tier (Claude Code's `opusplan` alias, an orchestrator with mid-tier subagents). A fix round after a failed verification resolves the executor with `--attempt 2`, which climbs it from mid back to reasoning. `pan-reviewer`, `pan-hardener` and `pan-meta-reviewer` also pin `model: opus` in their own frontmatter. On Claude Code the pin holds where a spawn passes no model (`/pan:review-deep`, `/pan:focus-auto`); `/pan:exec-phase` and autodev's `exec-lean` workflow pass the resolved tier, so under `budget` their review spawns run on the fast tier. The installer drops the pin from the other runtimes' agent files, so there these agents resolve by profile like the rest. Context isolation, not a weaker model, keeps the main conversation clean.
 - **budget is the opt-in cheap mode** — mid for the planning, orchestration and code-writing agents, fast for research, review, verification and the utility agents; choose it explicitly for high-volume work.
 - Tiering takes effect where a PAN workflow passes the resolved tier as a Task spawn's `model` (from `init` or `resolve-model`), and it is what `pan-tools estimate-cost` (shown by `/pan:settings --profile`) prices — `/pan:cost` does not use it, since the hooks take each record's tier from the model id they record; a spawn that passes no model uses the agent file's static `model:` (unset → `inherit`).
 

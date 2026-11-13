@@ -2194,7 +2194,7 @@ pan-tools progress health [--raw]
 
 ### `autodev run|resume|status|report|replay [--host H] [--max-usd N] [--max-usd-day N] [--max-turns N] [--run ID] [--quality] [--worktrees] [--ci [local]] [--ci-rounds N] [--ci-push] [--ci-base REF]`
 
-The deterministic outer loop (programs A1a, A1c). A foreground process: each turn reads `.planning/`, asks `next-action` for the next unit, decides in code whether to stop, and runs the unit. Plan, execute and verify units each get a fresh headless session on `--host` (argv from `hosts.cjs`; Copilot CLI has no unattended adapter and is refused with `unsupported_host`); `complete_phase` runs `phase complete` in the engine. A phase the engine sizes lean (`size phase`) is planned with no session (`size phase-plan`, at $0) and its execute unit runs `workflows/exec-lean.md` in one session: the executor's work, one `pan-reviewer` pass (a `NEEDS_FIXES` gets one fix round, what stays open is recorded as deferred) and the verifier; `--quality` keeps `/pan:exec-phase` for every phase.
+The deterministic outer loop (programs A1a, A1c). A foreground process: each turn reads `.planning/`, asks `next-action` for the next unit, decides in code whether to stop, and runs the unit. Plan, execute and verify units each get a fresh headless session on `--host` (argv from `hosts.cjs`; Copilot CLI has no unattended adapter and is refused with `unsupported_host`); `complete_phase` runs `phase complete` in the engine. A phase the engine sizes lean (`size phase`) is planned with no session (`size phase-plan`, at $0) and its execute unit runs `workflows/exec-lean.md` in one session, on the executor's tier (on Claude Code, `--model sonnet` when `resolve-model pan-executor` is the mid tier, as under `balanced`; no flag for the launch model): the executor's work, one `pan-reviewer` pass (a `NEEDS_FIXES` gets one fix round, what stays open is recorded as deferred) and the verifier; `--quality` keeps `/pan:exec-phase` for every phase.
 
 Stop reasons: `done` (the milestone audit is next), `human_needed` (a verification with `status: human_needed`, or no roadmap), `gate_failed` (`phase complete` refused), `budget_usd` (spend reached `--max-usd`), `turns` (`--max-turns` units, 20 by default), `no_progress` (the same unit again with the disk unchanged since it ran), plus `forecast_exceeded` and `ci_failed` (below). `run` defaults to `--host claude`.
 
@@ -2806,13 +2806,13 @@ pan-tools resolve-model pan-executor [--metadata '<json>'] [--attempt <n>] [--ra
 # --attempt:  1 for a first try; each later attempt follows a failure and climbs one tier
 ```
 
-**Failure-tier escalation (`--attempt`):** a retry of work that already failed on a cheaper tier climbs one step up `fast → mid → reasoning` per failed attempt, capped by `routing.max_escalations` (default `1`; `0` turns it off) and never above the agent's own `quality` tier. Under `quality` and `balanced` every agent already runs on the reasoning tier, so the flag changes nothing there; it is the `budget` profile's retry path. A `model_overrides` entry or a roadmap per-phase tier is an explicit choice and is never escalated. With `--attempt`, a registered agent's JSON gains `attempt` and `escalated_from` (the tier it climbed from, or `null`); an unknown agent's carries neither. A value that is not a positive integer is an error. `/pan:exec-phase --gaps-only` resolves its executor as attempt 2.
+**Failure-tier escalation (`--attempt`):** a retry of work that already failed on a cheaper tier climbs one step up `fast → mid → reasoning` per failed attempt, capped by `routing.max_escalations` (default `1`; `0` turns it off) and never above the agent's own `quality` tier. Under `quality` every agent already runs on the reasoning tier, so the flag changes nothing there; under `balanced` it lifts a mid-tier agent (the executor, say) back to the reasoning tier, and under `budget` it lifts a fast-tier agent to mid. A `model_overrides` entry or a roadmap per-phase tier is an explicit choice and is never escalated. With `--attempt`, a registered agent's JSON gains `attempt` and `escalated_from` (the tier it climbed from, or `null`); an unknown agent's carries neither. A value that is not a positive integer is an error. `/pan:exec-phase --gaps-only` resolves its executor as attempt 2.
 
 **Agent types:** any key in `MODEL_PROFILES` (`core.cjs`) — the shipped `pan-*` agents, listed in the matrix below. The argument is not validated against an allowlist: a name that isn't in the table resolves to the mid tier and sets `unknown_agent: true` rather than erroring.
 
 **JSON output:**
 ```json
-{ "model": "inherit", "profile": "balanced", "strategy": "static", "effort": "high" }
+{ "model": "sonnet", "profile": "balanced", "strategy": "static", "effort": "high" }
 ```
 
 For unknown agents: `{ "model": "sonnet", "profile": "balanced", "strategy": "static", "effort": "medium", "unknown_agent": true }` — unknown agents get the mid tier regardless of profile (`sonnet` under Anthropic; the detected provider's mid-tier id otherwise), and effort still follows the profile and `effort_overrides`. Invalid `--metadata` JSON is ignored (static routing), not an error.
@@ -2823,15 +2823,16 @@ For unknown agents: `{ "model": "sonnet", "profile": "balanced", "strategy": "st
 
 **Effort (2026-06):** alongside the tier, every agent resolves to a reasoning-effort level (`low`/`medium`/`high`/`xhigh`) — the primary within-model cost/intelligence dial on current models (it replaced fixed thinking budgets). Base levels per agent mirror the `effort:` frontmatter shipped in `agents/*.md`; the `budget` profile steps effort down one level (floor `low`); `quality`/`balanced` keep the base. Override per agent via `.planning/config.json` → `"effort_overrides": { "pan-planner": "xhigh" }`.
 
-**Model profile matrix** (cost reset 2026-07; right-sized ceremony 2026-10):
+**Model profile matrix** (rebalance 2026-11-13):
 
 | Agent | Quality | Balanced | Budget |
 |-------|---------|----------|--------|
-| planner, designer, roadmapper, executor, debugger, conductor, counterfactual | inherit | inherit | sonnet |
-| the two researchers (phase and project) and the plan-checker | inherit | sonnet | haiku |
-| every other registered agent — the doc writer, the verifier and the other checkers, and the review/support roster | inherit | inherit | haiku |
+| planner, designer, conductor | inherit | inherit | sonnet |
+| reviewer, hardener, meta-reviewer | inherit | inherit | haiku |
+| roadmapper, executor, debugger, counterfactual | inherit | sonnet | sonnet |
+| every other registered agent — the two researchers, the doc writer, the verifier and the checkers, and the support roster | inherit | sonnet | haiku |
 
-`quality` is `inherit` for **every** agent. `balanced` differs from it only on the plan-checker and the researchers, which it runs on the mid tier (the right-sized ceremony, `docs/specs/right-sized-ceremony.md`); `budget` down-tiers every agent. `inherit` → the reasoning tier, i.e. the model the session was launched with; `sonnet` → mid tier; `haiku` → fast tier (the `sonnet`/`haiku` names are the Anthropic mapping — `PROVIDER_MODELS` in `core.cjs` substitutes the equivalent for OpenAI/Google projects, and `inherit` is the reasoning tier on every provider). Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth.
+`quality` is `inherit` for **every** agent. `balanced` keeps planning, design, orchestration and the final review layer on `inherit` and runs every other agent on the mid tier (no `balanced` agent is on the fast tier); `budget` down-tiers every agent. `inherit` → the reasoning tier, i.e. the model the session was launched with; `sonnet` → mid tier; `haiku` → fast tier (the `sonnet`/`haiku` names are the Anthropic mapping — `PROVIDER_MODELS` in `core.cjs` substitutes the equivalent for OpenAI/Google projects, and `inherit` is the reasoning tier on every provider). Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth.
 
 ---
 
@@ -2914,13 +2915,13 @@ pan-tools estimate-cost [--raw]
 {
   "estimates": [
     { "profile": "quality", "total": <N>, "average": 15.0, "agentCount": <N> },
-    { "profile": "balanced", "total": <N>, "average": 13.4, "agentCount": <N> },
+    { "profile": "balanced", "total": <N>, "average": 6.1, "agentCount": <N> },
     { "profile": "budget", "total": <N>, "average": 1.6, "agentCount": <N> }
   ]
 }
 ```
 
-Each agent counts at its tier's multiplier for the profile (`COST_MULTIPLIERS` in `core.cjs`; the reasoning tier is 15×). `quality` puts every agent on the reasoning tier, so its average is 15×; `balanced` runs the plan-checker and the two researchers on the mid tier, so it sits a little below; `budget` down-tiers every agent.
+Each agent counts at its tier's multiplier for the profile (`COST_MULTIPLIERS` in `core.cjs`; the reasoning tier is 15×). `quality` puts every agent on the reasoning tier, so its average is 15×; `balanced` runs most agents on the mid tier (3×) and keeps only planning, design, orchestration and final review on the reasoning tier, so it sits well below (about 6×); `budget` down-tiers every agent.
 
 **`--raw` output:** One line per profile: `quality: ~15x baseline (<N> agents)`.
 
