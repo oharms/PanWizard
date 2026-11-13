@@ -452,3 +452,64 @@ describe('pan-tools delegate setup (CLI)', () => {
     assert.equal(r.json.error, 'invalid_scope');
   });
 });
+
+describe('transport, thinking and reply size (live proof findings, 2026-11-13)', () => {
+  const ok = { choices: [{ message: say(call('finish', { status: 'blocked', summary: 'x' })) }] };
+  const capture = (bodies, statusFor = () => 200) => async (url, init) => {
+    const body = JSON.parse(init.body);
+    bodies.push(body);
+    const status = statusFor(body, bodies.length);
+    return { ok: status === 200, status, text: async () => (status === 200 ? JSON.stringify(ok) : '{"error":"unknown field reasoning_effort"}') };
+  };
+
+  test('local_executor.reasoning defaults to none and is sent as reasoning_effort; "default" sends nothing', async () => {
+    const bodies = [];
+    await D.runLocalTask({ root: dir, cfg: cfgFor(), spec: 's', allow: ['src/add.js'], verify: '', fetchImpl: capture(bodies) });
+    assert.equal(bodies[0].reasoning_effort, 'none');
+    setConfig({ enabled: true, model: 'qwen-test', reasoning: 'default' });
+    await D.runLocalTask({ root: dir, cfg: { ...D.readLocalConfig(dir, { home }) }, spec: 's', allow: ['src/add.js'], verify: '', fetchImpl: capture(bodies) });
+    assert.equal('reasoning_effort' in bodies[1], false);
+    setConfig({ enabled: true, model: 'qwen-test', reasoning: 'loud' });
+    assert.equal(D.readLocalConfig(dir, { home }).reasoning, 'none', 'an unknown level falls back to none');
+  });
+
+  test('a server that rejects reasoning_effort with 400 is asked again without it, and the run goes on', async () => {
+    const bodies = [];
+    const r = await D.runLocalTask({ root: dir, cfg: cfgFor(), spec: 's', allow: ['src/add.js'], verify: '',
+      fetchImpl: capture(bodies, (b) => ('reasoning_effort' in b ? 400 : 200)) });
+    assert.equal(r.status, 'blocked');
+    assert.deepEqual(bodies.map((b) => 'reasoning_effort' in b), [true, false]);
+  });
+
+  test('local_executor.max_output_tokens bounds every reply', async () => {
+    const bodies = [];
+    setConfig({ enabled: true, model: 'qwen-test', max_output_tokens: 2048 });
+    await D.runLocalTask({ root: dir, cfg: { ...D.readLocalConfig(dir, { home }) }, spec: 's', allow: ['src/add.js'], verify: '', fetchImpl: capture(bodies) });
+    assert.equal(bodies[0].max_tokens, 2048);
+    assert.equal(D.readLocalConfig(dir, { home: fs.mkdtempSync(path.join(os.tmpdir(), 'pan-h-')) }).max_output_tokens !== undefined, true);
+  });
+
+  test('the chat transport waits for a slow reply instead of cutting it off, and still honours its own deadline', async () => {
+    const slow = http.createServer((req, res) => {
+      req.on('data', () => {});
+      req.on('end', () => setTimeout(() => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(ok)); }, 1500));
+    });
+    await new Promise((r) => slow.listen(0, '127.0.0.1', r));
+    const ep = `http://127.0.0.1:${slow.address().port}/v1`;
+    try {
+      const r = await D.runLocalTask({ root: dir, cfg: cfgFor({ endpoint: ep }), spec: 's', allow: ['src/add.js'], verify: '' });
+      assert.equal(r.status, 'blocked', 'the default transport waited 1.5 s for the reply');
+      await assert.rejects(
+        D.runLocalTask({ root: dir, cfg: cfgFor({ endpoint: ep, timeout_s: 1 }), spec: 's', allow: ['src/add.js'], verify: '' }),
+        (e) => e.code === 'timeout',
+      );
+    } finally { await new Promise((r) => slow.close(r)); }
+  });
+
+  test('a refused connection is endpoint_unreachable, not a raw system code', async () => {
+    await assert.rejects(
+      D.runLocalTask({ root: dir, cfg: cfgFor({ endpoint: 'http://127.0.0.1:9/v1' }), spec: 's', allow: ['src/add.js'], verify: '' }),
+      (e) => e.code === 'endpoint_unreachable' && /ECONNREFUSED/.test(e.message),
+    );
+  });
+});

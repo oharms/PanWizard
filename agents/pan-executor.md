@@ -254,6 +254,8 @@ If `ready` is not `true`, skip this section and implement every task yourself.
 5. **Fail** (`failed_verify`, `incomplete`, `blocked`, or your review finds a fault): append precise fix notes to the spec and run it again. After `max_rounds` failed rounds, finish the task yourself and record it as a deviation, `[Local offload] taken back after N rounds: <why>`.
 6. **Error key in the output** (the endpoint is down or refused): implement the rest of the plan yourself and say so in summary.md.
 
+The trailer says who wrote the committed code. `PAN-Delegated: {model}` only when it is the local model's code as it returned it. When you changed its code before committing, write `PAN-Delegated: {model} (corrected by executor)`. When you took the task back and wrote it yourself, add no `PAN-Delegated` line.
+
 Stage only the files the task names; the spec file goes in the final metadata commit with summary.md. In summary.md, add a `Local offload:` line under the one-liner: tasks delegated, passed in the first round, taken back.
 </local_offload>
 

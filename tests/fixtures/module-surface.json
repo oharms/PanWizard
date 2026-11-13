@@ -430,10 +430,12 @@
   "delegate.cjs": [
     "LOCAL_EXECUTOR_DEFAULTS:object",
     "TOOL_DEFS:object",
+    "chatBody:function",
     "cmdDelegate:function",
     "confine:function",
     "endpointProblem:function",
     "executeTool:function",
+    "httpFetch:function",
     "isLoopbackHost:function",
     "isSensitive:function",
     "machineConfigPath:function",

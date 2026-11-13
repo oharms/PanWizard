@@ -560,7 +560,9 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
     "max_turns": 25,
     "timeout_s": 900,
     "verify_timeout_s": 300,
-    "max_rounds": 3
+    "max_rounds": 3,
+    "reasoning": "none",
+    "max_output_tokens": 16384
   }
 }
 ```
@@ -667,6 +669,8 @@ The executor can hand the typing to a model on your own hardware: Ollama, LM Stu
 | `local_executor.timeout_s` | integer | `900` | Wall clock for one task run |
 | `local_executor.verify_timeout_s` | integer | `300` | Time limit of the task's verification command |
 | `local_executor.max_rounds` | integer | `3` | Failed rounds per task before the executor takes the task back |
+| `local_executor.reasoning` | `none`, `low`, `medium`, `high`, `default` | `none` | How much the local model thinks before each answer, sent as `reasoning_effort`. `none` is many times faster on thinking models such as Qwen 3.6, and the executor reviews every change anyway; `default` sends nothing. A server that rejects the parameter is asked again without it |
+| `local_executor.max_output_tokens` | integer | `16384` | Upper bound on one reply, so a runaway generation cannot run until the time limit |
 
 **Set it up with `/pan:local`.** With your model server running (open the Ollama app, or LM Studio's server) and a coding model downloaded, run `/pan:local`. It finds the models the server has, recommends one (coding models first, then the largest context window, then the largest model), asks which model and where, and turns offload on. `/pan:local status` shows whether it is on and answering; `/pan:local off` turns it off. While it is on, the status line shows `⌂ <model>`.
 

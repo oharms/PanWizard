@@ -50,7 +50,15 @@ const LOCAL_EXECUTOR_DEFAULTS = Object.freeze({
   verify_timeout_s: 300,
   // Failed rounds per task before the executor takes the task back.
   max_rounds: 3,
+  // Thinking before each answer: none | low | medium | high, sent as reasoning_effort;
+  // `default` sends nothing. Off by default: the executor reviews every change, and a
+  // thinking model is many times slower per turn (see chatBody).
+  reasoning: 'none',
+  // Upper bound on one reply, so a runaway generation cannot run to the time limit.
+  max_output_tokens: 16384,
 });
+
+const REASONING_LEVELS = ['none', 'low', 'medium', 'high', 'default'];
 
 const READ_LIMIT = 200 * 1024;        // bytes of a file handed to the model
 const WRITE_LIMIT = 512 * 1024;       // bytes the model may write in one file
@@ -105,6 +113,8 @@ function readLocalConfig(cwd, { home } = {}) {
     timeout_s: posInt(section.timeout_s, d.timeout_s),
     verify_timeout_s: posInt(section.verify_timeout_s, d.verify_timeout_s),
     max_rounds: posInt(section.max_rounds, d.max_rounds),
+    reasoning: REASONING_LEVELS.includes(section.reasoning) ? section.reasoning : d.reasoning,
+    max_output_tokens: posInt(section.max_output_tokens, d.max_output_tokens),
     sensitive_patterns: sensitive,
     source,
   };
@@ -379,6 +389,42 @@ function executeTool(ctx, name, args) {
   }
 }
 
+/**
+ * A minimal fetch for the chat request, on Node's own http/https. Node's global fetch
+ * (undici) gives up on a response whose headers take longer than 300 s, and a
+ * non-streaming completion sends no header until the whole reply is generated: a
+ * local model that thinks or writes a large file for five minutes was cut off with
+ * "context canceled" whatever `timeout_s` said (found by a live proof run,
+ * 2026-11-13). Here the only limit is the caller's abort signal, i.e. `timeout_s`.
+ */
+function httpFetch(url, init = {}) {
+  return new Promise((resolve, reject) => {
+    let u;
+    try { u = new URL(url); } catch (e) { reject(e); return; }
+    const mod = u.protocol === 'https:' ? require('https') : require('http');
+    const body = init.body == null ? null : Buffer.from(String(init.body));
+    const headers = { ...(init.headers || {}), ...(body ? { 'content-length': body.length } : {}) };
+    const req = mod.request(u, { method: init.method || 'GET', headers }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf-8');
+        resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, text: async () => text, json: async () => JSON.parse(text) });
+      });
+      res.on('error', reject);
+    });
+    req.setTimeout(0);
+    req.on('error', reject);
+    if (init.signal) {
+      const onAbort = () => { const e = new Error('aborted'); e.name = 'AbortError'; req.destroy(e); reject(e); };
+      if (init.signal.aborted) { onAbort(); return; }
+      init.signal.addEventListener('abort', onAbort, { once: true });
+    }
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
 async function postChat(cfg, body, deadline, fetchImpl) {
   const headers = { 'content-type': 'application/json' };
   const key = cfg.api_key_env ? process.env[cfg.api_key_env] : '';
@@ -390,15 +436,32 @@ async function postChat(cfg, body, deadline, fetchImpl) {
   try {
     const res = await fetchImpl(`${cfg.endpoint}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body), signal: ac.signal });
     const text = await res.text();
-    if (!res.ok) { const e = new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`); e.code = 'endpoint_http_error'; throw e; }
+    if (!res.ok) { const e = new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`); e.code = 'endpoint_http_error'; e.status = res.status; throw e; }
     return JSON.parse(text);
   } catch (e) {
     if (e && e.name === 'AbortError') { const t = new Error('run timed out'); t.code = 'timeout'; throw t; }
-    if (e && !e.code) e.code = 'endpoint_unreachable';
-    throw e;
+    if (e && e.code === 'endpoint_http_error') throw e;
+    // A network failure (ECONNREFUSED, ECONNRESET, a bad JSON body) is reported in
+    // PAN's own vocabulary; the system code stays in the message.
+    const u = new Error(`${(e && e.code) || 'error'}: ${(e && e.message) || e}`);
+    u.code = 'endpoint_unreachable';
+    throw u;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * The request body. `reasoning: none` (the default) asks the server not to think
+ * before answering: Qwen 3.6 on Ollama otherwise writes thousands of hidden reasoning
+ * tokens per turn (measured: 1628 completion tokens for a one-function answer, 116
+ * with `reasoning_effort: none`), which is what pushed single turns past five
+ * minutes. `default` sends nothing and leaves the server's own behaviour.
+ */
+function chatBody(cfg, messages, tools, sendReasoning) {
+  const body = { model: cfg.model, messages, tools, tool_choice: 'auto', temperature: 0.2, stream: false, max_tokens: cfg.max_output_tokens };
+  if (sendReasoning && cfg.reasoning !== 'default') body.reasoning_effort = cfg.reasoning;
+  return body;
 }
 
 function parseArgs(raw) {
@@ -410,7 +473,7 @@ function parseArgs(raw) {
  * Run the local model's tool loop for one task. Resolves to the run report; rejects
  * only for an endpoint failure on the FIRST request (nothing was done yet).
  */
-async function runLocalTask({ root, cfg, spec, allow, verify, fetchImpl = globalThis.fetch }) {
+async function runLocalTask({ root, cfg, spec, allow, verify, fetchImpl = httpFetch }) {
   const started = Date.now();
   const deadline = started + cfg.timeout_s * 1000;
   const ctx = {
@@ -430,10 +493,19 @@ async function runLocalTask({ root, cfg, spec, allow, verify, fetchImpl = global
   let lastText = '';
   let stop = null;
 
+  let sendReasoning = true;
   while (turns < cfg.max_turns && !ctx.finished) {
     let data;
     try {
-      data = await postChat(cfg, { model: cfg.model, messages, tools, tool_choice: 'auto', temperature: 0.2, stream: false }, deadline, fetchImpl);
+      try {
+        data = await postChat(cfg, chatBody(cfg, messages, tools, sendReasoning), deadline, fetchImpl);
+      } catch (e) {
+        // A server that does not know `reasoning_effort` may reject the request:
+        // drop the parameter for the rest of the run and ask once more.
+        if (!(sendReasoning && cfg.reasoning !== 'default' && e.status === 400)) throw e;
+        sendReasoning = false;
+        data = await postChat(cfg, chatBody(cfg, messages, tools, false), deadline, fetchImpl);
+      }
     } catch (e) {
       if (turns === 0) throw e;
       stop = e.code === 'timeout' ? 'timeout' : 'endpoint_error';
@@ -553,7 +625,6 @@ async function cmdDelegate(cwd, sub, opts, raw, io) {
   const problem = endpointProblem(cfg);
   if (problem) return output({ error: problem, ...pub }, raw);
   if (!cfg.model) return output({ error: 'model_not_set', ...pub }, raw);
-  if (typeof fetchImpl !== 'function') return output({ error: 'fetch_unavailable', detail: 'Node 18+ is needed' }, raw);
   if (!opts.spec) return output({ error: 'spec_required', usage: 'delegate run --spec <file> --allow <files> [--verify <command>]' }, raw);
   if (!opts.allow) return output({ error: 'allow_required', usage: 'delegate run --spec <file> --allow <files> [--verify <command>]' }, raw);
 
@@ -572,7 +643,7 @@ async function cmdDelegate(cwd, sub, opts, raw, io) {
   if (!allow.length) return output({ error: 'allow_required' }, raw);
 
   try {
-    const report = await runLocalTask({ root, cfg, spec, allow, verify: opts.verify || '', fetchImpl });
+    const report = await runLocalTask({ root, cfg, spec, allow, verify: opts.verify || '', fetchImpl: io.chatImpl || io.fetchImpl || httpFetch });
     return output(report, raw, report.status);
   } catch (e) {
     return output({ error: e.code || 'endpoint_unreachable', detail: String((e && e.message) || e), ...pub }, raw);
@@ -683,6 +754,8 @@ module.exports = {
   runVerify,
   executeTool,
   runLocalTask,
+  httpFetch,
+  chatBody,
   probeEndpoint,
   cmdDelegate,
   TOOL_DEFS,
