@@ -140,6 +140,8 @@ A phase that already has a baseline keeps it (a resumed run or a `--gaps-only` r
 <step name="execute_waves">
 Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`, sequential if `false`.
 
+Every plan runs in a spawned pan-executor, however small. Do not write a plan's code in this session instead: the executor carries the task commit protocol and, when `/pan:local` is on, the hand-off of the coding to the local model.
+
 **For each wave:**
 
 0. **Record wave start time for duration tracking:**

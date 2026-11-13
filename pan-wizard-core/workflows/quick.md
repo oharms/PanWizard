@@ -274,7 +274,7 @@ Offer: 1) Force proceed, 2) Abort
 
 **Step 6: Spawn executor**
 
-Spawn pan-executor with plan reference:
+Spawn pan-executor with plan reference, however small the task. Do not write the code in this session instead: the executor carries the task commit protocol and, when `/pan:local` is on, the hand-off of the coding to the local model, and writing it here skips both.
 
 ```
 Task(

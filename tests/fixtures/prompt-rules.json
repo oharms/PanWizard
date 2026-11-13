@@ -2011,6 +2011,12 @@
    "baseline": true
   },
   {
+   "id": "pan-wizard-core/workflows/exec-phase:1db5f91a",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "Every plan runs in a spawned pan-executor, however small. Do not write a plan's code in this session instead: the executor carries the task commit protocol and, when `/pan:local` is on, the hand-off of the coding to the local model.",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/exec-phase:78ec1ccb",
    "file": "pan-wizard-core/workflows/exec-phase.md",
    "text": "**An executor that returned `## DONE_WITH_CONCERNS`** finished its plan: run the same spot-checks and treat it as complete. Keep its concerns (each with why and cost if wrong, also under `## Concerns` in its summary) for the wave report and the phase report. Do not stop the wave for them; a high-cost concern is something the review and the verifier should look at, and the phase report puts it in front of the user.",
@@ -2764,6 +2770,12 @@
    "id": "pan-wizard-core/workflows/progress:cd619841",
    "file": "pan-wizard-core/workflows/progress.md",
    "text": "**Step 2: What the route means** (route on the router's `action` above, never on this table; it explains the action to the user)",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/quick:f1ec2766",
+   "file": "pan-wizard-core/workflows/quick.md",
+   "text": "Spawn pan-executor with plan reference, however small the task. Do not write the code in this session instead: the executor carries the task commit protocol and, when `/pan:local` is on, the hand-off of the coding to the local model, and writing it here skips both.",
    "baseline": false
   },
   {

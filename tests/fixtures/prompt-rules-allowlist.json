@@ -330,5 +330,13 @@
   {
     "id": "commands/pan/local:6f242703",
     "reason": "ADR-0053: describes behaviour enforced elsewhere, not by this prompt: the executor review, take-back after max_rounds and never-delegate list live in agents/pan-executor.md local_offload, and the confinement in delegate.cjs (tests/delegate.test.cjs guard-rail tests)."
+  },
+  {
+    "id": "pan-wizard-core/workflows/exec-phase:1db5f91a",
+    "reason": "ADR-0053: found by a live proof run (/pan:quick on a small, well-specified task), where the orchestrator wrote the code itself and the local-offload hand-off, which lives in pan-executor, never ran. No tier-0 harness scenario observes whether an executor was spawned; the live proof run checks the PAN-Delegated trailer the executor writes."
+  },
+  {
+    "id": "pan-wizard-core/workflows/quick:f1ec2766",
+    "reason": "ADR-0053: found by a live proof run (/pan:quick on a small, well-specified task), where the orchestrator wrote the code itself and the local-offload hand-off, which lives in pan-executor, never ran. No tier-0 harness scenario observes whether an executor was spawned; the live proof run checks the PAN-Delegated trailer the executor writes."
   }
 ]
