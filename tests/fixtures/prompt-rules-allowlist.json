@@ -338,5 +338,9 @@
   {
     "id": "pan-wizard-core/workflows/quick:f1ec2766",
     "reason": "ADR-0053: found by a live proof run (/pan:quick on a small, well-specified task), where the orchestrator wrote the code itself and the local-offload hand-off, which lives in pan-executor, never ran. No tier-0 harness scenario observes whether an executor was spawned; the live proof run checks the PAN-Delegated trailer the executor writes."
+  },
+  {
+    "id": "agents/pan-executor:f1cb57c8",
+    "reason": "ADR-0053 point 9: the trailer comes from delegate attribute (delegate.cjs attribute()), whose line matching, run records and printed trailer are pinned by tests/delegate.test.cjs provenance tests. The live proof harness (pantesting/proof) checks each committed trailer against the attribution it recomputes from a recording proxy's wire log; no tier-0 harness scenario runs the executor."
   }
 ]

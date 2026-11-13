@@ -427,6 +427,12 @@
    "baseline": true
   },
   {
+   "id": "agents/pan-executor:f1cb57c8",
+   "file": "agents/pan-executor.md",
+   "text": "The trailer is measured, never written by hand: `delegate attribute` compares the staged lines with the runs PAN recorded in `.planning/delegations/` and counts the added lines that came verbatim from the local model. Never edit or invent the trailer, and never edit the files in `.planning/delegations/`.",
+   "baseline": false
+  },
+  {
    "id": "agents/pan-executor:d39ef87e",
    "file": "agents/pan-executor.md",
    "text": "**Quick reference:** Users NEVER run CLI commands. Users ONLY visit URLs, click UI, evaluate visuals, provide secrets. Claude does all automation.",

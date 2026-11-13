@@ -430,6 +430,8 @@
   "delegate.cjs": [
     "LOCAL_EXECUTOR_DEFAULTS:object",
     "TOOL_DEFS:object",
+    "attribute:function",
+    "attributeFile:function",
     "chatBody:function",
     "cmdDelegate:function",
     "confine:function",
@@ -439,14 +441,17 @@
     "isLoopbackHost:function",
     "isSensitive:function",
     "machineConfigPath:function",
+    "matchedLines:function",
     "paramsFromName:function",
     "parseAllow:function",
     "probeEndpoint:function",
     "rankModels:function",
     "readLocalConfig:function",
+    "readRunRecords:function",
     "runLocalTask:function",
     "runVerify:function",
-    "writeAllowed:function"
+    "writeAllowed:function",
+    "writeRunRecord:function"
   ],
   "design-handoff.cjs": [
     "cmdDesign:function",

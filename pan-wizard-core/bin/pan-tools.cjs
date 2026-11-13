@@ -48,6 +48,7 @@
  *   delegate status                    Is local executor offload on, and is its model served
  *   delegate run --spec F --allow a,b [--verify CMD]  One task's implementation by the local model
  *   delegate setup [--model M] [--endpoint URL] [--scope machine|project] [--off] [--dry-run]
+ *   delegate attribute [--staged | --ref <commit>]  Lines of a commit written by the local model
  *                                      Find the local models, pick one for coding, turn offload on
  *   pause open --kind K --question Q [--run R --step S] [--options a,b]  Open a typed pause
  *   pause answer <id> --value V [--note N] | --json J  Answer it, checked against what it expects
@@ -1534,11 +1535,12 @@ async function main() {
     case 'delegate': {
       // ADR-0053: hand one plan task's implementation to a model on the user's own
       // hardware; the executor reviews, verifies and commits.
-      if (!['status', 'run', 'setup'].includes(args[1])) error('Unknown delegate subcommand. Available: status, run, setup');
+      if (!['status', 'run', 'setup', 'attribute'].includes(args[1])) error('Unknown delegate subcommand. Available: status, run, setup, attribute');
       await require('./lib/delegate.cjs').cmdDelegate(cwd, args[1], {
         spec: getArgValue(args, '--spec'), allow: getArgValue(args, '--allow'), verify: getArgValue(args, '--verify'),
         model: getArgValue(args, '--model'), endpoint: getArgValue(args, '--endpoint'), scope: getArgValue(args, '--scope'),
         off: args.includes('--off'), dryRun: args.includes('--dry-run'),
+        staged: args.includes('--staged'), ref: getArgValue(args, '--ref'),
       }, raw, { output });
       break;
     }

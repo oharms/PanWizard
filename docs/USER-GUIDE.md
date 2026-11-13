@@ -682,7 +682,7 @@ The executor can hand the typing to a model on your own hardware: Ollama, LM Stu
 
 **Where the code goes.** With the default `allow_remote: false`, the task, the files the local model reads and everything it writes stay on this machine. The executor and the other agents still run on your coding tool's own model, so planning, review and verification go wherever that tool sends them.
 
-**The record.** Each delegated task's spec (`{phase}-{plan}-task-{N}-delegate.md`) is kept in the phase directory, its commit carries a `PAN-Delegated: <model>` trailer, and the summary says how many tasks were delegated, passed in the first round, or taken back.
+**The record.** Each delegated task's spec (`{phase}-{plan}-task-{N}-delegate.md`) is kept in the phase directory, and every run of the local model is saved in `.planning/delegations/`: its raw replies and every file it wrote, with a SHA-256 of each. Before committing, the executor runs `pan-tools delegate attribute --staged`, which compares the staged lines with those records and prints the trailer, for example `PAN-Delegated: qwen-coder (42/45 added lines from the local model; run d-…)`; a commit with no line from the model gets no trailer. `pan-tools delegate attribute --ref <commit>` answers the same question for any past commit. The summary says how many tasks were delegated, passed in the first round, or taken back.
 
 ### Claude Code Settings
 

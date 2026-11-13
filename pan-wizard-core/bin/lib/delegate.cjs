@@ -22,6 +22,11 @@
  * sets `allow_remote` (an office server on the LAN), and an API key is read from the
  * environment variable the config names, never from the config file.
  *
+ * Provenance: every run is recorded under `.planning/delegations/` — the model's raw
+ * replies, every file it wrote and the SHA-256 of each write — and `delegate
+ * attribute` compares a commit (or the staged index) with those records line by line,
+ * so the `PAN-Delegated` trailer is measured, not the executor's own claim.
+ *
  * Zero dependencies: Node's own fetch (Node 18+) and child_process.
  */
 
@@ -29,8 +34,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const crypto = require('crypto');
 const { planningPath } = require('./utils.cjs');
 const { DEFAULT_SENSITIVE_PATTERNS } = require('./constants.cjs');
+const { execGit } = require('./core.cjs');
 
 /** The `local_executor` section config-ensure-section writes. Off until a project opts in. */
 const LOCAL_EXECUTOR_DEFAULTS = Object.freeze({
@@ -368,6 +375,10 @@ function executeTool(ctx, name, args) {
         fs.mkdirSync(path.dirname(abs), { recursive: true });
         fs.writeFileSync(abs, content);
         ctx.files_changed.add(rel);
+        if (ctx.writes) {
+          ctx.writes.push({ turn: ctx.turn, call_id: ctx.call_id || null, path: rel, sha256: sha256(content), bytes: Buffer.byteLength(content, 'utf-8') });
+          ctx.last_content[rel] = content;
+        }
         return `Wrote ${rel} (${Buffer.byteLength(content, 'utf-8')} bytes).`;
       }
       case 'run_verify': {
@@ -473,13 +484,15 @@ function parseArgs(raw) {
  * Run the local model's tool loop for one task. Resolves to the run report; rejects
  * only for an endpoint failure on the FIRST request (nothing was done yet).
  */
-async function runLocalTask({ root, cfg, spec, allow, verify, fetchImpl = httpFetch }) {
+async function runLocalTask({ root, cfg, spec, allow, verify, fetchImpl = httpFetch, record = null }) {
   const started = Date.now();
   const deadline = started + cfg.timeout_s * 1000;
   const ctx = {
     root, cfg, allow, verify,
     files_changed: new Set(), files_read: new Set(), refused_writes: new Set(),
     verify_runs: 0, finished: null,
+    // Provenance bookkeeping, kept only when the caller asks for a record.
+    writes: record ? [] : null, last_content: {}, turn: 0, call_id: null,
   };
   const messages = [
     { role: 'system', content: systemPrompt(allow, verify) },
@@ -512,6 +525,14 @@ async function runLocalTask({ root, cfg, spec, allow, verify, fetchImpl = httpFe
       break;
     }
     turns++;
+    if (record) {
+      record.responses.push({
+        turn: turns, at: new Date().toISOString(),
+        id: (data && data.id) || null, model: (data && data.model) || null,
+        created: (data && data.created) || null, sha256: sha256(JSON.stringify(data)),
+      });
+      record.transcript.push({ turn: turns, at: new Date().toISOString(), response: data });
+    }
     if (data && data.usage) {
       usage.prompt_tokens += Number(data.usage.prompt_tokens) || 0;
       usage.completion_tokens += Number(data.usage.completion_tokens) || 0;
@@ -533,6 +554,8 @@ async function runLocalTask({ root, cfg, spec, allow, verify, fetchImpl = httpFe
       const fn = call && call.function ? call.function : {};
       const args = parseArgs(fn.arguments);
       let result;
+      ctx.turn = turns;
+      ctx.call_id = call.id || null;
       if (args === null) { malformed++; result = 'Error: the arguments were not valid JSON.'; }
       else result = executeTool(ctx, fn.name, args);
       messages.push({ role: 'tool', tool_call_id: call.id || `call_${toolCalls}`, content: result });
@@ -549,6 +572,11 @@ async function runLocalTask({ root, cfg, spec, allow, verify, fetchImpl = httpFe
   if (ctx.finished && ctx.finished.status === 'blocked') status = 'blocked';
   else if (ctx.finished) status = finalVerify && !finalVerify.passed ? 'failed_verify' : 'done';
   else status = 'incomplete';
+
+  if (record) {
+    record.writes = ctx.writes;
+    record.files = ctx.last_content;
+  }
 
   return {
     status,
@@ -606,6 +634,7 @@ async function cmdDelegate(cwd, sub, opts, raw, io) {
   const pub = { enabled: cfg.enabled, endpoint: cfg.endpoint, model: cfg.model, allow_remote: cfg.allow_remote, max_rounds: cfg.max_rounds, source: cfg.source };
 
   if (sub === 'setup') return cmdDelegateSetup(cwd, cfg, opts, raw, { output, fetchImpl, home });
+  if (sub === 'attribute') return output(attribute(cwd, opts), raw);
 
   if (sub === 'status') {
     // Off is an answer, not a failure: callers run the task themselves (exit 0).
@@ -642,12 +671,210 @@ async function cmdDelegate(cwd, sub, opts, raw, io) {
   if (!spec.trim()) return output({ error: 'spec_empty' }, raw);
   if (!allow.length) return output({ error: 'allow_required' }, raw);
 
+  const record = { responses: [], transcript: [], writes: [], files: {} };
+  const startedAt = new Date();
   try {
-    const report = await runLocalTask({ root, cfg, spec, allow, verify: opts.verify || '', fetchImpl: io.chatImpl || io.fetchImpl || httpFetch });
+    const report = await runLocalTask({ root, cfg, spec, allow, verify: opts.verify || '', fetchImpl: io.chatImpl || io.fetchImpl || httpFetch, record });
+    try {
+      const saved = writeRunRecord(root, { startedAt, cfg, spec, specPath: confine(root, opts.spec).rel, allow, verify: opts.verify || '', report, record });
+      report.run_id = saved.run_id;
+      report.provenance = saved.rel;
+    } catch (e) {
+      // A run whose record could not be saved still reports; attribution will say so.
+      report.provenance_error = String((e && e.message) || e);
+    }
     return output(report, raw, report.status);
   } catch (e) {
     return output({ error: e.code || 'endpoint_unreachable', detail: String((e && e.message) || e), ...pub }, raw);
   }
+}
+
+// ─── Provenance ──────────────────────────────────────────────────────────────
+
+const DELEGATIONS_DIR = 'delegations';
+const LCS_CELL_LIMIT = 4e6;   // past this, a multiset match stands in for the LCS
+
+function sha256(text) {
+  return crypto.createHash('sha256').update(String(text), 'utf-8').digest('hex');
+}
+
+function runId(at) {
+  const stamp = at.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+  return `d-${stamp}-${crypto.randomBytes(3).toString('hex')}`;
+}
+
+/**
+ * Save one run under `.planning/delegations/`: `<run_id>.json` holds the run, every
+ * write (path, SHA-256, size, the reply it came in) and the final content of each file
+ * the model wrote; `<run_id>.transcript.jsonl` holds the server's raw replies, one per
+ * line. The local model cannot write here (the planning tree is outside every
+ * --allow), so the record is PAN's, not the model's.
+ */
+function writeRunRecord(root, { startedAt, cfg, spec, specPath, allow, verify, report, record }) {
+  const dir = planningPath(root, DELEGATIONS_DIR);
+  fs.mkdirSync(dir, { recursive: true });
+  const id = runId(startedAt);
+  const transcriptName = `${id}.transcript.jsonl`;
+  fs.writeFileSync(path.join(dir, transcriptName), record.transcript.map((t) => JSON.stringify(t)).join('\n') + '\n');
+  const run = {
+    schema: 1,
+    run_id: id,
+    started_at: startedAt.toISOString(),
+    finished_at: new Date().toISOString(),
+    model: cfg.model,
+    endpoint: cfg.endpoint,
+    spec_path: specPath,
+    spec_sha256: sha256(spec),
+    allow,
+    verify,
+    status: report.status,
+    stop_reason: report.stop_reason,
+    verify_passed: report.verify ? !!report.verify.passed : null,
+    responses: record.responses,
+    writes: record.writes,
+    files: Object.fromEntries(Object.entries(record.files).map(([p, c]) => [p, { sha256: sha256(c), content: c }])),
+    transcript: transcriptName,
+    transcript_sha256: sha256(fs.readFileSync(path.join(dir, transcriptName), 'utf-8')),
+  };
+  fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(run, null, 2) + '\n');
+  return { run_id: id, rel: toPosixRel(path.relative(root, path.join(dir, `${id}.json`))) };
+}
+
+/** Every saved run, oldest first. A file that does not parse is skipped. */
+function readRunRecords(root) {
+  const dir = planningPath(root, DELEGATIONS_DIR);
+  if (!fs.existsSync(dir)) return [];
+  const runs = [];
+  for (const name of fs.readdirSync(dir)) {
+    if (!/^d-.*\.json$/.test(name)) continue;
+    const run = readJsonObject(path.join(dir, name));
+    if (run && run.run_id && run.files && typeof run.files === 'object') runs.push(run);
+  }
+  return runs.sort((a, b) => String(a.started_at).localeCompare(String(b.started_at)));
+}
+
+function splitLines(text) {
+  if (!text) return [];
+  return String(text).replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n');
+}
+
+/**
+ * Which lines of `b` are matched by lines of `a` in a longest common subsequence.
+ * Returns a boolean per line of `b`. Very large pairs fall back to a multiset match
+ * (each line of `a` can match one equal line of `b`, order ignored).
+ */
+function matchedLines(a, b) {
+  const n = a.length;
+  const m = b.length;
+  const out = new Array(m).fill(false);
+  if (!n || !m) return out;
+  if (n * m > LCS_CELL_LIMIT) {
+    const pool = new Map();
+    for (const l of a) pool.set(l, (pool.get(l) || 0) + 1);
+    b.forEach((l, j) => { const c = pool.get(l) || 0; if (c) { out[j] = true; pool.set(l, c - 1); } });
+    return out;
+  }
+  const w = m + 1;
+  const dp = new Uint32Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i * w + j] = a[i] === b[j] ? dp[(i + 1) * w + j + 1] + 1 : Math.max(dp[(i + 1) * w + j], dp[i * w + j + 1]);
+    }
+  }
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out[j] = true; i++; j++; }
+    else if (dp[(i + 1) * w + j] >= dp[i * w + j + 1]) i++;
+    else j++;
+  }
+  return out;
+}
+
+/** A line with content: a letter or digit. `}`, `});` and blank lines match by chance. */
+const SUBSTANTIVE = /[A-Za-z0-9]/;
+
+/**
+ * Line-level attribution of one file: of the substantive lines `next` adds over
+ * `prev`, how many appear, in order, in what the local model wrote (`model`).
+ */
+function attributeFile(prev, next, model) {
+  const nextLines = splitLines(next);
+  const kept = matchedLines(splitLines(prev), nextLines);
+  const fromModel = model == null ? new Array(nextLines.length).fill(false) : matchedLines(splitLines(model), nextLines);
+  let added = 0;
+  let local = 0;
+  nextLines.forEach((line, j) => {
+    if (kept[j] || !SUBSTANTIVE.test(line)) return;
+    added++;
+    if (fromModel[j]) local++;
+  });
+  return { added_lines: added, local_lines: local, executor_lines: added - local, identical: model != null && sha256(splitLines(model).join('\n')) === sha256(nextLines.join('\n')) };
+}
+
+function gitText(cwd, spec) {
+  const r = execGit(cwd, ['show', spec], { keepLeading: true });
+  return r.exitCode === 0 ? r.stdout : null;
+}
+
+/**
+ * `delegate attribute [--staged | --ref <commit>]`: who wrote the lines a commit adds.
+ * For each added or modified file, the substantive lines it adds (a letter or digit;
+ * not `}` or a blank) are compared with every
+ * saved run that wrote that file, and the run that accounts for the most lines is
+ * credited. `trailer` is the `PAN-Delegated` line to commit with, or null when no line
+ * came from the local model.
+ */
+function attribute(cwd, opts = {}) {
+  const root = fs.realpathSync(cwd);
+  const staged = !!opts.staged;
+  const ref = opts.ref || 'HEAD';
+  let names;
+  if (staged) {
+    const r = execGit(root, ['diff', '--cached', '--name-only', '--diff-filter=AM']);
+    if (r.exitCode !== 0) return { error: 'git_failed', detail: r.stderr };
+    names = r.stdout ? r.stdout.split('\n') : [];
+  } else {
+    const r = execGit(root, ['diff-tree', '--root', '--no-commit-id', '-r', '--name-only', '--diff-filter=AM', ref]);
+    if (r.exitCode !== 0) return { error: 'git_failed', detail: r.stderr };
+    names = r.stdout ? r.stdout.split('\n') : [];
+  }
+  const planningRel = toPosixRel(path.relative(root, planningPath(root))) || '.planning';
+  const runs = readRunRecords(root);
+  const files = [];
+  for (const name of names.filter(Boolean)) {
+    if (name === planningRel || name.startsWith(planningRel + '/')) continue;
+    const next = staged ? gitText(root, `:${name}`) : gitText(root, `${ref}:${name}`);
+    if (next == null) continue;
+    const prev = (staged ? gitText(root, `HEAD:${name}`) : gitText(root, `${ref}^:${name}`)) || '';
+    let best = { ...attributeFile(prev, next, null), run_id: null, model: null };
+    for (const run of runs) {
+      const f = run.files[name];
+      if (!f || typeof f.content !== 'string') continue;
+      const a = attributeFile(prev, next, f.content);
+      if (a.local_lines >= best.local_lines && (a.local_lines > 0 || a.identical)) best = { ...a, run_id: run.run_id, model: run.model };
+    }
+    if (!best.added_lines && !best.run_id) continue;
+    const author = best.local_lines === 0 ? 'executor' : (best.executor_lines === 0 ? 'local' : 'mixed');
+    files.push({ path: name, author, ...best });
+  }
+  const added = files.reduce((s, f) => s + f.added_lines, 0);
+  const local = files.reduce((s, f) => s + f.local_lines, 0);
+  const models = [...new Set(files.filter((f) => f.local_lines > 0).map((f) => f.model))];
+  const runIds = [...new Set(files.filter((f) => f.local_lines > 0).map((f) => f.run_id))];
+  const trailer = local > 0
+    ? `PAN-Delegated: ${models.join(', ')} (${local}/${added} added lines from the local model; run ${runIds.join(', ')})`
+    : null;
+  return {
+    target: staged ? 'staged' : ref,
+    runs_on_record: runs.length,
+    added_lines: added,
+    local_lines: local,
+    executor_lines: added - local,
+    local_share: added ? Math.round((local / added) * 1000) / 10 : 0,
+    files,
+    trailer,
+  };
 }
 
 /** Write `patch` into the local_executor section of the chosen scope's file. */
@@ -758,5 +985,10 @@ module.exports = {
   chatBody,
   probeEndpoint,
   cmdDelegate,
+  writeRunRecord,
+  readRunRecords,
+  matchedLines,
+  attributeFile,
+  attribute,
   TOOL_DEFS,
 };

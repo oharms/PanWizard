@@ -513,3 +513,107 @@ describe('transport, thinking and reply size (live proof findings, 2026-11-13)',
     );
   });
 });
+
+describe('provenance: every run is recorded, and attribute measures who wrote a commit', () => {
+  const { execFileSync } = require('child_process');
+  const git = (...a) => execFileSync('git', a, { cwd: dir, encoding: 'utf-8', stdio: 'pipe' }).trim();
+  let server;
+  let port;
+  let script;
+  beforeEach(async () => {
+    script = [];
+    let n = 0;
+    server = http.createServer((req, res) => {
+      req.on('data', () => {});
+      req.on('end', () => {
+        res.setHeader('content-type', 'application/json');
+        if (req.url === '/v1/models') return res.end(JSON.stringify({ data: [{ id: 'qwen-test:latest' }] }));
+        const message = script.shift() || say(call('finish', { status: 'blocked', summary: 'script ran out' }));
+        return res.end(JSON.stringify({ id: `chatcmpl-${++n}`, model: 'qwen-test', created: 1700000000 + n, choices: [{ message }], usage: { prompt_tokens: 1, completion_tokens: 1 } }));
+      });
+    });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    port = server.address().port;
+    git('init', '-q');
+    git('config', 'user.email', 't@example.com');
+    git('config', 'user.name', 't');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'seed');
+    setConfig({ enabled: true, endpoint: `http://127.0.0.1:${port}/v1`, model: 'qwen-test' });
+    write('.planning/spec.md', 'Add add(a, b).\n');
+  });
+  afterEach(async () => { await new Promise((r) => server.close(r)); });
+
+  const ADD = "'use strict';\n\nfunction add(a, b) {\n  return a + b;\n}\n\nmodule.exports = { add };\n";
+  const runAdd = () => {
+    script = [say(call('write_file', { path: 'src/add.js', content: ADD })), say(call('finish', { status: 'done', summary: 'ok' }))];
+    return tools('delegate', 'run', '--spec', '.planning/spec.md', '--allow', 'src/add.js', '--verify', `"${process.execPath}" tests/t.test.js`);
+  };
+
+  test('a run saves its record: the server replies verbatim, every write with its SHA-256, the final content', async () => {
+    const r = await runAdd();
+    assert.equal(r.json.status, 'done', r.stdout);
+    assert.match(r.json.run_id, /^d-\d{8}T\d{6}Z-[0-9a-f]{6}$/);
+    const rec = JSON.parse(fs.readFileSync(path.join(dir, r.json.provenance), 'utf-8'));
+    assert.equal(rec.model, 'qwen-test');
+    assert.deepEqual(rec.responses.map((x) => x.id), ['chatcmpl-1', 'chatcmpl-2']);
+    assert.equal(rec.writes.length, 1);
+    assert.equal(rec.writes[0].path, 'src/add.js');
+    assert.equal(rec.writes[0].call_id, 'write_file');
+    assert.equal(rec.writes[0].sha256, require('crypto').createHash('sha256').update(ADD).digest('hex'));
+    assert.equal(rec.files['src/add.js'].content, fs.readFileSync(path.join(dir, 'src/add.js'), 'utf-8'));
+    const transcript = fs.readFileSync(path.join(dir, '.planning/delegations', rec.transcript), 'utf-8').trim().split('\n').map(JSON.parse);
+    assert.equal(transcript.length, 2);
+    assert.equal(JSON.parse(transcript[0].response.choices[0].message.tool_calls[0].function.arguments).content, ADD);
+    assert.equal(rec.verify_passed, true);
+  });
+
+  test('attribute --staged: the model\'s file as returned is all local, and the trailer says so', async () => {
+    const r = await runAdd();
+    git('add', 'src/add.js');
+    const a = (await tools('delegate', 'attribute', '--staged')).json;
+    assert.equal(a.files.length, 1);
+    assert.equal(a.files[0].author, 'local');
+    assert.equal(a.files[0].identical, true);
+    assert.equal(a.local_lines, 4, 'the lone } is not counted');
+    assert.equal(a.executor_lines, 0);
+    assert.equal(a.trailer, `PAN-Delegated: qwen-test (4/4 added lines from the local model; run ${r.json.run_id})`);
+  });
+
+  test('attribute --ref: lines the executor changed or added are counted as the executor\'s', async () => {
+    await runAdd();
+    fs.writeFileSync(path.join(dir, 'src/add.js'), ADD.replace('return a + b;', 'return Number(a) + Number(b);'));
+    write('src/extra.js', 'module.exports = 2;\n');
+    git('add', '-A', 'src');
+    git('commit', '-q', '-m', 'task');
+    const a = (await tools('delegate', 'attribute', '--ref', 'HEAD')).json;
+    const byPath = Object.fromEntries(a.files.map((f) => [f.path, f]));
+    assert.equal(byPath['src/add.js'].author, 'mixed');
+    assert.equal(byPath['src/add.js'].local_lines, 3);
+    assert.equal(byPath['src/add.js'].executor_lines, 1);
+    assert.equal(byPath['src/extra.js'].author, 'executor');
+    assert.equal(a.local_lines, 3);
+    assert.equal(a.added_lines, 5);
+    assert.match(a.trailer, /^PAN-Delegated: qwen-test \(3\/5 added lines/);
+  });
+
+  test('a commit with no recorded run gets no trailer, and the planning tree is never counted', async () => {
+    write('src/add.js', ADD);
+    write('.planning/notes.md', 'x\n');
+    git('add', '-A');
+    const a = (await tools('delegate', 'attribute', '--staged')).json;
+    assert.equal(a.runs_on_record, 0);
+    assert.equal(a.trailer, null);
+    assert.deepEqual(a.files.map((f) => f.path), ['src/add.js']);
+    assert.equal(a.files[0].author, 'executor');
+  });
+
+  test('lines a file already had are not credited to the model that rewrote it', () => {
+    const prev = 'a\nb\nc\n';
+    const model = 'a\nb\nc\nd\n';
+    const next = 'a\nb\nc\nd\ne\n';
+    assert.deepEqual(D.attributeFile(prev, next, model), { added_lines: 2, local_lines: 1, executor_lines: 1, identical: false });
+    assert.equal(D.attributeFile('', '}\n});\n\nx\n', '}\n});\n').added_lines, 1, 'punctuation-only and blank lines are not counted');
+    assert.deepEqual(D.matchedLines(['x', 'y'], ['y', 'x', 'y']), [false, true, true]);
+  });
+});

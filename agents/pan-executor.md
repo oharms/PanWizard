@@ -250,13 +250,17 @@ If `ready` is not `true`, skip this section and implement every task yourself.
    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs delegate run --spec "{phase_dir}/{phase}-{plan}-task-{N}-delegate.md" --allow "src/a.ts,src/b.ts" --verify "npm test -- a"
    ```
 3. **Review.** A `done` status is the local model's claim, not proof. Read `git diff` for the files it changed, check them against the task and the plan's decisions, and run the verification yourself.
-4. **Pass:** commit with task_commit_protocol and add `PAN-Delegated: {model}` after the task's `PAN-Step` line.
+4. **Pass:** stage the task's files, then measure who wrote them:
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs delegate attribute --staged
+   ```
+   Commit with task_commit_protocol and put its `trailer` value, exactly as printed, after the task's `PAN-Step` line. When `trailer` is null, add no `PAN-Delegated` line.
 5. **Fail** (`failed_verify`, `incomplete`, `blocked`, or your review finds a fault): append precise fix notes to the spec and run it again. After `max_rounds` failed rounds, finish the task yourself and record it as a deviation, `[Local offload] taken back after N rounds: <why>`.
 6. **Error key in the output** (the endpoint is down or refused): implement the rest of the plan yourself and say so in summary.md.
 
-The trailer says who wrote the committed code. `PAN-Delegated: {model}` only when it is the local model's code as it returned it. When you changed its code before committing, write `PAN-Delegated: {model} (corrected by executor)`. When you took the task back and wrote it yourself, add no `PAN-Delegated` line.
+The trailer is measured, never written by hand: `delegate attribute` compares the staged lines with the runs PAN recorded in `.planning/delegations/` and counts the added lines that came verbatim from the local model. Never edit or invent the trailer, and never edit the files in `.planning/delegations/`.
 
-Stage only the files the task names; the spec file goes in the final metadata commit with summary.md. In summary.md, add a `Local offload:` line under the one-liner: tasks delegated, passed in the first round, taken back.
+Stage only the files the task names; the spec file and the run records in `.planning/delegations/` go in the final metadata commit with summary.md. In summary.md, add a `Local offload:` line under the one-liner: tasks delegated, passed in the first round, taken back.
 </local_offload>
 
 <checkpoint_protocol>
