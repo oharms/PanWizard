@@ -542,6 +542,7 @@ Quick reference of every CLI command and subcommand, with its category and the m
 | 269 | `verify refresh` | Verification | verify-scope.cjs |
 | 270 | `delegate status` | Local executor offload | delegate.cjs |
 | 271 | `delegate run` | Local executor offload | delegate.cjs |
+| 272 | `delegate setup` | Local executor offload | delegate.cjs |
 
 ---
 
@@ -2284,16 +2285,18 @@ pan-tools design handoff <spec> --as phase|focus [--raw]
 
 ---
 
-### `delegate status` · `delegate run`
+### `delegate status` · `delegate run` · `delegate setup`
 
-Local executor offload (ADR-0053): the executor hands one task's implementation to a model served on the user's own hardware and reviews, verifies and commits the result itself. Configured by the `local_executor` section of config.json (see the User Guide).
+Local executor offload (ADR-0053): the executor hands one task's implementation to a model served on the user's own hardware and reviews, verifies and commits the result itself. `/pan:local` drives `setup`. The setting is read in layers: the defaults, then this computer's `~/.pan-wizard/local-executor.json`, then the project's `local_executor` section of config.json (see the User Guide).
 
 ```bash
 pan-tools delegate status
 pan-tools delegate run --spec <file> --allow <file>[,<file>|<dir>/...] [--verify "<command>"]
+pan-tools delegate setup [--model <name>] [--endpoint <url>] [--scope machine|project] [--off] [--dry-run]
 ```
 
-- **`status`:** `{enabled, endpoint, model, allow_remote, max_rounds, ready, reachable?, model_available?, reason?}`. Off, misconfigured or unreachable is an answer, not a failure: `ready: false` with a `reason`, exit 0 (`--raw`: `ready` or `off`). It asks the endpoint's `/models` (5 s limit) whether the model is served.
+- **`setup`:** asks the endpoint (default: the configured one, else Ollama's) which models it serves and, from an Ollama server, each model's size, digest and configured `num_ctx`. It ranks them: coding-tuned names first, then the larger configured context, then the larger model; embedding and speech models are dropped and aliases of one model (same digest) are folded into the first-created name. It then writes `{enabled: true, model}` (plus `endpoint` and `allow_remote` when `--endpoint` was given) to `--scope machine` (the default: `~/.pan-wizard/local-executor.json`) or `--scope project` (the project's config.json, other keys kept). `--model` picks a served model instead of the first; `--off` writes `enabled: false` to the scope; `--dry-run` writes nothing. Output: `{configured, scope, enabled, model, endpoint, candidates: [{model, coding, size_gb?, params_b?, context}], file, note?, context_hint?}`; `--dry-run` gives `{dry_run, scope, endpoint, chosen, candidates, would_write, context_hint?}` (`--raw`: the model, or `off`). `context_hint` appears when the chosen model's configured context is under 32768 tokens or unknown. **Refusals (exit 1):** `invalid_scope`, `endpoint_invalid`, `endpoint_not_local`, `fetch_unavailable`, `endpoint_unreachable` (with a `hint`), `no_models` (with a `hint`), `model_not_served` (with `served`), `config_unreadable`, `write_failed`.
+- **`status`:** `{enabled, endpoint, model, allow_remote, max_rounds, source, ready, reachable?, model_available?, reason?}`. `source` is the layer that set `enabled`: `project`, `machine` or `default`. Off, misconfigured or unreachable is an answer, not a failure: `ready: false` with a `reason`, exit 0 (`--raw`: `ready` or `off`). It asks the endpoint's `/models` (5 s limit) whether the model is served.
 - **`run`:** runs the local model's tool loop on the spec file. The model may list and read files inside the project (not `.git/`, not a file matching `commit.sensitive_patterns`), write only the `--allow` entries (a trailing `/` allows a directory; the project root, `.git/` and the planning tree may not be named), run the `--verify` command and finish. Every path is resolved through symlinks and must stay inside the project. After the loop the verify command is run once more and that result is the one reported. Output: `{status, model, endpoint, report, stop_reason, files_changed, refused_writes, verify: {command, passed, exit_code, timed_out, output_tail} | null, turns, tool_calls, malformed_calls, usage: {prompt_tokens, completion_tokens}, elapsed_s, max_rounds}` (`--raw`: the status). `status` is `done` (finished and the verify passed, or no verify), `failed_verify` (claimed done, verify failed), `blocked` (the model reported it cannot be done as specified) or `incomplete` (`stop_reason`: `turn_limit`, `no_tool_call`, `timeout`, `endpoint_error`, `empty_response`); all of these exit 0. It never stages or commits. **Refusals (exit 1):** `local_executor_disabled`, `endpoint_invalid`, `endpoint_not_local` (a non-loopback endpoint without `allow_remote`), `model_not_set`, `fetch_unavailable` (Node below 18), `spec_required`, `allow_required`, `spec_empty`, `invalid_arguments` (a path outside the project, or a forbidden `--allow` entry), and `endpoint_unreachable` / `endpoint_http_error` / `timeout` when the first request fails.
 
 ---

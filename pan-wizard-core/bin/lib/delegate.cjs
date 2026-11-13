@@ -26,6 +26,7 @@
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { planningPath } = require('./utils.cjs');
@@ -57,16 +58,41 @@ const VERIFY_TAIL = 4000;             // chars of verify output kept
 const LIST_LIMIT = 300;               // entries per list_files
 const STATUS_TIMEOUT_MS = 5000;
 
-/** The config section, merged over the defaults, with each field coerced to its type. */
-function readLocalConfig(cwd) {
-  let section = {};
-  let sensitive = DEFAULT_SENSITIVE_PATTERNS;
+/**
+ * The machine-wide setting `/pan:local` writes by default: which local model THIS
+ * computer serves is a property of the computer, not of one project, and a file
+ * outside `.planning/` survives `/pan:new-project` writing a fresh config.json.
+ */
+function machineConfigPath(home = os.homedir()) {
+  return path.join(home, '.pan-wizard', 'local-executor.json');
+}
+
+function readJsonObject(file) {
   try {
-    const parsed = JSON.parse(fs.readFileSync(planningPath(cwd, 'config.json'), 'utf-8'));
-    if (parsed && typeof parsed.local_executor === 'object' && parsed.local_executor) section = parsed.local_executor;
-    const pats = parsed && parsed.commit && parsed.commit.sensitive_patterns;
+    const v = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+  } catch { return null; }
+}
+
+/**
+ * The effective setting: the defaults, then this machine's file, then the project's
+ * `local_executor` section (a project can override the machine, e.g. switch it off
+ * for a confidential repository). Each field is coerced to its type. `source` says
+ * which layer set `enabled`.
+ */
+function readLocalConfig(cwd, { home } = {}) {
+  let projectSection = null;
+  let sensitive = DEFAULT_SENSITIVE_PATTERNS;
+  const parsed = readJsonObject(planningPath(cwd, 'config.json'));
+  if (parsed) {
+    if (parsed.local_executor && typeof parsed.local_executor === 'object') projectSection = parsed.local_executor;
+    const pats = parsed.commit && parsed.commit.sensitive_patterns;
     if (Array.isArray(pats) && pats.length) sensitive = pats;
-  } catch { /* no config: defaults */ }
+  }
+  const machine = readJsonObject(machineConfigPath(home));
+  const section = { ...(machine || {}), ...(projectSection || {}) };
+  const source = projectSection && projectSection.enabled !== undefined ? 'project'
+    : (machine && machine.enabled !== undefined ? 'machine' : 'default');
   const d = LOCAL_EXECUTOR_DEFAULTS;
   const posInt = (v, def) => (Number.isInteger(v) && v > 0 ? v : def);
   return {
@@ -80,7 +106,75 @@ function readLocalConfig(cwd) {
     verify_timeout_s: posInt(section.verify_timeout_s, d.verify_timeout_s),
     max_rounds: posInt(section.max_rounds, d.max_rounds),
     sensitive_patterns: sensitive,
+    source,
   };
+}
+
+/** Parameter count in billions from a model name (`qwen3.6:35b-a3b` → 35), else 0. */
+function paramsFromName(id) {
+  const m = String(id).toLowerCase().match(/(?:^|[^a-z0-9.])(\d+(?:\.\d+)?)b(?![a-z])/);
+  return m ? Number(m[1]) : 0;
+}
+
+/** The tool loop needs room for the spec, several files and test output. */
+const MIN_GOOD_CONTEXT = 32768;
+
+/**
+ * Order served models for coding work: coding-tuned names first, then the larger
+ * configured context window (an agent loop runs out of room long before it runs out
+ * of skill), then the larger model (Ollama's byte size when known, else the parameter
+ * count in the name). Embedding and speech models are dropped, and aliases of one
+ * model (same Ollama digest) are folded into the first-created name.
+ * @param {string[]} ids
+ * @param {Object<string,{size?:number,digest?:string,num_ctx?:number,modified?:string}>} details
+ */
+function rankModels(ids, details = {}) {
+  const coding = (id) => /cod(?:er|ing|e)|devstral|starcoder/i.test(id);
+  const rows = ids
+    .filter((id) => !/embed|nomic|bge|clip|whisper/i.test(id))
+    .map((id) => {
+      const d = details[id] || details[id.replace(/:latest$/, '')] || {};
+      return { id, coding: coding(id), size: Number(d.size) || 0, params: paramsFromName(id), num_ctx: Number(d.num_ctx) || 0, digest: d.digest || null, modified: d.modified || '' };
+    });
+  const byDigest = new Map();
+  for (const r of rows) {
+    if (!r.digest) continue;
+    const kept = byDigest.get(r.digest);
+    if (!kept || (r.modified && kept.modified && r.modified < kept.modified)) byDigest.set(r.digest, r);
+  }
+  return rows
+    .filter((r) => !r.digest || byDigest.get(r.digest) === r)
+    .sort((a, b) => (b.coding - a.coding) || (b.num_ctx - a.num_ctx) || (b.size - a.size) || (b.params - a.params) || a.id.localeCompare(b.id));
+}
+
+/**
+ * What Ollama's native API knows and the OpenAI-compatible one leaves out: each
+ * model's size, digest and configured context window (`num_ctx` in its parameters).
+ * Best effort: any other server simply yields {}.
+ */
+async function ollamaDetails(endpoint, fetchImpl, limitShow = 8) {
+  const out = {};
+  let origin;
+  try { origin = new URL(endpoint).origin; } catch { return out; }
+  try {
+    const res = await fetchImpl(`${origin}/api/tags`, {});
+    if (!res.ok) return out;
+    const body = await res.json();
+    for (const m of (body && body.models) || []) {
+      if (m && m.name) out[m.name] = { size: m.size, digest: m.digest, modified: m.modified_at };
+    }
+  } catch { return out; }
+  const names = Object.keys(out).filter((n) => /cod(?:er|ing|e)|devstral|starcoder/i.test(n)).slice(0, limitShow);
+  for (const name of names) {
+    try {
+      const res = await fetchImpl(`${origin}/api/show`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: name }) });
+      if (!res.ok) continue;
+      const body = await res.json();
+      const m = String((body && body.parameters) || '').match(/(?:^|\n)\s*num_ctx\s+(\d+)/);
+      if (m) out[name].num_ctx = Number(m[1]);
+    } catch { /* keep what tags gave */ }
+  }
+  return out;
 }
 
 /** True for a host that can only be this machine. */
@@ -435,8 +529,11 @@ async function probeEndpoint(cfg, fetchImpl = globalThis.fetch) {
 async function cmdDelegate(cwd, sub, opts, raw, io) {
   const { output } = io;
   const fetchImpl = io.fetchImpl || globalThis.fetch;
-  const cfg = readLocalConfig(cwd);
-  const pub = { enabled: cfg.enabled, endpoint: cfg.endpoint, model: cfg.model, allow_remote: cfg.allow_remote, max_rounds: cfg.max_rounds };
+  const home = io.home || os.homedir();
+  const cfg = readLocalConfig(cwd, { home });
+  const pub = { enabled: cfg.enabled, endpoint: cfg.endpoint, model: cfg.model, allow_remote: cfg.allow_remote, max_rounds: cfg.max_rounds, source: cfg.source };
+
+  if (sub === 'setup') return cmdDelegateSetup(cwd, cfg, opts, raw, { output, fetchImpl, home });
 
   if (sub === 'status') {
     // Off is an answer, not a failure: callers run the task themselves (exit 0).
@@ -482,8 +579,100 @@ async function cmdDelegate(cwd, sub, opts, raw, io) {
   }
 }
 
+/** Write `patch` into the local_executor section of the chosen scope's file. */
+function writeScope(cwd, scope, patch, home) {
+  if (scope === 'machine') {
+    const file = machineConfigPath(home);
+    const current = readJsonObject(file) || {};
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ ...current, ...patch }, null, 2) + '\n');
+    return file;
+  }
+  const file = planningPath(cwd, 'config.json');
+  let config = {};
+  if (fs.existsSync(file)) {
+    config = readJsonObject(file);
+    if (!config) { const e = new Error('.planning/config.json is not a JSON object'); e.code = 'config_unreadable'; throw e; }
+  }
+  config.local_executor = { ...(config.local_executor || {}), ...patch };
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
+  return file;
+}
+
+/**
+ * `delegate setup`: find the local server's models, pick one for coding, and turn
+ * offload on for this machine (default) or this project. `--dry-run` reports what it
+ * would choose without writing; `--off` turns offload off in the chosen scope.
+ */
+async function cmdDelegateSetup(cwd, cfg, opts, raw, { output, fetchImpl, home }) {
+  const scope = opts.scope || 'machine';
+  if (scope !== 'machine' && scope !== 'project') return output({ error: 'invalid_scope', allowed: ['machine', 'project'] }, raw);
+
+  if (opts.off) {
+    if (opts.dryRun) return output({ dry_run: true, scope, would_write: { enabled: false } }, raw, 'off');
+    try {
+      const file = writeScope(cwd, scope, { enabled: false }, home);
+      return output({ configured: true, scope, enabled: false, file }, raw, 'off');
+    } catch (e) { return output({ error: e.code || 'write_failed', detail: e.message }, raw); }
+  }
+
+  const endpoint = (opts.endpoint || cfg.endpoint).replace(/\/+$/, '');
+  const probeCfg = { ...cfg, endpoint, allow_remote: cfg.allow_remote || !!opts.endpoint };
+  const problem = endpointProblem(probeCfg);
+  if (problem) return output({ error: problem, endpoint }, raw);
+  if (typeof fetchImpl !== 'function') return output({ error: 'fetch_unavailable', detail: 'Node 18+ is needed' }, raw);
+
+  const probe = await probeEndpoint({ ...probeCfg, model: '' }, fetchImpl);
+  if (!probe.reachable) {
+    return output({
+      error: 'endpoint_unreachable', endpoint, detail: probe.detail,
+      hint: 'Start your local model server (for Ollama: open the Ollama app, or run `ollama serve`), then run this again.',
+    }, raw);
+  }
+  const details = await ollamaDetails(endpoint, fetchImpl);
+  const ranked = rankModels(probe.models, details);
+  if (!ranked.length) {
+    return output({ error: 'no_models', endpoint, hint: 'Download a coding model first, e.g. `ollama pull qwen3.6:35b-a3b-coding`.' }, raw);
+  }
+  const clean = (id) => id.replace(/:latest$/, '');
+  let chosen;
+  if (opts.model) {
+    const want = opts.model;
+    const hit = probe.models.find((id) => id === want || id === `${want}:latest` || clean(id) === clean(want));
+    if (!hit) return output({ error: 'model_not_served', model: want, served: probe.models.map(clean) }, raw);
+    chosen = clean(hit);
+  } else {
+    chosen = clean(ranked[0].id);
+  }
+  const candidates = ranked.slice(0, 4).map((m) => ({
+    model: clean(m.id), coding: m.coding, ...(m.size ? { size_gb: Math.round(m.size / 1e8) / 10 } : {}),
+    ...(m.params ? { params_b: m.params } : {}), context: m.num_ctx || null,
+  }));
+  const chosenRow = ranked.find((m) => clean(m.id) === chosen);
+  const ctx = chosenRow ? chosenRow.num_ctx : 0;
+  const contextHint = ctx >= MIN_GOOD_CONTEXT ? undefined
+    : `${chosen} has ${ctx ? `a ${ctx}-token` : 'no configured'} context window; the coding loop works best with ${MIN_GOOD_CONTEXT} or more. For Ollama: put "FROM ${chosen}" and "PARAMETER num_ctx 65536" in a file named Modelfile, run \`ollama create ${chosen.split(':')[0]}-64k -f Modelfile\`, then run setup again.`;
+  // An endpoint typed on the command line is the user's explicit choice; one that is
+  // not this machine (an office server) is recorded with allow_remote so it is honoured.
+  const patch = { enabled: true, model: chosen };
+  if (opts.endpoint) { patch.endpoint = endpoint; patch.allow_remote = !isLoopbackHost(new URL(endpoint).hostname); }
+
+  if (opts.dryRun) return output({ dry_run: true, scope, endpoint, chosen, candidates, would_write: patch, ...(contextHint ? { context_hint: contextHint } : {}) }, raw, chosen);
+  try {
+    const file = writeScope(cwd, scope, patch, home);
+    const note = scope === 'project' && cfg.source === 'machine' ? 'This project now overrides the setting for this machine.' : undefined;
+    return output({ configured: true, scope, enabled: true, model: chosen, endpoint, candidates, file, ...(note ? { note } : {}), ...(contextHint ? { context_hint: contextHint } : {}) }, raw, chosen);
+  } catch (e) {
+    return output({ error: e.code || 'write_failed', detail: e.message }, raw);
+  }
+}
+
 module.exports = {
   LOCAL_EXECUTOR_DEFAULTS,
+  machineConfigPath,
+  rankModels,
+  paramsFromName,
   readLocalConfig,
   isLoopbackHost,
   endpointProblem,

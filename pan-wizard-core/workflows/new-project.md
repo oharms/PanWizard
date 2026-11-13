@@ -163,6 +163,8 @@ Create `.planning/config.json` with mode set to "yolo":
 }
 ```
 
+If `.planning/config.json` already exists with a `local_executor` section (set by `/pan:local` for this project), copy that section into the file you write.
+
 **If commit_docs = No:** Add `.planning/` to `.gitignore`.
 
 **Commit config.json:**
@@ -460,6 +462,8 @@ Create `.planning/config.json` with all settings:
   }
 }
 ```
+
+If `.planning/config.json` already exists with a `local_executor` section (set by `/pan:local` for this project), copy that section into the file you write.
 
 **If commit_docs = No:**
 - Set `commit_docs: false` in config.json

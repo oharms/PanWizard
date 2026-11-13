@@ -1753,6 +1753,18 @@
    "baseline": true
   },
   {
+   "id": "commands/pan/local:ba1793b0",
+   "file": "commands/pan/local.md",
+   "text": "Speak to the user in plain words. Never show raw JSON, file paths under `pan-wizard-core/`, or config key names unless they ask.",
+   "baseline": false
+  },
+  {
+   "id": "commands/pan/local:6f242703",
+   "file": "commands/pan/local.md",
+   "text": "What changes: when PAN runs a plan, the coding goes to the local model. Planning, review, tests and commits stay with the main model, which checks every change before it is committed and takes a task back after three failed tries. Tasks touching login, payments, encryption, secrets or security are never handed off.",
+   "baseline": false
+  },
+  {
    "id": "commands/pan/map-codebase:3d1a5b08",
    "file": "commands/pan/map-codebase.md",
    "text": "Record the chosen mode + telemetry in a `.planning/codebase/overview.md` you write yourself. The map-codebase workflow has no single-shot branch — it always spawns the sharded mappers and writes no overview.md — so in `single-shot` mode spawn the one agent in place of its spawn step.",

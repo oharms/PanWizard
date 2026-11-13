@@ -235,11 +235,15 @@ Display:
 | Routing Strategy     | {Static/Complexity} |
 | Phase Budget         | {$N per phase (warn only)/Off} |
 | Request Routing      | {Advisory/Exclusive/Off} |
+| Local Coding Model   | {<model> (this computer / this project) / Off} |
 | Saved as Defaults    | {Yes/No} |
 
 These settings apply to future /pan:plan-phase and /pan:exec-phase runs.
 
+Read the Local Coding Model row from `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs delegate status` (`enabled`, `model`, and `source`: `machine` is this computer, `project` this project). This command does not change it.
+
 Quick commands:
+- /pan:local — use a coding model on this computer for PAN's code-writing (`/pan:local off` to stop)
 - /pan:settings --profile <profile> — switch model profile
 - /pan:plan-phase --research — research one phase (up to 5 open questions)
 - /pan:plan-phase --skip-research — skip research

@@ -272,3 +272,30 @@ describe('statusline reads todos from CLAUDE_CONFIG_DIR', () => {
     } finally { fsReal.rmSync(scratch, { recursive: true, force: true }); }
   });
 });
+
+describe('pan-statusline — local executor offload (ADR-0053)', () => {
+  const files = (map) => mockDeps({
+    homeDir: '/h',
+    fs: { readFileSync: (p) => { if (p in map) return map[p]; throw new Error('ENOENT ' + p); } },
+  });
+  const run = (deps) => strip(buildStatuslineOutput({ model: { display_name: 'M' }, workspace: { current_dir: '/proj' } }, deps));
+  const machine = '/h/.pan-wizard/local-executor.json';
+  const project = '/proj/.planning/config.json';
+
+  test('shows the local coding model this computer turned on', () => {
+    assert.match(run(files({ [machine]: JSON.stringify({ enabled: true, model: 'qwen-coder-64k' }) })), /⌂ qwen-coder-64k/);
+  });
+
+  test('a project local_executor section overrides the computer: off hides it, a model replaces it', () => {
+    const on = JSON.stringify({ enabled: true, model: 'qwen-coder-64k' });
+    assert.doesNotMatch(run(files({ [machine]: on, [project]: JSON.stringify({ local_executor: { enabled: false } }) })), /⌂/);
+    assert.match(run(files({ [machine]: on, [project]: JSON.stringify({ local_executor: { model: 'devstral:24b' } }) })), /⌂ devstral:24b/);
+  });
+
+  test('nothing is shown when offload is off, unset or has no model, and a long name is shortened', () => {
+    assert.doesNotMatch(run(files({})), /⌂/);
+    assert.doesNotMatch(run(files({ [machine]: JSON.stringify({ enabled: false, model: 'x' }) })), /⌂/);
+    assert.doesNotMatch(run(files({ [machine]: JSON.stringify({ enabled: true, model: '' }) })), /⌂/);
+    assert.match(run(files({ [machine]: JSON.stringify({ enabled: true, model: 'a-very-long-local-model-name:latest' }) })), /⌂ a-very-long-local-model…/);
+  });
+});

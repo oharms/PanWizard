@@ -322,5 +322,13 @@
   {
     "id": "pan-wizard-core/references/model-profiles:15a2d682",
     "reason": "Profile rebalance (2026-11-13): reference prose describing which agents inherit the session model under each profile; the normative word is the descriptive \"PAN never selects your host model\". What it describes is enforced in code by MODEL_PROFILES and resolveModelDetailed in core.cjs (reasoning resolves to inherit), pinned by tests/core.test.cjs; no harness scenario needs to claim a reference paragraph."
+  },
+  {
+    "id": "commands/pan/local:ba1793b0",
+    "reason": "ADR-0053 /pan:local presentation rule (plain words, no raw JSON). Advisory: what the command shows is the engine output of delegate setup and delegate status, whose fields are pinned by tests/delegate.test.cjs; no harness scenario runs /pan:local yet (see command:local in liveness-allowlist.json)."
+  },
+  {
+    "id": "commands/pan/local:6f242703",
+    "reason": "ADR-0053: describes behaviour enforced elsewhere, not by this prompt: the executor review, take-back after max_rounds and never-delegate list live in agents/pan-executor.md local_offload, and the confinement in delegate.cjs (tests/delegate.test.cjs guard-rail tests)."
   }
 ]

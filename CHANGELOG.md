@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Local executor offload** (ADR-0053). The executor can hand each task's implementation to a model on your own hardware, such as Qwen served by Ollama, LM Studio, vLLM or a LiteLLM gateway, and then review the diff, run the verification itself and commit. Turn it on with the new `local_executor` section of config.json (off by default). The new `pan-tools delegate status` and `delegate run` verbs carry it. The local model gets five tools and no shell: it reads inside the project, writes only the files the executor names for that task, and runs only the task's verification command. Endpoints off this machine are refused unless `allow_remote` is set. After `max_rounds` failed rounds the executor takes the task back, and tasks touching authentication, payments, cryptography, secrets or security fixes are never handed off.
+- **`/pan:local`** sets local offload up in one step. It finds the models your local server has and recommends one (coding models first, then the largest context window). It asks which model, and whether the setting is for every project on this computer or only this one, then turns offload on. `/pan:local status` and `/pan:local off` check it and stop it. The computer-wide setting lives in `~/.pan-wizard/local-executor.json`, so `/pan:new-project` no longer drops it, and a project can still override it. The status line shows `⌂ <model>` while offload is on, and `/pan:settings` lists it.
 
 ## [3.44.0] - 2026-11-13
 

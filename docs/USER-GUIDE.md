@@ -658,7 +658,7 @@ The executor can hand the typing to a model on your own hardware: Ollama, LM Stu
 
 | Setting | Options | Default | What it Controls |
 |---------|---------|---------|------------------|
-| `local_executor.enabled` | `true`, `false` | `false` | Turns offload on. Off, or not ready, the executor implements every task itself |
+| `local_executor.enabled` | `true`, `false` | `false` | Turns offload on (set by `/pan:local`). Off, or not ready, the executor implements every task itself |
 | `local_executor.endpoint` | URL | `http://127.0.0.1:11434/v1` | Base URL of the OpenAI-compatible API (Ollama's default) |
 | `local_executor.model` | model name | `""` | The served model, e.g. `qwen3.6:35b-a3b-coding`. Required |
 | `local_executor.api_key_env` | env var name | `""` | Name of an environment variable holding the API key (for a LiteLLM gateway). The key itself never goes in config.json |
@@ -668,14 +668,11 @@ The executor can hand the typing to a model on your own hardware: Ollama, LM Stu
 | `local_executor.verify_timeout_s` | integer | `300` | Time limit of the task's verification command |
 | `local_executor.max_rounds` | integer | `3` | Failed rounds per task before the executor takes the task back |
 
-**Set it up** (Ollama shown; any OpenAI-compatible server works):
+**Set it up with `/pan:local`.** With your model server running (open the Ollama app, or LM Studio's server) and a coding model downloaded, run `/pan:local`. It finds the models the server has, recommends one (coding models first, then the largest context window, then the largest model), asks which model and where, and turns offload on. `/pan:local status` shows whether it is on and answering; `/pan:local off` turns it off. While it is on, the status line shows `⌂ <model>`.
 
-```bash
-ollama pull qwen3.6:35b-a3b-coding
-node <runtime dir>/pan-wizard-core/bin/pan-tools.cjs config-set local_executor.model qwen3.6:35b-a3b-coding
-node <runtime dir>/pan-wizard-core/bin/pan-tools.cjs config-set local_executor.enabled true
-node <runtime dir>/pan-wizard-core/bin/pan-tools.cjs delegate status    # "ready": true
-```
+**Every project on this computer, or one project.** The recommended choice saves the setting for this computer in `~/.pan-wizard/local-executor.json`, so every project uses it and `/pan:new-project` keeps it. "Only this project" writes the `local_executor` section of the project's config.json instead, which wins over the computer's setting there; use it to switch offload off for one confidential repository while it stays on elsewhere.
+
+**Context window.** The local model reads the spec, several files and test output in one conversation, so give it room: 32K tokens or more. `/pan:local` reports each model's configured context and explains how to make a larger-context copy when the one you chose has none.
 
 **What the local model can do.** It gets five tools and nothing else: list a directory, read a file, write a file the executor listed for that task, run the task's verification command (it cannot choose a command), and finish. Every path is confined to the project; `.git/`, the planning tree and files matching `commit.sensitive_patterns` are out of reach. There is no general shell. Whatever it reports, `delegate run` re-runs the verification itself, and the executor runs it again before committing.
 

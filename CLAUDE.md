@@ -51,7 +51,7 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | What | Count |
 |---|---|
 | Version | (see `package.json`) |
-| Commands (`commands/pan/*.md`) | 47 |
+| Commands (`commands/pan/*.md`) | 48 |
 | Agents (`agents/*.md`) | 23 |
 | Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 91 |
 | Workflows (`pan-wizard-core/workflows/*.md`) | 41 |

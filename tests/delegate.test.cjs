@@ -18,18 +18,19 @@ const { buildConfigDefaults } = require(path.join(ROOT, 'pan-wizard-core', 'bin'
 const TOOLS = path.join(ROOT, 'pan-wizard-core', 'bin', 'pan-tools.cjs');
 
 let dir;
+let home;
 const write = (rel, text) => {
   const p = path.join(dir, rel);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, text);
 };
 const setConfig = (local) => write('.planning/config.json', JSON.stringify({ local_executor: local }, null, 2));
-const cfgFor = (over = {}) => ({ ...D.readLocalConfig(dir), enabled: true, model: 'qwen-test', ...over });
+const cfgFor = (over = {}) => ({ ...D.readLocalConfig(dir, { home }), enabled: true, model: 'qwen-test', ...over });
 
 // The CLI runs as a child while the fake server answers in this process, so the child
 // must not block the event loop: execFile, not spawnSync.
 const tools = (...args) => new Promise((resolve) => {
-  execFile(process.execPath, [TOOLS, ...args], { cwd: dir, encoding: 'utf-8' }, (err, stdout) => {
+  execFile(process.execPath, [TOOLS, ...args], { cwd: dir, encoding: 'utf-8', env: { ...process.env, HOME: home, USERPROFILE: home } }, (err, stdout) => {
     const text = String(stdout || '').trim();
     resolve({ status: err ? err.code : 0, json: text.startsWith('{') ? JSON.parse(text) : null, stdout: text });
   });
@@ -50,10 +51,11 @@ const say = (...calls) => ({ role: 'assistant', content: '', tool_calls: calls }
 
 beforeEach(() => {
   dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pan-delegate-')));
+  home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pan-delegate-home-')));
   write('src/keep.js', 'module.exports = 1;\n');
   write('tests/t.test.js', "require('node:assert').equal(require('../src/add.js').add(2, 3), 5);\n");
 });
-afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(home, { recursive: true, force: true }); });
 
 describe('config', () => {
   test('config-ensure-section defaults carry local_executor, switched off', () => {
@@ -71,9 +73,9 @@ describe('config', () => {
   });
 
   test('readLocalConfig falls back to the defaults and ignores bad values', () => {
-    assert.equal(D.readLocalConfig(dir).enabled, false);
+    assert.equal(D.readLocalConfig(dir, { home }).enabled, false);
     setConfig({ enabled: 'yes', max_turns: -4, endpoint: 'http://localhost:1234/v1/', model: ' m ' });
-    const c = D.readLocalConfig(dir);
+    const c = D.readLocalConfig(dir, { home });
     assert.equal(c.enabled, false, 'only the boolean true enables it');
     assert.equal(c.max_turns, 25);
     assert.equal(c.endpoint, 'http://localhost:1234/v1');
@@ -226,7 +228,7 @@ describe('runLocalTask', () => {
 
   test('local_executor.verify_timeout_s stops a verify command that runs too long', () => {
     setConfig({ enabled: true, model: 'qwen-test', verify_timeout_s: 1 });
-    const v = D.runVerify(dir, `"${process.execPath}" -e "setTimeout(() => {}, 20000)"`, D.readLocalConfig(dir).verify_timeout_s);
+    const v = D.runVerify(dir, `"${process.execPath}" -e "setTimeout(() => {}, 20000)"`, D.readLocalConfig(dir, { home }).verify_timeout_s);
     assert.equal(v.timed_out, true);
     assert.equal(v.passed, false);
   });
@@ -337,5 +339,116 @@ describe('pan-tools delegate (CLI)', () => {
   test('an unknown subcommand names the available ones', async () => {
     const r = await tools('delegate', 'nope');
     assert.equal(r.status, 1);
+  });
+});
+
+describe('this computer vs this project, and model ranking', () => {
+  test('readLocalConfig layers defaults, then this computer, then the project, and names the source', () => {
+    assert.equal(D.readLocalConfig(dir, { home }).source, 'default');
+    fs.mkdirSync(path.join(home, '.pan-wizard'), { recursive: true });
+    fs.writeFileSync(D.machineConfigPath(home), JSON.stringify({ enabled: true, model: 'qwen-coder-64k' }));
+    let c = D.readLocalConfig(dir, { home });
+    assert.deepEqual([c.enabled, c.model, c.source], [true, 'qwen-coder-64k', 'machine']);
+    setConfig({ enabled: false });
+    c = D.readLocalConfig(dir, { home });
+    assert.deepEqual([c.enabled, c.model, c.source], [false, 'qwen-coder-64k', 'project']);
+  });
+
+  test('rankModels: coding models first, then the larger context window, aliases folded to the first-created name', () => {
+    const ids = ['llama3:8b', 'qwen3.6:35b-a3b-coding', 'qwen-coder-64k:latest', 'local-qwen-coder:latest', 'nomic-embed-text'];
+    const details = {
+      'qwen3.6:35b-a3b-coding': { size: 23e9, digest: 'base', modified: '2026-11-13T10:00' },
+      'qwen-coder-64k:latest': { size: 23e9, digest: 'ctx', num_ctx: 65536, modified: '2026-11-13T11:00' },
+      'local-qwen-coder:latest': { size: 23e9, digest: 'ctx', num_ctx: 65536, modified: '2026-11-13T12:00' },
+      'llama3:8b': { size: 4e9, digest: 'llama' },
+    };
+    assert.deepEqual(D.rankModels(ids, details).map((m) => m.id), ['qwen-coder-64k:latest', 'qwen3.6:35b-a3b-coding', 'llama3:8b']);
+    assert.equal(D.paramsFromName('qwen3.6:35b-a3b-coding'), 35);
+    assert.equal(D.paramsFromName('qwen-coder-64k'), 0);
+  });
+});
+
+describe('pan-tools delegate setup (CLI)', () => {
+  let server;
+  let port;
+  let served;
+  beforeEach(async () => {
+    served = {
+      'qwen3.6:35b-a3b-coding': { size: 23598465666, digest: 'base' },
+      'qwen-coder-64k:latest': { size: 23598465682, digest: 'ctx', num_ctx: 65536 },
+      'llama3:8b': { size: 4.7e9, digest: 'llama' },
+    };
+    server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => {
+        res.setHeader('content-type', 'application/json');
+        if (req.url === '/v1/models') return res.end(JSON.stringify({ data: Object.keys(served).map((id) => ({ id })) }));
+        if (req.url === '/api/tags') {
+          return res.end(JSON.stringify({ models: Object.entries(served).map(([name, m]) => ({ name, size: m.size, digest: m.digest, modified_at: '2026-11-13T10:00' })) }));
+        }
+        if (req.url === '/api/show') {
+          const m = served[JSON.parse(body || '{}').model] || {};
+          return res.end(JSON.stringify({ parameters: m.num_ctx ? `top_p 0.95\nnum_ctx ${m.num_ctx}` : 'top_p 0.95' }));
+        }
+        res.statusCode = 404;
+        return res.end('{}');
+      });
+    });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    port = server.address().port;
+  });
+  afterEach(async () => { await new Promise((r) => server.close(r)); });
+  const ep = () => `http://127.0.0.1:${port}/v1`;
+
+  test('--dry-run picks the coding model with the largest context and writes nothing', async () => {
+    const r = await tools('delegate', 'setup', '--endpoint', ep(), '--dry-run');
+    assert.equal(r.status, 0, r.stdout);
+    assert.equal(r.json.chosen, 'qwen-coder-64k');
+    assert.deepEqual(r.json.candidates.map((c) => c.model), ['qwen-coder-64k', 'qwen3.6:35b-a3b-coding', 'llama3:8b']);
+    assert.equal(r.json.candidates[0].context, 65536);
+    assert.equal(r.json.context_hint, undefined);
+    assert.equal(fs.existsSync(D.machineConfigPath(home)), false);
+    assert.equal(fs.existsSync(path.join(dir, '.planning')), false);
+  });
+
+  test('setup turns offload on for this computer by default, and status then reports it ready from the machine', async () => {
+    const r = await tools('delegate', 'setup', '--endpoint', ep());
+    assert.equal(r.status, 0, r.stdout);
+    assert.deepEqual([r.json.configured, r.json.scope, r.json.model], [true, 'machine', 'qwen-coder-64k']);
+    const saved = JSON.parse(fs.readFileSync(D.machineConfigPath(home), 'utf-8'));
+    assert.deepEqual(saved, { enabled: true, model: 'qwen-coder-64k', endpoint: ep(), allow_remote: false });
+    const s = await tools('delegate', 'status');
+    assert.deepEqual([s.json.ready, s.json.source, s.json.model], [true, 'machine', 'qwen-coder-64k']);
+  });
+
+  test('--scope project writes only the project, keeps its other settings, and --off switches the project off', async () => {
+    write('.planning/config.json', JSON.stringify({ model_profile: 'budget' }));
+    let r = await tools('delegate', 'setup', '--endpoint', ep(), '--scope', 'project', '--model', 'qwen3.6:35b-a3b-coding');
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.json.context_hint, /no configured context window/);
+    const cfg = JSON.parse(fs.readFileSync(path.join(dir, '.planning/config.json'), 'utf-8'));
+    assert.equal(cfg.model_profile, 'budget');
+    assert.deepEqual([cfg.local_executor.enabled, cfg.local_executor.model], [true, 'qwen3.6:35b-a3b-coding']);
+    assert.equal(fs.existsSync(D.machineConfigPath(home)), false);
+    r = await tools('delegate', 'setup', '--scope', 'project', '--off');
+    assert.equal(r.json.enabled, false);
+    const s = await tools('delegate', 'status');
+    assert.deepEqual([s.json.enabled, s.json.source], [false, 'project']);
+  });
+
+  test('a model the server does not serve, an unreachable server and an empty server are explained, exit 1', async () => {
+    let r = await tools('delegate', 'setup', '--endpoint', ep(), '--model', 'nope');
+    assert.equal(r.status, 1);
+    assert.equal(r.json.error, 'model_not_served');
+    assert.ok(r.json.served.includes('qwen-coder-64k'));
+    r = await tools('delegate', 'setup', '--endpoint', 'http://127.0.0.1:9/v1');
+    assert.equal(r.json.error, 'endpoint_unreachable');
+    assert.match(r.json.hint, /ollama serve/);
+    served = {};
+    r = await tools('delegate', 'setup', '--endpoint', ep());
+    assert.equal(r.json.error, 'no_models');
+    r = await tools('delegate', 'setup', '--scope', 'everywhere');
+    assert.equal(r.json.error, 'invalid_scope');
   });
 });
