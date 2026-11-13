@@ -822,7 +822,7 @@ function gitText(cwd, spec) {
  * For each added or modified file, the substantive lines it adds (a letter or digit;
  * not `}` or a blank) are compared with every
  * saved run that wrote that file, and the run that accounts for the most lines is
- * credited. `trailer` is the `PAN-Delegated` line to commit with, or null when no line
+ * credited; for `--ref`, only runs that finished before the commit was made. `trailer` is the `PAN-Delegated` line to commit with, or null when no line
  * came from the local model.
  */
 function attribute(cwd, opts = {}) {
@@ -840,7 +840,14 @@ function attribute(cwd, opts = {}) {
     names = r.stdout ? r.stdout.split('\n') : [];
   }
   const planningRel = toPosixRel(path.relative(root, planningPath(root))) || '.planning';
-  const runs = readRunRecords(root);
+  // A commit can only hold what was written before it: a later run that rewrote the
+  // same file (keeping the earlier lines) must not be credited with an older commit.
+  let cutoff = Infinity;
+  if (!staged) {
+    const t = execGit(root, ['show', '-s', '--format=%ct', ref]);
+    if (t.exitCode === 0 && /^\d+$/.test(t.stdout)) cutoff = (Number(t.stdout) + 1) * 1000;
+  }
+  const runs = readRunRecords(root).filter((r) => !(Date.parse(r.finished_at) > cutoff));
   const files = [];
   for (const name of names.filter(Boolean)) {
     if (name === planningRel || name.startsWith(planningRel + '/')) continue;

@@ -276,6 +276,12 @@ Offer: 1) Force proceed, 2) Abort
 
 Spawn pan-executor with plan reference, however small the task. Do not write the code in this session instead: the executor carries the task commit protocol and, when `/pan:local` is on, the hand-off of the coding to the local model, and writing it here skips both.
 
+Ask whether local offload is ready, and hand the answer to the executor in its prompt:
+
+```bash
+LOCAL_OFFLOAD=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs delegate status --raw)
+```
+
 ```
 Task(
   prompt="
@@ -295,6 +301,8 @@ Execute quick task ${next_num}.
 - Do NOT update roadmap.md (quick tasks are separate from planned phases)
 - This is not a phase: skip `init execute-phase` and the state updates (advance-plan, update-progress, record-metric, record-session, roadmap update-plan-progress, requirements mark-complete); Step 7 of this workflow records the task in state.md
 </constraints>
+
+<local_offload_status>${LOCAL_OFFLOAD}</local_offload_status>
 ",
   subagent_type="pan-executor",
   model="{executor_model}",
@@ -306,6 +314,7 @@ After executor returns:
 1. Verify summary exists at `${QUICK_DIR}/${next_num}-summary.md`
 2. Extract commit hash from executor output
 3. Report completion status
+4. When `LOCAL_OFFLOAD` was `ready`, read the summary's `Local offload:` line. If no task was handed to the local model and the line gives no reason (a never-delegate category, or the local model failing), tell the user the hand-off was skipped.
 
 **Known Claude Code bug (classifyHandoffIfNeeded):** If executor reports "failed" with error `classifyHandoffIfNeeded is not defined`, this is a Claude Code runtime bug — not a real failure. Check if summary file exists and git log shows commits. If so, treat as successful.
 

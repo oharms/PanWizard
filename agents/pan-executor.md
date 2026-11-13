@@ -234,13 +234,15 @@ Store the result for checkpoint handling below.
 </auto_mode_detection>
 
 <local_offload>
-A project can hand the typing to a model on its own hardware (`local_executor` in config.json). You stay the engineer of record: you write the spec, review the diff, run the verification and commit. Check once at executor start:
+A project can hand the typing to a model on its own hardware (`local_executor` in config.json). You stay the engineer of record: you write the spec, review the diff, run the verification and commit.
+
+Your prompt carries `<local_offload_status>`, which the orchestrator read from `delegate status` just before spawning you. `ready` means offload is on and its model answered: follow this section for every task it does not exclude. Anything else (`off`, or an empty tag) means implement every task yourself. Without the tag, check once at executor start:
 
 ```bash
 LOCAL=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs delegate status)
 ```
 
-If `ready` is not `true`, skip this section and implement every task yourself.
+and treat `ready: true` as `ready`. A small or easy task is not a reason to keep it: when offload is ready, the hand-off is the default.
 
 **Keep the task yourself** when it is a checkpoint, a TDD RED step, or touches authentication, payments, cryptography, secrets or a security fix. Everything else of `type="auto"` goes to the local model:
 
@@ -260,7 +262,7 @@ If `ready` is not `true`, skip this section and implement every task yourself.
 
 The trailer is measured, never written by hand: `delegate attribute` compares the staged lines with the runs PAN recorded in `.planning/delegations/` and counts the added lines that came verbatim from the local model. Never edit or invent the trailer, and never edit the files in `.planning/delegations/`.
 
-Stage only the files the task names; the spec file and the run records in `.planning/delegations/` go in the final metadata commit with summary.md. In summary.md, add a `Local offload:` line under the one-liner: tasks delegated, passed in the first round, taken back.
+Stage only the files the task names; the spec file and the run records in `.planning/delegations/` go in the final metadata commit with summary.md. In summary.md, add a `Local offload:` line under the one-liner: tasks delegated, passed in the first round, taken back, and for each task you kept while offload was ready, the category that kept it.
 </local_offload>
 
 <checkpoint_protocol>

@@ -597,6 +597,24 @@ describe('provenance: every run is recorded, and attribute measures who wrote a 
     assert.match(a.trailer, /^PAN-Delegated: qwen-test \(3\/5 added lines/);
   });
 
+  test('attribute --ref credits only runs that finished before the commit', async () => {
+    await runAdd();
+    git('add', 'src/add.js');
+    git('commit', '-q', '-m', 'task 1');
+    // A later run rewrites the file, keeping task 1's lines: it must not be credited with commit 1.
+    const dirRuns = path.join(dir, '.planning/delegations');
+    const later = fs.readdirSync(dirRuns).find((n) => n.endsWith('.json') && !n.endsWith('.transcript.jsonl'));
+    const rec = JSON.parse(fs.readFileSync(path.join(dirRuns, later), 'utf-8'));
+    rec.run_id = 'd-later';
+    rec.started_at = rec.finished_at = new Date(Date.now() + 3600e3).toISOString();
+    rec.files['src/add.js'].content = ADD;
+    fs.writeFileSync(path.join(dirRuns, 'd-later.json'), JSON.stringify(rec));
+    fs.rmSync(path.join(dirRuns, later));
+    const a = (await tools('delegate', 'attribute', '--ref', 'HEAD')).json;
+    assert.equal(a.runs_on_record, 0);
+    assert.equal(a.trailer, null);
+  });
+
   test('a commit with no recorded run gets no trailer, and the planning tree is never counted', async () => {
     write('src/add.js', ADD);
     write('.planning/notes.md', 'x\n');

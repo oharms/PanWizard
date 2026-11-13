@@ -2785,6 +2785,12 @@
    "baseline": false
   },
   {
+   "id": "pan-wizard-core/workflows/quick:aa213b1b",
+   "file": "pan-wizard-core/workflows/quick.md",
+   "text": "When `LOCAL_OFFLOAD` was `ready`, read the summary's `Local offload:` line. If no task was handed to the local model and the line gives no reason (a never-delegate category, or the local model failing), tell the user the hand-off was skipped.",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/quick:4387c189",
    "file": "pan-wizard-core/workflows/quick.md",
    "text": "Record the task through the engine. It creates the \"### Quick Tasks Completed\" table after \"### Blockers/Concerns\" when it is missing, numbers the row, and keeps an existing table's columns. Pass `description_cell` exactly as init returned it, never `$DESCRIPTION`: init escapes `|` and folds line breaks, and a raw `|` would split the row.",
