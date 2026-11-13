@@ -24,6 +24,11 @@
  *                       subagent's Write to those names in any directory ("Subagents
  *                       should return findings as text"; reproduced 2026-10-19, MI-127)
  *
+ * The user docs (README.md and docs/*.md, less the generated SKILLS-*.md) get the
+ * unknown-verb rule alone: a reader copies a `pan-tools` call from there as readily as
+ * an agent does from a prompt (market-ideas M66, MI-163). docs/specs/ and
+ * docs/decisions/ are dated records and stay out.
+ *
  *   node scripts/prompt-lint.cjs            # report the current tree, exit 1 on a finding
  */
 const fs = require('fs');
@@ -184,16 +189,30 @@ function shippedPrompts(root = ROOT) {
   return list;
 }
 
+/** The user docs checked for unknown verbs, repository-relative. */
+function docFiles(root = ROOT) {
+  const docs = fs.readdirSync(path.join(root, 'docs'))
+    .filter((f) => f.endsWith('.md') && !f.startsWith('SKILLS-')).sort().map((f) => `docs/${f}`);
+  return ['README.md', ...docs];
+}
+
+/** Unknown-verb findings in the user docs (the other rules are about prompts). */
+function lintDocs(root = ROOT) {
+  const ctx = { ...surface(root), dev: [] };
+  return docFiles(root).flatMap((rel) => lintText(rel, fs.readFileSync(path.join(root, rel), 'utf8'), ctx))
+    .filter((f) => f.rule === 'unknown-verb');
+}
+
 function lintTree(root = ROOT) {
   const ctx = { ...surface(root), dev: devSkills(root) };
   return shippedPrompts(root).flatMap((rel) => lintText(rel, fs.readFileSync(path.join(root, rel), 'utf8'), ctx));
 }
 
 if (require.main === module) {
-  const findings = lintTree();
+  const findings = [...lintTree(), ...lintDocs()];
   for (const f of findings) process.stdout.write(`${f.rule} ${f.file}:${f.line} — ${f.text}\n`);
   process.stdout.write(`${findings.length} finding(s)\n`);
   process.exitCode = findings.length ? 1 : 0;
 }
 
-module.exports = { lintText, lintTree, shippedPrompts, surface, devSkills, frontmatterTools };
+module.exports = { lintText, lintTree, lintDocs, docFiles, shippedPrompts, surface, devSkills, frontmatterTools };

@@ -97,3 +97,29 @@ describe('prompt lint — the shipped tree', () => {
     }
   });
 });
+
+describe('docs CLI truth (M66) — README.md and docs/*.md', () => {
+  test('reads README and the top-level docs, not the generated SKILLS files or dated records', () => {
+    const files = L.docFiles();
+    assert.ok(files.includes('README.md') && files.includes('docs/CLI-REFERENCE.md'));
+    assert.ok(!files.some((f) => /SKILLS-|docs\/(specs|decisions)\//.test(f)), files.join(', '));
+  });
+
+  test('every pan-tools call in the docs names a real verb and subcommand', () => {
+    assert.deepEqual(L.lintDocs().map((f) => `${f.file}:${f.line} — ${f.text}`), []);
+  });
+
+  test('only the verb rule applies to docs', () => {
+    const root = fs.mkdtempSync(path.join(require('os').tmpdir(), 'pan-doclint-'));
+    try {
+      fs.mkdirSync(path.join(root, 'docs'));
+      fs.mkdirSync(path.join(root, 'tests', 'fixtures'), { recursive: true });
+      fs.copyFileSync(path.join(ROOT, 'tests', 'fixtures', 'surface.json'), path.join(root, 'tests', 'fixtures', 'surface.json'));
+      fs.writeFileSync(path.join(root, 'README.md'), 'Run `pan-tools nosuchverb` then `pan-tools state load`.\n@lib/x.cjs\n');
+      fs.writeFileSync(path.join(root, 'docs', 'A.md'), 'node pan-tools.cjs init your-command\n');
+      fs.writeFileSync(path.join(root, 'docs', 'SKILLS-X.md'), '`pan-tools nosuchverb`\n');
+      const got = L.lintDocs(root).map((f) => `${f.rule} ${f.file}:${f.line}`);
+      assert.deepEqual(got, ['unknown-verb README.md:1', 'unknown-verb docs/A.md:1']);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+});

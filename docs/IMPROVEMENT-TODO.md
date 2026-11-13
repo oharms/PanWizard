@@ -26,6 +26,8 @@ This document turns the April 2026 project review into an actionable improvement
 
 > **November 2026 reality check (`2026-11-07`):** a delta run the same day. A packed five-runtime install and the MCP resources check clean, and the rate rows match their pricing pages. It found a macOS-only defect in the new installer dry run (CI on `main` red), an OpenCode 2 compaction hook that handed its block over in the wrong shape, dated price changes the rate table could not express, and stale statuses in the October queue. All are fixed in the next patch release; see §13 of [ECOSYSTEM-REVIEW-2026-08.md](ECOSYSTEM-REVIEW-2026-08.md) and the reality-check Addendum of [market-ideas-2026-11.md](specs/market-ideas-2026-11.md).
 
+> **GBrain read (`2026-11-13`):** a feature-level `/market-ideas` read of one adjacent project, a memory system for agents that ships Claude Code and Codex plugins. Its highest-leverage finding is that Codex lists an untrusted hook and skips it without a word, and PAN never checks whether its Codex hooks were trusted after the install notice. Two development checks came with it: proving a fix's test fails without the fix, and checking the `pan-tools` calls in the user docs. Per-turn rule and skill hooks were declined under the owner's routing-off decision. The queue is the `2026-11-13` addendum of [market-ideas-2026-11.md](specs/market-ideas-2026-11.md).
+
 Do not duplicate filesystem-derived counts here. `CLAUDE.md` remains the single source of truth for command, agent, module, workflow, test, hook, spec, and ADR counts.
 
 ## Goals

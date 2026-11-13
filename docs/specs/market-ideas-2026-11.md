@@ -105,3 +105,44 @@ The inherited list holds item by item, unchanged. Added: do not derive a test of
 - A live compaction on OpenCode 2 needs a model turn; R56 rests on OpenCode's plugin docs and a fixture of the documented shape.
 - The macOS fix is proven by a source-shape test and by reasoning about pipe semantics; CI on macOS after the push is the real gate.
 - No Antigravity CLI on this machine; its rows rest on its changelog.
+
+## Addendum — `2026-11-13` (GBrain read)
+
+A feature-level `/market-ideas` read of `garrytan/gbrain`, at the owner's request, on `main` @ `6bd42ee` (`3.43.1`). GBrain is a personal memory system for agents (Bun and TypeScript, PGLite or Postgres, an MCP server) that ships Claude Code and Codex plugins. It is adjacent to PAN, not a direct peer. Ledger rows MI-161 to MI-182; item ids continue from R63.
+
+### Findings
+
+- **Codex skips untrusted hooks silently.** Codex's own source (`codex-rs/hooks`, read `2026-11-13`) keys trust as `<hooks.json path>:<event>:<group>:<handler>` under `[hooks.state."…"]` in the user-level `config.toml`. A hook with no `trusted_hash` there is listed and not run. PAN prints a notice at install and never checks again (MI-161).
+- **A test that passes is not a test that catches.** GBrain requires each fix's test to fail with the source reverted (MI-162). PAN did this by hand this cycle.
+- **The user docs are outside prompt-lint's reach.** Two stale `pan-tools` references were found by running prompt-lint's own checker over `docs/` (MI-163).
+- **Convergence.** GBrain argues for PAN's thesis on evals: held-out gating, published negative results, a withdrawn score, claims graded by a live check with a control. It moves away on per-turn injection (MI-164, MI-165) and on closed or hosted components (MI-168), which the owner's routing-off decision of `2026-11-06` already answers.
+
+### Items
+
+| ID | Pri | Size | Pts | Title | Files | Gate / verify | Status |
+|---|---|---|---|---|---|---|---|
+| M64 | P1 | S | 2 | **Report untrusted Codex hooks** (MI-161): hygiene reads `.codex/hooks.json` and the user-level Codex `config.toml` (`CODEX_HOME`, else `~/.codex`), read-only, and warns when a PAN hook has no `trusted_hash` under its key. It never writes the trust entry | `pan-wizard-core/bin/lib/hygiene.cjs`, `commands/pan/hygiene.md`, `docs/CLI-REFERENCE.md`, `docs/TROUBLESHOOTING.md` | unit tests on a hooks.json built by the installer's own merge: no entries, all trusted, partly trusted, disabled, another project's key, foreign hooks, inline form, escaped Windows paths | **Built `2026-11-13`** (unreleased) |
+| M65 | P7 | M | 4 | **Test-discrimination check** (MI-162): `scripts/check-test-discriminates.cjs <test…> [--base <ref>] [--src <file>…]` runs the tests on the working tree (must pass), then in a throwaway worktree of the base with every changed file overlaid except the source under test (must fail). Never edits the checkout | `scripts/check-test-discriminates.cjs`, `tests/check-test-discriminates.test.cjs`, `CLAUDE.md` | its own tests on a scratch repository: a discriminating test, a test that passes either way, a test that fails on the working tree | **Built `2026-11-13`** (unreleased); its first run on PAN confirmed M64's tests fail with `hygiene.cjs` reverted |
+| M66 | P6 | S | 2 | **Docs CLI truth check** (MI-163): prompt-lint's verb and subcommand rules over `README.md` and `docs/*.md`, excluding the generated `docs/SKILLS-*.md`; fix the two stale references | `scripts/prompt-lint.cjs` or a test beside it, `docs/DEVELOPMENT.md`, `docs/MIGRATION-v2-to-v3.md` | a test that fails on the stale references and passes once they are fixed | **Built `2026-11-13`** (unreleased): `lintDocs` and `docFiles` in `scripts/prompt-lint.cjs`, checked by `tests/prompt-lint.test.cjs`; both references fixed |
+
+### Session queue
+
+| Session | Items | Pts | Why this order |
+|---|---|---|---|
+| 1 | M64, M65, M66 | 8 | The Codex check first (PAN's hooks not running is a correctness gap a user cannot see), then the two development checks |
+
+### What not to do — re-affirmed `2026-11-13`
+
+The inherited list holds. Added: do not write `trusted_hash` into a user's Codex `config.toml`; that approves code on the user's behalf (MI-161). Do not add a per-turn rule or skill hook while routing is off by owner decision (MI-164, MI-165).
+
+### Sources read
+
+- `garrytan/gbrain` at `master`, `VERSION` `0.60.704.0`, read `2026-11-12` with `gh api repos/garrytan/gbrain/contents/<path>`. Files: `docs/guides/setup.md`, `docs/memorable-agents.md`, `docs/guides/memory-trust.md`, `docs/guides/memory-boundaries.md`, `docs/contradictions.md`, `docs/operations/spend-controls.md`, `docs/TESTING.md`, `docs/RELEASING.md`, `docs/guides/skill-resolver.md`, `docs/guides/skillopt.md`, `docs/guides/checkpoint-compaction.md`, `src/core/agent-install/setup.ts`, `src/mcp/surface.ts`, `CHANGELOG.md` (window entries only).
+- Releases API, `per_page=100`: `v0.60.318.0` (`2026-10-20`) to `v0.60.704.0` (`2026-11-12`).
+- `openai/codex` at the default branch, read `2026-11-13`: `codex-rs/hooks/src/lib.rs`, `codex-rs/hooks/src/engine/discovery.rs`, `codex-rs/hooks/src/config_rules.rs`, `codex-rs/config/src/hook_config.rs`.
+
+### Verification caveats
+
+- Every GBrain figure in the ledger rows is GBrain's own measurement; none was reproduced.
+- GBrain's per-turn claim ("agents use the brain when the rule reaches them on every turn") has no published figures that were found.
+- M64 sees whether a trust entry exists, not whether its hash still matches: Codex's hash is a digest of its own TOML serialisation, which PAN does not reproduce. A trusted hook that PAN later changes shows as Modified in Codex's `/hooks` and is not reported here.

@@ -64,7 +64,7 @@ The following are auto-created on first use. **None of them conflict with existi
 |------|-----------|---------|
 | `.planning/metrics/` | cost hook + `/pan:cost append` | Token usage log (`tokens.jsonl`) |
 | `.planning/bus/` | `pan-tools bus publish` + agent audit trails | Message channels (one file per channel) |
-| `.planning/bridge/` | `pan-tools bridge cache --servers` (retired with `/pan:mcp-bridge`; nothing reads or writes it now) | MCP tool discovery cache |
+| `.planning/bridge/` | the retired `/pan:mcp-bridge` (its `bridge` verb is gone too; nothing reads or writes the directory now) | MCP tool discovery cache |
 | `.planning/counterfactuals/` | `/pan:what-if` | Counterfactual comparison reports |
 | `.planning/conversations/` | `/pan:knowledge discuss` | Multi-turn session state per phase |
 | `.planning/memory/` | `/pan:retro --write-memory` (v2.10+), `pan-tools memory append` / `record`, `memory optimize` (its quarantine and state archive) | Agent memory store (also a v2.10 addition); no workflow loads it into agents |

@@ -3782,7 +3782,7 @@ The aggregator and renderer are pure, zero-dependency, runtime-agnostic CommonJS
 
 ---
 
-### /pan:hygiene (83 lines)
+### /pan:hygiene (84 lines)
 
 ````markdown
 ---
@@ -3805,6 +3805,7 @@ Keep a PAN-managed project aligned with the latest PAN version and free of accum
 - a planning tree another tool writes into too (`shared-planning-tree`) or owns (`foreign-planning-tree`);
 - Claude Code's own memory index past or near its load limit, or holding content where a one-line pointer belongs (`host-memory`). PAN only reports this one: it never writes the host's memory.
 - Claude Code memory notes that describe doing PAN's work another way, such as editing `.planning/` by hand or skipping the plan (`host-memory-routing`). Reported by file and rule, not by text; PAN never edits them.
+- PAN hooks in `.codex/hooks.json` that Codex has not been told to trust (`codex-hook-trust`). Codex skips an untrusted hook silently; the user trusts them with `/hooks` in Codex, and PAN leaves Codex's `config.toml` alone.
 </objective>
 
 <process>
@@ -4798,7 +4799,7 @@ Preserve all workflow gates (validation, approvals, commits, routing).
 
 ---
 
-### /pan:patches (115 lines)
+### /pan:patches (117 lines)
 
 ````markdown
 ---
@@ -4855,6 +4856,8 @@ Exit.
 | 1 | {file_path} | Pending |
 | 2 | {file_path} | Pending |
 ```
+
+**If `backup-meta.json` has `stale: true`:** the backup was made by an earlier update, not the last one, and its copies are of v{from_version}. Say so above the table. Do not merge any file wholesale: for each one, show the user the diff between the backup and the installed file and ask whether to apply their change, since the rest of the backup's difference is PAN's own code from that old version.
 
 ## Step 3: Merge each file
 

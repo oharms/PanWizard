@@ -645,6 +645,7 @@
     "LEGACY_UPPERCASE_FILES:object",
     "RUNTIME_DIRS:object",
     "checkCachedContext:function",
+    "checkCodexHookTrust:function",
     "checkCostLedger:function",
     "checkDurableState:function",
     "checkHostMemory:function",
@@ -659,6 +660,7 @@
     "cleanHygiene:function",
     "cmdHygieneClean:function",
     "cmdHygieneScan:function",
+    "codexHookStates:function",
     "compareVersions:function",
     "hostMemoryDir:function",
     "scanHygiene:function"

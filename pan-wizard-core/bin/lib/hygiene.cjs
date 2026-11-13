@@ -394,6 +394,141 @@ function checkHostMemoryRouting(cwd, opts = {}) {
   return { findings };
 }
 
+// H-16: Codex runs a user hook only when its USER-level config.toml carries
+// `[hooks.state."<hooks.json path>:<event>:<group>:<handler>"]` with a `trusted_hash`;
+// without one Codex lists the hook and skips it, silently (codex-rs/hooks: `hook_key`,
+// `hook_trust_status`, and `hook_states_from_stack`, which reads trust from the user
+// layer and session flags only, read 2026-11-13). The installer prints a notice; this
+// says afterwards whether it was acted on. Read-only: writing a trust entry would
+// approve code on the user's behalf (MI-161).
+const CODEX_PAN_HOOK_RE = /pan-(check-update|guard|context-monitor|cost-logger|trace-logger|stop-guard|state-reinject)/;
+
+/** `SessionStart` → `session_start`, Codex's `hook_event_key_label`. */
+function codexEventLabel(event) {
+  return String(event).replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+}
+
+/** Undo the escapes a TOML basic string can carry in a key (`\\`, `\"`, `\uXXXX`). */
+function tomlBasicUnescape(s) {
+  return s.replace(/\\(u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|.)/g, (_, e) => {
+    if (e[0] === 'u' || e[0] === 'U') return String.fromCodePoint(parseInt(e.slice(1), 16));
+    return { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f' }[e] || e;
+  });
+}
+
+/**
+ * The hook-state keys in a Codex config.toml that carry a `trusted_hash`, and those a
+ * user disabled. Only what this check needs: the `[hooks.state."<key>"]` table form
+ * Codex writes, plus the dotted and inline forms a person might type. Not a TOML parser.
+ * @returns {{trusted: Set<string>, disabled: Set<string>}}
+ */
+function codexHookStates(text) {
+  const trusted = new Set();
+  const disabled = new Set();
+  const KEY = String.raw`("(?:[^"\\]|\\.)*"|'[^']*')`;
+  const decode = (k) => (k[0] === '"' ? tomlBasicUnescape(k.slice(1, -1)) : k.slice(1, -1));
+  const note = (key, body) => {
+    if (/(^|[\s,{])trusted_hash\s*=\s*["']/.test(body)) trusted.add(key);
+    if (/(^|[\s,{])enabled\s*=\s*false\b/.test(body)) disabled.add(key);
+  };
+  const stateHeader = new RegExp(String.raw`^\[\s*hooks\s*\.\s*state\s*\.\s*${KEY}\s*\]\s*(#.*)?$`);
+  const dotted = new RegExp(String.raw`^(?:hooks\s*\.\s*)?state\s*\.\s*${KEY}\s*(.*)$`);
+  let table = '';      // the current [table] header, normalised
+  let stateKey = null; // the key when inside [hooks.state."<key>"]
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    if (line.startsWith('[')) {
+      const m = line.match(stateHeader);
+      stateKey = m ? decode(m[1]) : null;
+      table = line.replace(/\s+/g, '');
+      continue;
+    }
+    if (stateKey !== null) { note(stateKey, line); continue; }
+    // `"<key>" = { … }` under [hooks.state].
+    if (table === '[hooks.state]') {
+      const k = line.match(new RegExp(String.raw`^${KEY}\s*(.*)$`));
+      if (k) note(decode(k[1]), k[2]);
+      continue;
+    }
+    // `state."<key>".trusted_hash = …` or `state."<key>" = { … }` under [hooks], and the
+    // same with a `hooks.` prefix at the top level.
+    const m = line.match(dotted);
+    if (m && (table === '[hooks]' || (table === '' && /^hooks\s*\./.test(line)))) {
+      note(decode(m[1]), m[2].replace(/^\s*\.\s*/, ' '));
+    }
+  }
+  return { trusted, disabled };
+}
+
+/** Compare two paths the way the same file would be named twice (realpath, Windows case). */
+function samePath(a, b) {
+  const norm = (p) => {
+    let r = path.resolve(String(p).replace(/^\\\\\?\\/, ''));
+    try { r = fs.realpathSync.native(r); } catch { /* keep the resolved form */ }
+    return process.platform === 'win32' ? r.toLowerCase() : r;
+  };
+  return norm(a) === norm(b);
+}
+
+/**
+ * H-16: PAN hooks in this project's `.codex/hooks.json` that Codex has not been told to
+ * trust. Read-only; never fixable by PAN.
+ * @param {string} cwd
+ * @param {{homeDir?: string, codexHome?: string}} [opts] - a given homeDir (a test seam) ignores CODEX_HOME
+ */
+function checkCodexHookTrust(cwd, opts = {}) {
+  const findings = [];
+  const hooksPath = path.join(cwd, '.codex', 'hooks.json');
+  const raw = safeReadFile(hooksPath);
+  if (raw == null) return { findings };
+  let cfg = null;
+  try { cfg = JSON.parse(raw); } catch { return { findings }; }
+  const events = cfg && cfg.hooks && typeof cfg.hooks === 'object' ? cfg.hooks : {};
+  const pan = [];
+  for (const [event, groups] of Object.entries(events)) {
+    if (!Array.isArray(groups)) continue;
+    groups.forEach((group, gi) => {
+      if (!group || !Array.isArray(group.hooks)) return;
+      group.hooks.forEach((h, hi) => {
+        const m = h && typeof h.command === 'string' && h.command.match(CODEX_PAN_HOOK_RE);
+        if (m) pan.push({ event, label: codexEventLabel(event), gi, hi, name: `pan-${m[1]}` });
+      });
+    });
+  }
+  if (!pan.length) return { findings };
+
+  const home = opts.homeDir || require('os').homedir();
+  const codexHome = opts.codexHome || (opts.homeDir ? '' : (process.env.CODEX_HOME || ''));
+  const configPath = path.join(codexHome || path.join(home, '.codex'), 'config.toml');
+  const display = codexHome ? toPosix(configPath) : '~/.codex/config.toml';
+  const states = codexHookStates(safeReadFile(configPath));
+  // Codex keys the state by the hooks.json path as it displays it; match on the path
+  // part so a different spelling of the same file still counts.
+  const byHandler = (set) => {
+    const hits = new Set();
+    for (const key of set) {
+      const m = key.match(/^(.*):([a-z_]+):(\d+):(\d+)$/);
+      if (m && samePath(m[1], hooksPath)) hits.add(`${m[2]}:${m[3]}:${m[4]}`);
+    }
+    return hits;
+  };
+  const trusted = byHandler(states.trusted);
+  const disabled = byHandler(states.disabled);
+  const untrusted = pan.filter((p) => {
+    const id = `${p.label}:${p.gi}:${p.hi}`;
+    return !trusted.has(id) && !disabled.has(id);
+  });
+  if (untrusted.length) {
+    const names = [...new Set(untrusted.map((p) => p.name))].join(', ');
+    findings.push(mkFinding('codex-hook-trust', 'warn', path.join('.codex', 'hooks.json'),
+      `${untrusted.length} of ${pan.length} PAN hook${pan.length === 1 ? '' : 's'} in .codex/hooks.json ha${untrusted.length === 1 ? 's' : 've'} no trust entry in ${display} (${names}), `
+      + 'so Codex lists them and does not run them. Open Codex in this project, run /hooks and trust the pan-* hooks (PAN does not write that file)',
+      null));
+  }
+  return { findings, codex_hooks: { config: display, pan_hooks: pan.length, untrusted: untrusted.length } };
+}
+
 /** A quick task (a focus cycle included) whose plan has no summary after this long. */
 const OPEN_TASK_STALE_MS = 24 * 3600000;
 
@@ -858,7 +993,8 @@ function scanHygiene(cwd, opts) {
   const roots = planningRoots(cwd, { allTracks: !!opts?.allTracks });
 
   const hostRouting = checkHostMemoryRouting(cwd, { homeDir: opts?.homeDir });
-  const findings = [...version.findings, ...host.findings, ...hostRouting.findings];
+  const codexTrust = checkCodexHookTrust(cwd, { homeDir: opts?.homeDir });
+  const findings = [...version.findings, ...host.findings, ...hostRouting.findings, ...codexTrust.findings];
   const scanned = [];
   let planningExists = false;
 
@@ -1136,6 +1272,8 @@ module.exports = {
   checkHostMemory,
   checkHostMemoryRouting,
   HOST_MEMORY_ROUTING_RULES,
+  checkCodexHookTrust,
+  codexHookStates,
   hostMemoryDir,
   checkCostLedger,
   checkStaleTraces,

@@ -487,7 +487,7 @@ Scan the project for PAN version drift and stale artifacts (legacy filenames, me
 
 **Tools:** Read, Bash, AskUserQuestion  
 **Group:** System  
-**Lines:** 83
+**Lines:** 84
 
 #### /pan:patches
 
@@ -499,7 +499,7 @@ Reapply local modifications after a PAN update
 
 **Tools:** Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion  
 **Group:** System  
-**Lines:** 115
+**Lines:** 117
 
 #### /pan:settings
 

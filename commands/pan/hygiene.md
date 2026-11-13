@@ -18,6 +18,7 @@ Keep a PAN-managed project aligned with the latest PAN version and free of accum
 - a planning tree another tool writes into too (`shared-planning-tree`) or owns (`foreign-planning-tree`);
 - Claude Code's own memory index past or near its load limit, or holding content where a one-line pointer belongs (`host-memory`). PAN only reports this one: it never writes the host's memory.
 - Claude Code memory notes that describe doing PAN's work another way, such as editing `.planning/` by hand or skipping the plan (`host-memory-routing`). Reported by file and rule, not by text; PAN never edits them.
+- PAN hooks in `.codex/hooks.json` that Codex has not been told to trust (`codex-hook-trust`). Codex skips an untrusted hook silently; the user trusts them with `/hooks` in Codex, and PAN leaves Codex's `config.toml` alone.
 </objective>
 
 <process>
