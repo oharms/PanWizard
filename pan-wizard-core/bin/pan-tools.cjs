@@ -45,6 +45,8 @@
  *   journal step --plan P --step S --event E [--commit SHA | --file F]  Record one step of a plan
  *   journal show --plan P              A plan's journal
  *   journal resume-point --plan P      The first task the journal cannot prove done
+ *   delegate status                    Is local executor offload on, and is its model served
+ *   delegate run --spec F --allow a,b [--verify CMD]  One task's implementation by the local model
  *   pause open --kind K --question Q [--run R --step S] [--options a,b]  Open a typed pause
  *   pause answer <id> --value V [--note N] | --json J  Answer it, checked against what it expects
  *   pause list [--open] · pause cancel <id> --reason R
@@ -439,7 +441,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, feedback, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, design, size, autodev, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, websearch, focus, journal, pause, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, delegate, research, usage, feedback, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, design, size, autodev, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, websearch, focus, journal, pause, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -1524,6 +1526,16 @@ async function main() {
       } else {
         error('Unknown merge subcommand. Available: request, confirm');
       }
+      break;
+    }
+
+    case 'delegate': {
+      // ADR-0053: hand one plan task's implementation to a model on the user's own
+      // hardware; the executor reviews, verifies and commits.
+      if (!['status', 'run'].includes(args[1])) error('Unknown delegate subcommand. Available: status, run');
+      await require('./lib/delegate.cjs').cmdDelegate(cwd, args[1], {
+        spec: getArgValue(args, '--spec'), allow: getArgValue(args, '--allow'), verify: getArgValue(args, '--verify'),
+      }, raw, { output });
       break;
     }
 

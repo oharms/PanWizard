@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Local executor offload** (ADR-0053). The executor can hand each task's implementation to a model on your own hardware, such as Qwen served by Ollama, LM Studio, vLLM or a LiteLLM gateway, and then review the diff, run the verification itself and commit. Turn it on with the new `local_executor` section of config.json (off by default). The new `pan-tools delegate status` and `delegate run` verbs carry it. The local model gets five tools and no shell: it reads inside the project, writes only the files the executor names for that task, and runs only the task's verification command. Endpoints off this machine are refused unless `allow_remote` is set. After `max_rounds` failed rounds the executor takes the task back, and tasks touching authentication, payments, cryptography, secrets or security fixes are never handed off.
+
 ## [3.44.0] - 2026-11-13
 
 A Codex hook check, two development checks from the GBrain read, and fixes from the market scan and reality check of `2026-11-13`.

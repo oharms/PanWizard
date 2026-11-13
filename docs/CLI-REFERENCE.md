@@ -228,6 +228,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `journal.cjs` | `journal step`, `journal show`, `journal resume-point`: the step journal beside each plan, and the resume point `open_work` reports. |
 | `pause.cjs` | `pause open`, `pause answer`, `pause list`, `pause cancel`: typed pauses for a person's answer, and the `answer_pause` step next-action puts first. |
 | `pause-schema.cjs` | The `expects` language of a pause and its answer validator. No verbs of its own. |
+| `delegate.cjs` | `delegate status`, `delegate run`: local executor offload (ADR-0053), one task's implementation by a model on the user's own hardware through an OpenAI-compatible API, confined to the files the executor names. |
 | `utils.cjs` | Planning-root path builders (`planningPath()`, `planningRel()`, `phasesPath()`, `milestonesPath()`), `fileAccessible()`/`readJsonFile()`, plan/summary file filters and `classifyPhaseStatus()`, shared by the other modules. No CLI surface. (`toPosix()` and `safeReadFile()` live in `core.cjs`.) |
 | `planning-root.cjs` | Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance. Leaf module — requires only `fs`/`path`. `utils.planningPath()` / `utils.planningRel()` are the only path constructors built on it. No CLI surface. |
 | `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that another tool writes to, from markers PAN never writes. **gsd-core owns its tree:** its markers are `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys. `hygiene scan`/`clean` raises one `foreign-planning-tree` warning and refuses the rename fix, `validate health` reports `E006` and stops before `E002`–`E005`, and `init new-project` refuses with an error payload; the remedy is `--planning-dir <dir>`. **planning-with-files shares the tree:** its markers are `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories (`sessions/`, dated task directories without the plan file). PAN keeps working: `hygiene` raises a `shared-planning-tree` info finding, `validate health` reports `I004`, and `init new-project` returns `shared_planning_tree`. No CLI surface of its own. |
@@ -539,6 +540,8 @@ Quick reference of every CLI command and subcommand, with its category and the m
 | 267 | `pause cancel` | Durable orchestration | pause.cjs |
 | 268 | `requirements reopen` | Requirements | milestone.cjs |
 | 269 | `verify refresh` | Verification | verify-scope.cjs |
+| 270 | `delegate status` | Local executor offload | delegate.cjs |
+| 271 | `delegate run` | Local executor offload | delegate.cjs |
 
 ---
 
@@ -2278,6 +2281,20 @@ pan-tools design handoff <spec> --as phase|focus [--raw]
 **JSON output:** `{ as, spec, title, phase_number?, directory?, command, note? }` (`note` only with `--as focus`). **Refusals (exit 1):** `invalid_as`, `spec_required`, `spec_not_found`, `spec_outside_project`, `no_roadmap` (start with `/pan:new-project`, or hand the design to focus), `already_handed_off` (the roadmap already names this spec), and `phase add`'s own refusals (`roadmap_not_found`, `mkdir_failed`, `write_failed`). Any other `design` subcommand exits 1 with `Error: Unknown design subcommand. Available: paths, handoff` on stderr. **`--raw`:** the command.
 
 **Module:** `design-handoff.cjs`
+
+---
+
+### `delegate status` · `delegate run`
+
+Local executor offload (ADR-0053): the executor hands one task's implementation to a model served on the user's own hardware and reviews, verifies and commits the result itself. Configured by the `local_executor` section of config.json (see the User Guide).
+
+```bash
+pan-tools delegate status
+pan-tools delegate run --spec <file> --allow <file>[,<file>|<dir>/...] [--verify "<command>"]
+```
+
+- **`status`:** `{enabled, endpoint, model, allow_remote, max_rounds, ready, reachable?, model_available?, reason?}`. Off, misconfigured or unreachable is an answer, not a failure: `ready: false` with a `reason`, exit 0 (`--raw`: `ready` or `off`). It asks the endpoint's `/models` (5 s limit) whether the model is served.
+- **`run`:** runs the local model's tool loop on the spec file. The model may list and read files inside the project (not `.git/`, not a file matching `commit.sensitive_patterns`), write only the `--allow` entries (a trailing `/` allows a directory; the project root, `.git/` and the planning tree may not be named), run the `--verify` command and finish. Every path is resolved through symlinks and must stay inside the project. After the loop the verify command is run once more and that result is the one reported. Output: `{status, model, endpoint, report, stop_reason, files_changed, refused_writes, verify: {command, passed, exit_code, timed_out, output_tail} | null, turns, tool_calls, malformed_calls, usage: {prompt_tokens, completion_tokens}, elapsed_s, max_rounds}` (`--raw`: the status). `status` is `done` (finished and the verify passed, or no verify), `failed_verify` (claimed done, verify failed), `blocked` (the model reported it cannot be done as specified) or `incomplete` (`stop_reason`: `turn_limit`, `no_tool_call`, `timeout`, `endpoint_error`, `empty_response`); all of these exit 0. It never stages or commits. **Refusals (exit 1):** `local_executor_disabled`, `endpoint_invalid`, `endpoint_not_local` (a non-loopback endpoint without `allow_remote`), `model_not_set`, `fetch_unavailable` (Node below 18), `spec_required`, `allow_required`, `spec_empty`, `invalid_arguments` (a path outside the project, or a forbidden `--allow` entry), and `endpoint_unreachable` / `endpoint_http_error` / `timeout` when the first request fails.
 
 ---
 

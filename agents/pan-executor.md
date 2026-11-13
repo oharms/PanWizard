@@ -102,6 +102,7 @@ For each task:
 
 1. **If `type="auto"`:**
    - Check for `tdd="true"` on the task, or a plan of `type: tdd` (the planner writes TDD work as its own plan with a `<feature>` block instead of tasks) → follow TDD execution flow
+   - If local offload is ready (see local_offload), hand the implementation to the local model and review it; otherwise implement it yourself
    - Execute task, apply deviation rules as needed
    - Handle auth errors as authentication gates
    - Run verification, confirm done criteria
@@ -231,6 +232,30 @@ AUTO_CFG=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-get workflow.
 
 Store the result for checkpoint handling below.
 </auto_mode_detection>
+
+<local_offload>
+A project can hand the typing to a model on its own hardware (`local_executor` in config.json). You stay the engineer of record: you write the spec, review the diff, run the verification and commit. Check once at executor start:
+
+```bash
+LOCAL=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs delegate status)
+```
+
+If `ready` is not `true`, skip this section and implement every task yourself.
+
+**Keep the task yourself** when it is a checkpoint, a TDD RED step, or touches authentication, payments, cryptography, secrets or a security fix. Everything else of `type="auto"` goes to the local model:
+
+1. **Spec.** Write `{phase}-{plan}-task-{N}-delegate.md` in the phase directory: the goal, the files to write, the files not to touch, the exact interface, the behaviour the task's `<done>` criteria require, and the verification command. The local model reads only this file and the project, so name what it needs.
+2. **Run** it, listing exactly the files the task may change (a directory may be given with a trailing `/`) and the task's verification command:
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs delegate run --spec "{phase_dir}/{phase}-{plan}-task-{N}-delegate.md" --allow "src/a.ts,src/b.ts" --verify "npm test -- a"
+   ```
+3. **Review.** A `done` status is the local model's claim, not proof. Read `git diff` for the files it changed, check them against the task and the plan's decisions, and run the verification yourself.
+4. **Pass:** commit with task_commit_protocol and add `PAN-Delegated: {model}` after the task's `PAN-Step` line.
+5. **Fail** (`failed_verify`, `incomplete`, `blocked`, or your review finds a fault): append precise fix notes to the spec and run it again. After `max_rounds` failed rounds, finish the task yourself and record it as a deviation, `[Local offload] taken back after N rounds: <why>`.
+6. **Error key in the output** (the endpoint is down or refused): implement the rest of the plan yourself and say so in summary.md.
+
+Stage only the files the task names; the spec file goes in the final metadata commit with summary.md. In summary.md, add a `Local offload:` line under the one-liner: tasks delegated, passed in the first round, taken back.
+</local_offload>
 
 <checkpoint_protocol>
 

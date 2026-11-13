@@ -427,6 +427,22 @@
     "reproCheck:function",
     "similarCases:function"
   ],
+  "delegate.cjs": [
+    "LOCAL_EXECUTOR_DEFAULTS:object",
+    "TOOL_DEFS:object",
+    "cmdDelegate:function",
+    "confine:function",
+    "endpointProblem:function",
+    "executeTool:function",
+    "isLoopbackHost:function",
+    "isSensitive:function",
+    "parseAllow:function",
+    "probeEndpoint:function",
+    "readLocalConfig:function",
+    "runLocalTask:function",
+    "runVerify:function",
+    "writeAllowed:function"
+  ],
   "design-handoff.cjs": [
     "cmdDesign:function",
     "designHandoff:function",
