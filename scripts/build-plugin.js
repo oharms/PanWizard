@@ -4,6 +4,8 @@
  * dist/pan-wizard-plugin/ following the verified plugin layout:
  *
  *   .claude-plugin/plugin.json    manifest (metadata; components auto-discover)
+ *   .claude-plugin/icon.png       listing icon (assets/pan-avatar.png, 1024 px square)
+ *   README.md                     the package README
  *   commands/pan/*.md             command markdown (Claude flavor)
  *   agents/pan-*.md               agent definitions
  *   hooks/hooks.json              PAN hooks with ${CLAUDE_PLUGIN_ROOT} paths
@@ -109,6 +111,11 @@ function main() {
     path.join(OUT, '.claude-plugin', 'plugin.json'),
     JSON.stringify(manifest, null, 2) + '\n'
   );
+  // The plugin directory refuses a plugin without a README and warns without a
+  // square icon (claude plugin validate, Claude Code 2.1.323). The npm package
+  // carries both, so a build from the package works as one from a checkout.
+  fs.copyFileSync(path.join(ROOT, 'README.md'), path.join(OUT, 'README.md'));
+  fs.copyFileSync(path.join(ROOT, 'assets', 'pan-avatar.png'), path.join(OUT, '.claude-plugin', 'icon.png'));
 
   // 2. Commands (Claude flavor, plugin-root-relative paths)
   copyTree(path.join(ROOT, 'commands', 'pan'), path.join(OUT, 'commands', 'pan'), rewriteContent);
