@@ -203,7 +203,20 @@ function buildStatuslineOutput(data, deps) {
     const color = worst >= 90 ? '[31m' : worst >= 70 ? '[33m' : '[32m';
     limitBadge = ` ${color}${shown.map(([k, v]) => `${k} ${Math.round(v)}%`).join(' · ')}[0m`;
   }
-  return `${head}${taskSegment}${dirSegment}${ctx}${cacheBadge}${thinkingBadge}${limitBadge}`;
+  // Local executor offload (ADR-0053): show the local coding model when offload is on —
+  // the project's `local_executor` section wins over this computer's
+  // ~/.pan-wizard/local-executor.json, as in delegate.cjs. Two small file reads, no
+  // network: whether the model answers is `/pan:local status`'s job.
+  let localBadge = '';
+  const readObj = (p) => { try { const v = JSON.parse(fsMod.readFileSync(p, 'utf8')); return v && typeof v === 'object' ? v : null; } catch { return null; } };
+  const machineLocal = readObj(pathMod.join(homeDir, '.pan-wizard', 'local-executor.json')) || {};
+  const projectLocal = (readObj(pathMod.join(dir, '.planning', 'config.json')) || {}).local_executor || {};
+  const local = { ...machineLocal, ...projectLocal };
+  if (local.enabled === true && typeof local.model === 'string' && local.model.trim()) {
+    const name = local.model.trim();
+    localBadge = ` \x1b[36m⌂ ${name.length > 24 ? name.slice(0, 23) + '…' : name}\x1b[0m`;
+  }
+  return `${head}${taskSegment}${dirSegment}${ctx}${cacheBadge}${thinkingBadge}${localBadge}${limitBadge}`;
 }
 
 // ─── Stdin driver ───────────────────────────────────────────────────────────

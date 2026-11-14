@@ -132,6 +132,10 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
         upgrade_min: 6,
       },
     },
+    // ADR-0053: the executor hands each task's implementation to a model on the user's
+    // own hardware (Ollama, LM Studio, vLLM, a LiteLLM gateway) and reviews, verifies and
+    // commits the result. Off until a project opts in; see delegate.cjs.
+    local_executor: { ...require('./delegate.cjs').LOCAL_EXECUTOR_DEFAULTS },
   };
   return {
     ...hardcoded,
@@ -143,6 +147,7 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
     execution: { ...hardcoded.execution, ...(userDefaults.execution || {}) },
     routing: { ...hardcoded.routing, ...(userDefaults.routing || {}) },
     instructions: { ...hardcoded.instructions, ...(userDefaults.instructions || {}) },
+    local_executor: { ...hardcoded.local_executor, ...(userDefaults.local_executor || {}) },
   };
 }
 

@@ -318,6 +318,7 @@ Every shipped command, by group. This list is generated from each command's own 
 | `/pan:health` | Diagnose planning directory health and optionally repair issues |
 | `/pan:help` | Show available PAN commands and usage guide |
 | `/pan:hygiene` | Scan the project for PAN version drift and stale artifacts (legacy filenames, memory bloat and stale entries, poisoned ledgers, trace debris, oversized planning files) and apply safe cleanups |
+| `/pan:local` | Use a coding model on your own computer for PAN's code-writing (Ollama, LM Studio) |
 | `/pan:patches` | Reapply local modifications after a PAN update |
 | `/pan:settings` | Configure PAN workflow toggles and model profile |
 | `/pan:todo-add` | Capture idea or task as todo from current conversation context |

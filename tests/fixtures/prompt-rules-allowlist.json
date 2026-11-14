@@ -322,5 +322,29 @@
   {
     "id": "pan-wizard-core/references/model-profiles:15a2d682",
     "reason": "Profile rebalance (2026-11-13): reference prose describing which agents inherit the session model under each profile; the normative word is the descriptive \"PAN never selects your host model\". What it describes is enforced in code by MODEL_PROFILES and resolveModelDetailed in core.cjs (reasoning resolves to inherit), pinned by tests/core.test.cjs; no harness scenario needs to claim a reference paragraph."
+  },
+  {
+    "id": "commands/pan/local:ba1793b0",
+    "reason": "ADR-0053 /pan:local presentation rule (plain words, no raw JSON). Advisory: what the command shows is the engine output of delegate setup and delegate status, whose fields are pinned by tests/delegate.test.cjs; no harness scenario runs /pan:local yet (see command:local in liveness-allowlist.json)."
+  },
+  {
+    "id": "commands/pan/local:6f242703",
+    "reason": "ADR-0053: describes behaviour enforced elsewhere, not by this prompt: the executor review, take-back after max_rounds and never-delegate list live in agents/pan-executor.md local_offload, and the confinement in delegate.cjs (tests/delegate.test.cjs guard-rail tests)."
+  },
+  {
+    "id": "pan-wizard-core/workflows/exec-phase:1db5f91a",
+    "reason": "ADR-0053: found by a live proof run (/pan:quick on a small, well-specified task), where the orchestrator wrote the code itself and the local-offload hand-off, which lives in pan-executor, never ran. No tier-0 harness scenario observes whether an executor was spawned; the live proof run checks the PAN-Delegated trailer the executor writes."
+  },
+  {
+    "id": "pan-wizard-core/workflows/quick:f1ec2766",
+    "reason": "ADR-0053: found by a live proof run (/pan:quick on a small, well-specified task), where the orchestrator wrote the code itself and the local-offload hand-off, which lives in pan-executor, never ran. No tier-0 harness scenario observes whether an executor was spawned; the live proof run checks the PAN-Delegated trailer the executor writes."
+  },
+  {
+    "id": "agents/pan-executor:f1cb57c8",
+    "reason": "ADR-0053 point 9: the trailer comes from delegate attribute (delegate.cjs attribute()), whose line matching, run records and printed trailer are pinned by tests/delegate.test.cjs provenance tests. The live proof harness (pantesting/proof) checks each committed trailer against the attribution it recomputes from a recording proxy's wire log; no tier-0 harness scenario runs the executor."
+  },
+  {
+    "id": "pan-wizard-core/workflows/quick:aa213b1b",
+    "reason": "ADR-0053: found by the provenance proof run (2026-11-13), where an executor on the mid tier skipped the local-offload check and the wire log showed no request to the local model. The orchestrator now passes delegate status into the executor prompt and reads the summary's Local offload line afterwards. No tier-0 harness scenario spawns an executor; the live proof harness (pantesting/proof) checks the hand-off from a recording proxy's wire log."
   }
 ]

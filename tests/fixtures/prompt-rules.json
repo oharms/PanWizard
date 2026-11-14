@@ -427,6 +427,12 @@
    "baseline": true
   },
   {
+   "id": "agents/pan-executor:f1cb57c8",
+   "file": "agents/pan-executor.md",
+   "text": "The trailer is measured, never written by hand: `delegate attribute` compares the staged lines with the runs PAN recorded in `.planning/delegations/` and counts the added lines that came verbatim from the local model. Never edit or invent the trailer, and never edit the files in `.planning/delegations/`.",
+   "baseline": false
+  },
+  {
    "id": "agents/pan-executor:d39ef87e",
    "file": "agents/pan-executor.md",
    "text": "**Quick reference:** Users NEVER run CLI commands. Users ONLY visit URLs, click UI, evaluate visuals, provide secrets. Claude does all automation.",
@@ -1753,6 +1759,18 @@
    "baseline": true
   },
   {
+   "id": "commands/pan/local:ba1793b0",
+   "file": "commands/pan/local.md",
+   "text": "Speak to the user in plain words. Never show raw JSON, file paths under `pan-wizard-core/`, or config key names unless they ask.",
+   "baseline": false
+  },
+  {
+   "id": "commands/pan/local:6f242703",
+   "file": "commands/pan/local.md",
+   "text": "What changes: when PAN runs a plan, the coding goes to the local model. Planning, review, tests and commits stay with the main model, which checks every change before it is committed and takes a task back after three failed tries. Tasks touching login, payments, encryption, secrets or security are never handed off.",
+   "baseline": false
+  },
+  {
    "id": "commands/pan/map-codebase:3d1a5b08",
    "file": "commands/pan/map-codebase.md",
    "text": "Record the chosen mode + telemetry in a `.planning/codebase/overview.md` you write yourself. The map-codebase workflow has no single-shot branch — it always spawns the sharded mappers and writes no overview.md — so in `single-shot` mode spawn the one agent in place of its spawn step.",
@@ -1997,6 +2015,12 @@
    "file": "pan-wizard-core/workflows/exec-phase.md",
    "text": "**Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent executor --cue \"<phase goal; the files it touches>\" --token-budget 5000 --raw` to load the topics that match this task, within the budget; if none matches, it falls back to the topics tagged relevant for execution. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts. Files appear here over time as `pan-tools learn promote` adds findings.",
    "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:1db5f91a",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "Every plan runs in a spawned pan-executor, however small. Do not write a plan's code in this session instead: the executor carries the task commit protocol and, when `/pan:local` is on, the hand-off of the coding to the local model.",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/workflows/exec-phase:78ec1ccb",
@@ -2752,6 +2776,18 @@
    "id": "pan-wizard-core/workflows/progress:cd619841",
    "file": "pan-wizard-core/workflows/progress.md",
    "text": "**Step 2: What the route means** (route on the router's `action` above, never on this table; it explains the action to the user)",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/quick:f1ec2766",
+   "file": "pan-wizard-core/workflows/quick.md",
+   "text": "Spawn pan-executor with plan reference, however small the task. Do not write the code in this session instead: the executor carries the task commit protocol and, when `/pan:local` is on, the hand-off of the coding to the local model, and writing it here skips both.",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/quick:aa213b1b",
+   "file": "pan-wizard-core/workflows/quick.md",
+   "text": "When `LOCAL_OFFLOAD` was `ready`, read the summary's `Local offload:` line. If no task was handed to the local model and the line gives no reason (a never-delegate category, or the local model failing), tell the user the hand-off was skipped.",
    "baseline": false
   },
   {

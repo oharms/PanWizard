@@ -17,6 +17,7 @@ This guide covers root causes, diagnostic steps, and recovery procedures for sce
 - [Verification and Stubs](#verification-and-stubs)
 - [Git Integration](#git-integration)
 - [Models and Cost](#models-and-cost)
+- [Local Offload](#local-offload)
 - [Context and Sessions](#context-and-sessions)
 - [Focus Runs](#focus-runs)
 - [Cross-Platform Issues](#cross-platform-issues)
@@ -728,6 +729,38 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 **Root cause:** Claude Code `2.1.280` changed the default model on the Pro and Team Standard plans from Sonnet to the newest Opus-tier model, matching the other plans. PAN's `quality` profile resolves every agent to the session's own model (`inherit`), and `balanced` does so for planning, design, orchestration and final review (the other agents run on the mid tier), so a change of default moves those agents at once — nothing in PAN changed. The exception is an agent spawned with no model, as `/pan:army` spawns them: it runs on its own `model:` pin where its file has one (the reviewer-class agents pin `opus`).
 
 **Fix:** Choose the session model yourself with `/model`, or switch PAN to the `budget` profile (planning and execution on the mid tier, verification and research on the fast tier), or pin individual agents with `model_overrides` in `.planning/config.json`.
+
+---
+
+## Local Offload
+
+Local offload (`/pan:local`) hands each eligible task's code to a model on your own machine. Start every check here with `/pan:local status`, or `pan-tools delegate status`, which prints `ready` or the reason it is off.
+
+### Offload is on but every task was written by the executor
+
+`delegate status` says why. The usual reasons:
+
+- `endpoint unreachable`: the model server is not running. Open the Ollama app (or start LM Studio's server) and check `curl http://127.0.0.1:11434/v1/models`.
+- `model … is not served by the endpoint`: the name in `local_executor.model` does not match a model the server lists. Run `/pan:local` again and pick from its list.
+- `local_executor.model is not set`, or `enabled is false`: run `/pan:local`.
+
+When the status is `ready` and tasks were still kept, read the `Local offload:` line in the summary. It names the category that kept each task: authentication, payments, cryptography, secrets, security fixes, checkpoints and TDD red steps never leave the executor, whatever the model.
+
+### Tasks are taken back after several rounds
+
+After `local_executor.max_rounds` failed rounds the executor writes the task itself and records `[Local offload] taken back after N rounds: <why>` as a deviation. That is the fallback working, not a fault. If it happens on most tasks, the model is too small or its context too short: use a coding model with 32K tokens of context or more (`/pan:local` shows each model's context and how to make a larger copy).
+
+### A run is slow, or stops at the time limit
+
+Thinking models spend most of a turn reasoning. Keep `local_executor.reasoning` at `none` (the default); the executor reviews every change anyway. A run is capped by `local_executor.timeout_s` (900 s) and each reply by `local_executor.max_output_tokens`; raise them only for a slow machine.
+
+### The commit has no `PAN-Delegated` trailer, or the count looks wrong
+
+The trailer is printed by `pan-tools delegate attribute --staged`, never written by hand. No trailer means no added line matched a recorded run: the executor rewrote the code, or the run record in `.planning/delegations/` is missing. Recount any past commit with `pan-tools delegate attribute --ref <commit>`; only runs that finished before the commit are counted, and lines with no letter or digit (`}`, blank lines) are not counted at all.
+
+### The endpoint is on another machine
+
+With `local_executor.allow_remote: false` (the default) any endpoint that is not this computer is refused. Set it to `true` only for a server you trust on your own network, and put an API key in an environment variable named by `local_executor.api_key_env`, never in config.json.
 
 ---
 

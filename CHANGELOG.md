@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.45.0] - 2026-11-14
+
+**Your own machine writes the code.** PAN can now hand the typing to a model on your own hardware (Qwen, Llama or any model served by Ollama, LM Studio, llama.cpp, vLLM or a LiteLLM gateway) while Claude, or whichever host model you run, stays the engineer: it writes the spec, reviews the diff, re-runs the tests itself and commits. Run `/pan:local` once to turn it on. It is off by default, and nothing changes for a project that never turns it on.
+
+Before release it was run end to end on real projects in JavaScript and Python: single tasks, a planned multi-task build, a full plan-and-execute phase, an edit to an existing file, security work that must stay with Claude, a local server that is down, one that fails every request, and a hostile fake model that tried to steal secrets, rewrite the tests and plant a git hook. A recording proxy that PAN did not know about kept every byte the local model sent, and each commit's attribution was recounted from it with separate code. They matched in every scenario.
+
+### Added
+
+- **Local executor offload** (ADR-0053). The executor can hand each task's implementation to a model on your own hardware, such as Qwen served by Ollama, LM Studio, vLLM or a LiteLLM gateway, and then review the diff, run the verification itself and commit. Turn it on with the new `local_executor` section of config.json (off by default). The new `pan-tools delegate status` and `delegate run` verbs carry it. The local model gets five tools and no shell: it reads inside the project, writes only the files the executor names for that task, and runs only the task's verification command. Endpoints off this machine are refused unless `allow_remote` is set. After `max_rounds` failed rounds the executor takes the task back, and tasks touching authentication, payments, cryptography, secrets or security fixes are never handed off.
+- **`/pan:local`** sets local offload up in one step. It finds the models your local server has and recommends one (coding models first, then the largest context window). It asks which model, and whether the setting is for every project on this computer or only this one, then turns offload on. `/pan:local status` and `/pan:local off` check it and stop it. The computer-wide setting lives in `~/.pan-wizard/local-executor.json`, so `/pan:new-project` no longer drops it, and a project can still override it. The status line shows `⌂ <model>` while offload is on, and `/pan:settings` lists it.
+- **Local offload is fast and doesn't cut off long replies.** The local model's thinking is off by default (`local_executor.reasoning: none`); thinking made Qwen 3.6 write over ten times more per turn. Each reply is capped by the new `max_output_tokens` setting. Replies taking more than five minutes are no longer cut off: Node's `fetch` gave up on them regardless of `timeout_s`, and the chat request now uses Node's own `http`.
+- **Commit labels are measured.** Every local run is recorded in `.planning/delegations/` (the raw replies, every file written, a SHA-256 of each), and the new `pan-tools delegate attribute` counts how many of the lines a commit adds came verbatim from the local model. The executor commits with the trailer it prints, `PAN-Delegated: <model> (<n>/<m> added lines from the local model; run <id>)`, and a task with no line from the model carries none.
+- **`/pan:quick` and `/pan:exec-phase` always run the executor**, so a small task can no longer skip the local hand-off by being written in the main session. They also read `delegate status` before spawning it and hand the answer to the executor in its prompt (`<local_offload_status>`): in a proof run, an executor on the mid tier skipped the check on its own. `/pan:quick` tells you when the hand-off was skipped without a reason.
+
+### Fixed
+
+- **The Claude Code plugin carries a README and an icon.** `claude plugin validate` in Claude Code 2.1.323 refuses a plugin without a README and warns without a square icon; `scripts/build-plugin.js` now copies the package README and `assets/pan-avatar.png` (as `.claude-plugin/icon.png`).
+
 ## [3.44.0] - 2026-11-13
 
 A Codex hook check, two development checks from the GBrain read, and fixes from the market scan and reality check of `2026-11-13`.

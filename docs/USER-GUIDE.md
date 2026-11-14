@@ -550,6 +550,19 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
     "cascade_quality_gate": true,
     "max_escalations": 1,
     "complexity_thresholds": { "downgrade_max": 2, "upgrade_min": 6 }
+  },
+  "local_executor": {
+    "enabled": false,
+    "endpoint": "http://127.0.0.1:11434/v1",
+    "model": "",
+    "api_key_env": "",
+    "allow_remote": false,
+    "max_turns": 25,
+    "timeout_s": 900,
+    "verify_timeout_s": 300,
+    "max_rounds": 3,
+    "reasoning": "none",
+    "max_output_tokens": 16384
   }
 }
 ```
@@ -640,6 +653,36 @@ Disable these to speed up phases in familiar domains or when conserving tokens.
 | `execution.default_mode` | `wave_order` | `wave_order` | Reserved — `init execute-phase` reports it as `execution_mode`, which no workflow reads; plans always run in wave order |
 | `execution.rollback_snapshots` | `true`, `false` | `true` | Reserved — written by the defaults but not read; no workflow creates rollback tags, so run `pan-tools rollback-snapshot <phase>` yourself before a risky phase |
 | `execution.error_pattern_learning` | `true`, `false` | `true` | Tool-failure capture: the trace hook records the failed tool calls in each subagent's own transcript (redacted) as `error/tool_error` events for `/pan:learn`. `false` turns the capture off (see [The evidence loop](#the-evidence-loop)) |
+
+### Local Executor Offload
+
+The executor can hand the typing to a model on your own hardware: Ollama, LM Studio, llama.cpp, vLLM, or a LiteLLM gateway in front of them (anything that speaks the OpenAI `/v1/chat/completions` API with tool calls). The executor stays the engineer of record. For each task it writes a spec, runs `pan-tools delegate run`, reviews the diff, runs the verification itself and commits; after `max_rounds` failed rounds it does the task itself. Tasks that touch authentication, payments, cryptography, secrets or a security fix, TDD RED steps and checkpoints are never handed off. Design decision: [ADR-0053](decisions/ADR-0053-local-executor-offload.md).
+
+| Setting | Options | Default | What it Controls |
+|---------|---------|---------|------------------|
+| `local_executor.enabled` | `true`, `false` | `false` | Turns offload on (set by `/pan:local`). Off, or not ready, the executor implements every task itself |
+| `local_executor.endpoint` | URL | `http://127.0.0.1:11434/v1` | Base URL of the OpenAI-compatible API (Ollama's default) |
+| `local_executor.model` | model name | `""` | The served model, e.g. `qwen3.6:35b-a3b-coding`. Required |
+| `local_executor.api_key_env` | env var name | `""` | Name of an environment variable holding the API key (for a LiteLLM gateway). The key itself never goes in config.json |
+| `local_executor.allow_remote` | `true`, `false` | `false` | `false` refuses any endpoint that is not this machine. Set `true` for an office AI server on your network |
+| `local_executor.max_turns` | integer | `25` | Tool-loop turns per task run |
+| `local_executor.timeout_s` | integer | `900` | Wall clock for one task run |
+| `local_executor.verify_timeout_s` | integer | `300` | Time limit of the task's verification command |
+| `local_executor.max_rounds` | integer | `3` | Failed rounds per task before the executor takes the task back |
+| `local_executor.reasoning` | `none`, `low`, `medium`, `high`, `default` | `none` | How much the local model thinks before each answer, sent as `reasoning_effort`. `none` is many times faster on thinking models such as Qwen 3.6, and the executor reviews every change anyway; `default` sends nothing. A server that rejects the parameter is asked again without it |
+| `local_executor.max_output_tokens` | integer | `16384` | Upper bound on one reply, so a runaway generation cannot run until the time limit |
+
+**Set it up with `/pan:local`.** With your model server running (open the Ollama app, or LM Studio's server) and a coding model downloaded, run `/pan:local`. It finds the models the server has, recommends one (coding models first, then the largest context window, then the largest model), asks which model and where, and turns offload on. `/pan:local status` shows whether it is on and answering; `/pan:local off` turns it off. While it is on, the status line shows `⌂ <model>`.
+
+**Every project on this computer, or one project.** The recommended choice saves the setting for this computer in `~/.pan-wizard/local-executor.json`, so every project uses it and `/pan:new-project` keeps it. "Only this project" writes the `local_executor` section of the project's config.json instead, which wins over the computer's setting there; use it to switch offload off for one confidential repository while it stays on elsewhere.
+
+**Context window.** The local model reads the spec, several files and test output in one conversation, so give it room: 32K tokens or more. `/pan:local` reports each model's configured context and explains how to make a larger-context copy when the one you chose has none.
+
+**What the local model can do.** It gets five tools and nothing else: list a directory, read a file, write a file the executor listed for that task, run the task's verification command (it cannot choose a command), and finish. Every path is confined to the project; `.git/`, the planning tree and files matching `commit.sensitive_patterns` are out of reach. There is no general shell. Whatever it reports, `delegate run` re-runs the verification itself, and the executor runs it again before committing.
+
+**Where the code goes.** With the default `allow_remote: false`, the task, the files the local model reads and everything it writes stay on this machine. The executor and the other agents still run on your coding tool's own model, so planning, review and verification go wherever that tool sends them.
+
+**The record.** Each delegated task's spec (`{phase}-{plan}-task-{N}-delegate.md`) is kept in the phase directory, and every run of the local model is saved in `.planning/delegations/`: its raw replies and every file it wrote, with a SHA-256 of each. Before committing, the executor runs `pan-tools delegate attribute --staged`, which compares the staged lines with those records and prints the trailer, for example `PAN-Delegated: qwen-coder (42/45 added lines from the local model; run d-…)`; a commit with no line from the model gets no trailer. `pan-tools delegate attribute --ref <commit>` answers the same question for any past commit. The summary says how many tasks were delegated, passed in the first round, or taken back.
 
 ### Claude Code Settings
 

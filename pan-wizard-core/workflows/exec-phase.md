@@ -140,6 +140,14 @@ A phase that already has a baseline keeps it (a resumed run or a `--gaps-only` r
 <step name="execute_waves">
 Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`, sequential if `false`.
 
+Every plan runs in a spawned pan-executor, however small. Do not write a plan's code in this session instead: the executor carries the task commit protocol and, when `/pan:local` is on, the hand-off of the coding to the local model.
+
+Before the first wave, ask whether local offload is ready; every executor prompt carries the answer:
+
+```bash
+LOCAL_OFFLOAD=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs delegate status --raw)
+```
+
 **For each wave:**
 
 0. **Record wave start time for duration tracking:**
@@ -202,6 +210,8 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
        </superseded_tests>
 
        If the plan's `<context>` names `@.planning/roadmap.md`, read `{slice_path}` in its place: it carries this phase's section, its dependencies' goals and its requirements, and the whole roadmap is the largest file in `.planning/` on a long project. Open the whole file only for something the slice leaves out.
+
+       <local_offload_status>{LOCAL_OFFLOAD}</local_offload_status>
 
        <success_criteria>
        - [ ] All tasks executed

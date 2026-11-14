@@ -466,5 +466,9 @@
   {
     "id": "command:autodev",
     "reason": "Driven at tier 0 by tests/autodev.test.cjs (a stand-in host on PATH, every stop reason, resume after a kill) and by harness/src/sim.cjs (H8, seeded faults on 20 seeds). Neither is a harness scenario that installs PAN and invokes /pan:autodev; that needs a host double that answers slash commands."
+  },
+  {
+    "id": "command:local",
+    "reason": "No harness scenario runs this command yet: it needs a local model server (Ollama or a double of its /v1/models, /api/tags and /api/show endpoints) inside the harness. The engine path it drives, delegate setup and delegate status, is covered by tests/delegate.test.cjs against a fake server."
   }
 ]
