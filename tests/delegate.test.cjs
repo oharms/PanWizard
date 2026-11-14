@@ -96,12 +96,13 @@ describe('guard rails', () => {
     assert.equal(D.endpointProblem({ endpoint: 'http://127.0.0.1:11434/v1', allow_remote: false }), null);
   });
 
-  test('confine refuses traversal and a symlink that leaves the project', () => {
+  test('confine refuses traversal and a symlink that leaves the project', (t) => {
     assert.throws(() => D.confine(dir, '../outside.txt'), /outside the project/);
     assert.throws(() => D.confine(dir, '/etc/hosts'), /outside the project/);
     const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pan-delegate-out-')));
     try {
-      fs.symlinkSync(outside, path.join(dir, 'link'), 'dir');
+      try { fs.symlinkSync(outside, path.join(dir, 'link'), process.platform === 'win32' ? 'junction' : 'dir'); }
+      catch (e) { if (e.code === 'EPERM') { t.skip('no permission to create a link here'); return; } throw e; }
       assert.throws(() => D.confine(dir, 'link/new.js'), /outside the project/);
     } finally { fs.rmSync(outside, { recursive: true, force: true }); }
     assert.equal(D.confine(dir, 'src/new/file.js').rel, 'src/new/file.js');
@@ -231,6 +232,25 @@ describe('runLocalTask', () => {
     const v = D.runVerify(dir, `"${process.execPath}" -e "setTimeout(() => {}, 20000)"`, D.readLocalConfig(dir, { home }).verify_timeout_s);
     assert.equal(v.timed_out, true);
     assert.equal(v.passed, false);
+  });
+
+  test('a timed-out verify command leaves no process running, and a normal exit code is kept', () => {
+    // The sleeper is a grandchild (shell → node): spawnSync's own timeout used to kill
+    // only the shell and leave it running, holding the project directory.
+    const pidFile = path.join(dir, 'sleeper.pid');
+    write('sleeper.js', `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => {}, 30000);\n`);
+    const v = D.runVerify(dir, `"${process.execPath}" sleeper.js`, 1);
+    assert.equal(v.timed_out, true);
+    const pid = Number(fs.readFileSync(pidFile, 'utf-8'));
+    const alive = () => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+    const until = Date.now() + 3000;
+    while (alive() && Date.now() < until) { /* taskkill and SIGKILL land within moments */ }
+    assert.equal(alive(), false, `verify process ${pid} still running after the timeout`);
+
+    const ok = D.runVerify(dir, `"${process.execPath}" -e "console.log('hi'); process.exit(3)"`, 30);
+    assert.equal(ok.timed_out, false);
+    assert.equal(ok.exit_code, 3);
+    assert.match(ok.output_tail, /hi/);
   });
 
   test('local_executor.max_rounds is carried into every run report for the executor', async () => {

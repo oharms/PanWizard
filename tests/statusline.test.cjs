@@ -22,7 +22,7 @@ function mockDeps(overrides = {}) {
   };
   return {
     fs: { ...fakeFs, ...(overrides.fs || {}) },
-    path: require('path'),
+    path: overrides.path || require('path'),
     homeDir: overrides.homeDir || '/tmp/home',
     tmpDir: overrides.tmpDir || '/tmp',
     skipBridge: true,
@@ -274,7 +274,9 @@ describe('statusline reads todos from CLAUDE_CONFIG_DIR', () => {
 });
 
 describe('pan-statusline — local executor offload (ADR-0053)', () => {
+  // POSIX paths on every OS: the map keys are '/h/...' and '/proj/...'.
   const files = (map) => mockDeps({
+    path: require('path').posix,
     homeDir: '/h',
     fs: { readFileSync: (p) => { if (p in map) return map[p]; throw new Error('ENOENT ' + p); } },
   });

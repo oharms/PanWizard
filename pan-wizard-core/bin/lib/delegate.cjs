@@ -272,13 +272,41 @@ function writeAllowed(rel, allow) {
 }
 
 /** Run the caller's verify command in the project root. The model never supplies it. */
+// The verify command runs under a small Node supervisor that owns the timeout. spawnSync's
+// own `timeout` kills only the shell it started: the command's children (a `node` under
+// cmd.exe on Windows, the test runner under `npm test` everywhere) keep running, holding
+// files, ports and the project directory. The supervisor kills the whole tree instead —
+// `taskkill /T /F` on Windows, the process group on macOS and Linux — and reports the
+// timeout on fd 3, so an exit code the command itself returns is never mistaken for one.
+const VERIFY_SUPERVISOR = `
+const { spawn, spawnSync } = require('child_process');
+const fs = require('fs');
+const [command, ms] = process.argv.slice(1);
+const win = process.platform === 'win32';
+const child = spawn(command, { shell: true, stdio: ['ignore', 'inherit', 'inherit'], detached: !win, windowsHide: true });
+const timer = setTimeout(() => {
+  try { fs.writeSync(3, 'timeout'); } catch {}
+  try {
+    if (win) spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+    else process.kill(-child.pid, 'SIGKILL');
+  } catch {}
+  process.exit(1);
+}, Number(ms));
+child.on('error', (e) => { clearTimeout(timer); process.stderr.write(String(e && e.message || e) + '\\n'); process.exit(127); });
+child.on('exit', (code, signal) => { clearTimeout(timer); process.exit(code === null ? 1 : code); });
+`;
+
 function runVerify(root, command, timeoutS) {
-  const r = spawnSync(command, {
-    cwd: root, shell: true, encoding: 'utf-8', timeout: timeoutS * 1000, maxBuffer: 16 * 1024 * 1024,
-    stdio: ['ignore', 'pipe', 'pipe'],
+  const ms = Math.max(1, Number(timeoutS) || 0) * 1000;
+  const r = spawnSync(process.execPath, ['-e', VERIFY_SUPERVISOR, command, String(ms)], {
+    cwd: root, encoding: 'utf-8', maxBuffer: 16 * 1024 * 1024, windowsHide: true,
+    // Backstop only: the supervisor stops the command itself at `ms`.
+    timeout: ms + 30000,
+    stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
   });
   const text = `${r.stdout || ''}${r.stderr ? (r.stdout ? '\n' : '') + r.stderr : ''}`;
-  const timedOut = !!(r.error && r.error.code === 'ETIMEDOUT');
+  const timedOut = String((r.output && r.output[3]) || '').includes('timeout')
+    || !!(r.error && r.error.code === 'ETIMEDOUT');
   return {
     command,
     passed: r.status === 0 && !timedOut,
