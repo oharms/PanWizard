@@ -11,6 +11,7 @@ For user-facing documentation, see the [User Guide](USER-GUIDE.md). For developm
 - [Verification Patterns](#verification-patterns)
 - [Commit Strategy](#commit-strategy)
 - [Model Profiles](#model-profiles)
+- [Local Offload](#local-offload)
 - [Branching Strategies](#branching-strategies)
 - [UI Conventions](#ui-conventions)
 - [Discussion Philosophy](#discussion-philosophy)
@@ -281,6 +282,27 @@ Override specific agents in config:
 ```
 
 Values are tiers (`reasoning`, `mid`, `fast`; the legacy names are accepted). Overrides take precedence over profile defaults, per-phase overrides, and routing strategy, and are never escalated on retry.
+
+---
+
+## Local Offload
+
+How the executor hands a task's code to a model on your own machine ([ADR-0053](decisions/ADR-0053-local-executor-offload.md); set-up and settings in the [User Guide](USER-GUIDE.md)).
+
+### The hand-off
+
+1. The orchestrator (`quick.md`, `exec-phase.md`) runs `delegate status --raw` once and passes the result to each executor as `<local_offload_status>`, so a smaller executor model does not have to remember to check.
+2. For each eligible task the executor writes a spec next to the plan (`{phase}-{plan}-task-{N}-delegate.md`): the goal, the interface, the files it may write and the verification command.
+3. `pan-tools delegate run --spec … --allow <file> … --verify "<command>"` runs the tool loop against the OpenAI-compatible endpoint.
+4. The executor reviews the diff and re-runs the verification itself. A failure appends fix notes to the spec and runs again, up to `max_rounds`; then the executor takes the task back.
+
+### The confinement
+
+The local model has five tools: `list_files`, `read_file`, `write_file` (only the `--allow` files), `run_verify` (only the spec's command) and `finish`. Paths are resolved with `realpath` and must stay inside the project; `.git/`, `.planning/` and files matching `commit.sensitive_patterns` are refused. There is no shell. Whatever the model reports, `delegate run` re-runs the verification before returning, and a non-loopback endpoint is refused unless `allow_remote` is set.
+
+### The record and the attribution
+
+Each run writes `.planning/delegations/<run_id>.json` (schema 1: the spec, each reply's id, model and SHA-256, every write and the final content of each file) and `<run_id>.transcript.jsonl` (the raw replies). `delegate attribute --staged` (or `--ref <commit>`) takes the substantive lines a commit adds (lines with a letter or digit), matches them in order (longest common subsequence) against the final content of every run that finished before the commit, and prints the trailer the executor commits verbatim: `PAN-Delegated: <model> (<local>/<added> added lines from the local model; run <id>)`, or none when no line matched.
 
 ---
 

@@ -245,6 +245,36 @@ You: Add CSV export to the task list command.
 PAN plans the implementation, has the plan checked, executes it, and
 verifies -- all in one flow, without research and without creating a formal phase.
 
+### With a model on your own machine
+
+With Ollama running and a coding model downloaded, turn on local offload once:
+
+```text
+/pan:local
+```
+
+```text
+PAN: Found 3 models on http://127.0.0.1:11434. Recommended: qwen-coder
+     (coding model, 64K context). Use it for every project on this computer?
+You: Yes.
+PAN: Local offload is on. Status line: ⌂ qwen-coder
+```
+
+From then on `/pan:quick` works the same, but the code is typed on your
+machine. The executor writes a spec for the task, the local model writes the
+file and runs the tests, and the executor reviews the diff, runs the tests
+again and commits:
+
+```text
+fix(display): show due dates in the local timezone
+
+PAN-Delegated: qwen-coder (6/6 added lines from the local model; run d-20261114T101502Z-3fa9c1)
+```
+
+If the server is down or the model fails three rounds, the executor writes the
+fix itself and says so. Auth, payment, crypto and security tasks are never
+handed off.
+
 ---
 
 ## Example 4: Resuming After a Break
