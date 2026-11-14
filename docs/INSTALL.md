@@ -90,6 +90,10 @@ CLAUDE_CONFIG_DIR=/home/youruser/.claude npx pan-wizard --global
 
 PAN then installs into that directory and writes its absolute path into the installed commands, agents and hook commands. A global install writes absolute paths whether or not the variable is set.
 
+## Optional: a coding model on your own machine
+
+PAN can hand the writing of each task's code to a model served on your own hardware (Ollama, LM Studio, llama.cpp, vLLM or a LiteLLM gateway) while the host model plans, reviews and commits. Install and start the server and pull a coding model (for example `ollama pull qwen2.5-coder:32b`), then run `/pan:local` in your project. It lists the models the server offers, picks the best coding one, and turns the hand-off on for this computer (`~/.pan-wizard/local-executor.json`), so every project you open uses it. A model with a context window below 32K tokens struggles; `/pan:local` warns when yours is smaller. Nothing changes until you run it. The User Guide's [Local Executor Offload](USER-GUIDE.md#local-executor-offload) section has the details.
+
 ## Staying updated
 
 Run `/pan:update`. It reads from the install's own path whether it is local or global and which runtime it belongs to, and reinstalls that runtime. For an install made with `--config-dir` or `--unified-skills`, which it cannot tell from the path, re-run the installer yourself with the flags you installed with (add `--global` for a global install, since the installer defaults to the current project):

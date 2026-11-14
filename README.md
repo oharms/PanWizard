@@ -16,6 +16,8 @@ npx pan-wizard@latest
 
 **Claude Code · Codex · Gemini CLI · OpenCode · Copilot CLI** &nbsp;—&nbsp; Mac, Windows, Linux · zero dependencies
 
+**New in 3.45:** [let a model on your own machine write the code](#new-your-own-machine-writes-the-code) while Claude plans, reviews and commits.
+
 <br>
 
 <img src="https://cdn.jsdelivr.net/npm/pan-wizard@latest/assets/pan-session.svg" alt="An illustrative PAN session: phase 2 runs in two waves, is reviewed, verified against its goals and the test suite, and gated complete" width="860" />
@@ -52,6 +54,26 @@ npx pan-wizard@latest     # choose your runtime; installs into this project
 - **Walking away?** `/pan:autodev` runs the roadmap unattended and stops on a failed gate, a budget, or anything that needs you.
 
 Codex uses `$pan-…`, OpenCode and Copilot CLI use `/pan-…`. The [install guide](docs/INSTALL.md) covers flags, CI installs, permissions and uninstalling.
+
+## New: your own machine writes the code
+
+Run `/pan:local` once and PAN hands the typing to a model on your own hardware: Qwen, Llama or anything else served by Ollama, LM Studio, llama.cpp or vLLM. Claude stays the engineer. It writes a spec for each task, reviews what comes back, re-runs the tests itself and commits, or sends the task back with fix notes, or takes it over.
+
+<p align="center">
+  <img src="https://cdn.jsdelivr.net/npm/pan-wizard@latest/assets/pan-local.svg" alt="Local offload: Claude plans each task, a model on your machine writes the code with five confined tools, Claude reviews, re-runs the tests and commits with a measured label of who wrote each line" width="860" />
+</p>
+
+```text
+/pan:local                # finds your local models, picks the best coding one, turns it on
+/pan:quick "add CSV export"   # Claude specs it, your model writes it, Claude checks and commits
+```
+
+- **Confined, not trusted.** The local model gets five tools and no shell. It writes only the files named for its task and runs only that task's test command; `.git`, secrets and PAN's own files are out of reach, and an endpoint off your machine is refused unless you allow it.
+- **Kept where it matters.** Authentication, payments, cryptography, secrets and security fixes are never handed off.
+- **Measured, not claimed.** Every run is recorded in `.planning/delegations/`, and each commit says how many of its lines came verbatim from the local model: `PAN-Delegated: qwen-coder (31/31 added lines from the local model)`.
+- **Falls back on its own.** Server down, a failing model, or too many failed rounds: Claude finishes the task and says so.
+
+Before release it was run end to end on real projects (JavaScript and Python, single tasks, planned multi-task work, a full phase, edits to existing files, security work, a down and a failing server, and a hostile fake model). A recording proxy that PAN did not know about kept every byte the local model sent, and each commit's label was recounted from it independently: they matched in every scenario. Off by default; nothing changes until you turn it on. [How it works](docs/USER-GUIDE.md#local-executor-offload) · [Design decision](docs/decisions/ADR-0053-local-executor-offload.md)
 
 ## What you get
 
